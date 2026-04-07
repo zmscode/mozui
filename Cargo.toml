@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mozui",
+    "crates/mozui-app",
+    "crates/mozui-platform",
+    "crates/mozui-renderer",
+    "crates/mozui-style",
+    "crates/mozui-elements",
+    "crates/mozui-events",
+    "crates/mozui-layout",
+    "crates/mozui-reactive",
+    "crates/mozui-executor",
+    "crates/mozui-text",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+# Internal crates
+mozui-app = { path = "crates/mozui-app" }
+mozui-platform = { path = "crates/mozui-platform" }
+mozui-renderer = { path = "crates/mozui-renderer" }
+mozui-style = { path = "crates/mozui-style" }
+mozui-elements = { path = "crates/mozui-elements" }
+mozui-events = { path = "crates/mozui-events" }
+mozui-layout = { path = "crates/mozui-layout" }
+mozui-reactive = { path = "crates/mozui-reactive" }
+mozui-executor = { path = "crates/mozui-executor" }
+mozui-text = { path = "crates/mozui-text" }
+
+# External
+wgpu = "25"
+raw-window-handle = "0.6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+parking_lot = "0.12"
+rustc-hash = "2"
+smallvec = "1"
+taffy = "0.7"
+bytemuck = { version = "1", features = ["derive"] }
+font-kit = "0.14"
+rustc-hash_v1 = { package = "rustc-hash", version = "1" }

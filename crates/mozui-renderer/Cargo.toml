@@ -1,0 +1,17 @@
+[package]
+name = "mozui-renderer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mozui-style = { workspace = true }
+mozui-platform = { workspace = true }
+wgpu = { workspace = true }
+raw-window-handle = { workspace = true }
+tracing = { workspace = true }
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+mozui-text = { workspace = true }
+font-kit = { workspace = true }
+rustc-hash = { workspace = true }
+pathfinder_geometry = "0.5"

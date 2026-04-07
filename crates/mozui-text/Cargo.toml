@@ -1,0 +1,9 @@
+[package]
+name = "mozui-text"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mozui-style = { workspace = true }
+font-kit = { workspace = true }
+rustc-hash = { workspace = true }

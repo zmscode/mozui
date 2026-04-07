@@ -1,0 +1,29 @@
+[package]
+name = "mozui-platform"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mozui-style = { workspace = true }
+mozui-events = { workspace = true }
+raw-window-handle = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSString", "NSThread", "NSDate", "NSRunLoop"] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSApplication",
+    "NSWindow",
+    "NSView",
+    "NSEvent",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSGraphics",
+    "NSScreen",
+    "NSPasteboard",
+    "NSCursor",
+    "NSTrackingArea",
+    "NSMenu",
+] }
+block2 = "0.6"

@@ -1,0 +1,18 @@
+[package]
+name = "mozui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mozui-app = { workspace = true }
+mozui-style = { workspace = true }
+mozui-platform = { workspace = true }
+mozui-renderer = { workspace = true }
+mozui-elements = { workspace = true }
+mozui-events = { workspace = true }
+mozui-reactive = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "hello"
+path = "../../examples/hello.rs"
