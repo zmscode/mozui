@@ -201,7 +201,65 @@ fn ns_event_to_platform_event(event: &objc2_app_kit::NSEvent) -> Option<Platform
                 modifiers,
             })
         }
+        NSEventType::KeyDown => {
+            let key = ns_key_to_key(event);
+            let is_repeat = event.isARepeat();
+            Some(PlatformEvent::KeyDown {
+                key,
+                modifiers,
+                is_repeat,
+            })
+        }
+        NSEventType::KeyUp => {
+            let key = ns_key_to_key(event);
+            Some(PlatformEvent::KeyUp { key, modifiers })
+        }
         _ => None,
+    }
+}
+
+fn ns_key_to_key(event: &objc2_app_kit::NSEvent) -> mozui_events::Key {
+    use mozui_events::Key;
+
+    let keycode = event.keyCode();
+    match keycode {
+        36 => Key::Enter,
+        53 => Key::Escape,
+        48 => Key::Tab,
+        51 => Key::Backspace,
+        117 => Key::Delete,
+        49 => Key::Space,
+        126 => Key::ArrowUp,
+        125 => Key::ArrowDown,
+        123 => Key::ArrowLeft,
+        124 => Key::ArrowRight,
+        115 => Key::Home,
+        119 => Key::End,
+        116 => Key::PageUp,
+        121 => Key::PageDown,
+        122 => Key::F1,
+        120 => Key::F2,
+        99 => Key::F3,
+        118 => Key::F4,
+        96 => Key::F5,
+        97 => Key::F6,
+        98 => Key::F7,
+        100 => Key::F8,
+        101 => Key::F9,
+        109 => Key::F10,
+        103 => Key::F11,
+        111 => Key::F12,
+        _ => {
+            // Try to get character from the event
+            if let Some(chars) = event.characters() {
+                if let Some(ch) = chars.to_string().chars().next() {
+                    if !ch.is_control() {
+                        return Key::Character(ch);
+                    }
+                }
+            }
+            Key::Unknown
+        }
     }
 }
 

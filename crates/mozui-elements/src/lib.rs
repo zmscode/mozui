@@ -28,6 +28,7 @@ pub trait Element {
 
 /// Stored click handler — captures signal setters etc.
 type ClickHandler = Box<dyn Fn(&mut dyn std::any::Any)>;
+type KeyHandler = Box<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>;
 
 /// An interactive region with its handler.
 struct InteractionEntry {
@@ -38,17 +39,25 @@ struct InteractionEntry {
 /// Collects interactive regions during paint, hit-tests on events.
 pub struct InteractionMap {
     entries: Vec<InteractionEntry>,
+    key_handlers: Vec<KeyHandler>,
 }
 
 impl InteractionMap {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
+            key_handlers: Vec::new(),
         }
     }
 
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.key_handlers.clear();
+    }
+
+    /// Register a key handler.
+    pub fn register_key_handler(&mut self, handler: KeyHandler) {
+        self.key_handlers.push(handler);
     }
 
     /// Register a click handler for a region.
@@ -73,6 +82,19 @@ impl InteractionMap {
 
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    /// Dispatch a key event to all registered key handlers.
+    pub fn dispatch_key(
+        &self,
+        key: mozui_events::Key,
+        modifiers: mozui_events::Modifiers,
+        cx: &mut dyn std::any::Any,
+    ) -> bool {
+        for handler in &self.key_handlers {
+            handler(key, modifiers, cx);
+        }
+        !self.key_handlers.is_empty()
     }
 
     /// Check if a point is over any interactive element.

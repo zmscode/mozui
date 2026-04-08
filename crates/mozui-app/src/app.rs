@@ -99,8 +99,22 @@ impl App {
                         }
                     }
                 }
-                PlatformEvent::MouseMove { .. } => {
-                    // Cursor changes will be handled in a future phase
+                PlatformEvent::KeyDown { key, modifiers, .. } => {
+                    interactions.dispatch_key(key, modifiers, &mut cx);
+                    if cx.is_dirty() {
+                        cx.clear_dirty();
+                        cx.reset_hooks();
+                        element_tree = root(&mut cx);
+                        needs_render = true;
+                        window.request_redraw();
+                    }
+                }
+                PlatformEvent::MouseMove { position, .. } => {
+                    if interactions.has_handler_at(position) {
+                        mozui_platform::set_cursor_style(mozui_events::CursorStyle::Hand);
+                    } else {
+                        mozui_platform::set_cursor_style(mozui_events::CursorStyle::Arrow);
+                    }
                 }
                 PlatformEvent::WindowResize { size } => {
                     let scale = window.scale_factor();

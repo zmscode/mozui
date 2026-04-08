@@ -45,6 +45,29 @@ pub trait Platform {
     fn clipboard_write(&self, text: &str);
 }
 
+/// Set the cursor globally (can be called from anywhere on macOS).
+pub fn set_cursor_style(cursor: mozui_events::CursorStyle) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::NSCursor;
+        let ns_cursor = match cursor {
+            mozui_events::CursorStyle::Arrow => NSCursor::arrowCursor(),
+            mozui_events::CursorStyle::Hand => NSCursor::pointingHandCursor(),
+            mozui_events::CursorStyle::Text => NSCursor::IBeamCursor(),
+            mozui_events::CursorStyle::Crosshair => NSCursor::crosshairCursor(),
+            mozui_events::CursorStyle::NotAllowed => NSCursor::operationNotAllowedCursor(),
+            #[allow(deprecated)]
+            mozui_events::CursorStyle::ResizeNS => NSCursor::resizeUpDownCursor(),
+            #[allow(deprecated)]
+            mozui_events::CursorStyle::ResizeEW => NSCursor::resizeLeftRightCursor(),
+            mozui_events::CursorStyle::ResizeNESW | mozui_events::CursorStyle::ResizeNWSE => {
+                NSCursor::crosshairCursor()
+            }
+        };
+        ns_cursor.set();
+    }
+}
+
 /// Handle to a platform-native window.
 pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn bounds(&self) -> Rect;

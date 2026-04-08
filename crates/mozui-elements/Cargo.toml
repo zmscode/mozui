@@ -8,5 +8,6 @@ mozui-style = { workspace = true }
 mozui-renderer = { workspace = true }
 mozui-layout = { workspace = true }
 mozui-text = { workspace = true }
+mozui-events = { workspace = true }
 taffy = { workspace = true }
 tracing = { workspace = true }

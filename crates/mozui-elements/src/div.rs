@@ -5,6 +5,7 @@ use mozui_style::{Color, Corners, Fill};
 use mozui_text::FontSystem;
 use taffy::prelude::*;
 use taffy::{Overflow, Point as TaffyPoint};
+use mozui_events;
 
 pub struct Div {
     // Visual style
@@ -22,6 +23,7 @@ pub struct Div {
 
     // Event handlers
     on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_key_down: Option<Box<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>>,
 }
 
 pub fn div() -> Div {
@@ -34,6 +36,7 @@ pub fn div() -> Div {
         taffy_style: Style::default(),
         children: Vec::new(),
         on_click: None,
+        on_key_down: None,
     }
 }
 
@@ -325,6 +328,14 @@ impl Div {
         self
     }
 
+    pub fn on_key_down(
+        mut self,
+        handler: impl Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any) + 'static,
+    ) -> Self {
+        self.on_key_down = Some(Box::new(handler));
+        self
+    }
+
     // --- Children ---
     pub fn child(mut self, child: impl Element + 'static) -> Self {
         self.children.push(Box::new(child));
@@ -387,11 +398,17 @@ impl Element for Div {
 
         // Register click handler if present
         if let Some(ref handler) = self.on_click {
-            // Clone the handler into the interaction map via a trait object pointer trick:
-            // We can't clone Box<dyn Fn>, so we capture the raw pointer.
-            // This is safe because the interaction map lives shorter than the element tree.
             let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
             interactions.register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+        }
+
+        // Register key handler if present
+        if let Some(ref handler) = self.on_key_down {
+            let handler_ptr = handler.as_ref()
+                as *const dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any);
+            interactions.register_key_handler(Box::new(move |key, mods, cx| unsafe {
+                (*handler_ptr)(key, mods, cx)
+            }));
         }
 
         // Paint children

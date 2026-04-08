@@ -28,6 +28,15 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .justify_center()
             .gap(16.0)
             .bg(Color::hex("#1e1e2e"))
+            .on_key_down(move |key, _mods, cx_any| {
+                let cx = cx_any.downcast_mut::<Context>().unwrap();
+                match key {
+                    Key::ArrowUp => cx.update(set_count, |n| *n += 1),
+                    Key::ArrowDown => cx.update(set_count, |n| *n -= 1),
+                    Key::Escape => std::process::exit(0),
+                    _ => {}
+                }
+            })
             .child(
                 text("Hello, mozui!")
                     .font_size(32.0)
@@ -38,6 +47,11 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                 text(format!("Count: {current}"))
                     .font_size(24.0)
                     .color(Color::hex("#a6e3a1")),
+            )
+            .child(
+                text("↑/↓ keys or click buttons")
+                    .font_size(12.0)
+                    .color(Color::hex("#6c7086")),
             )
             .child(
                 div()
