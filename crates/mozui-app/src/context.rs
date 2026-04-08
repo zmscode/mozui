@@ -1,5 +1,7 @@
+use mozui_executor::{Executor, TimerManager, TimerId};
 use mozui_reactive::{Signal, SetSignal, SignalStore};
 use mozui_style::Theme;
+use std::time::Duration;
 
 pub struct Context {
     theme: Theme,
@@ -7,6 +9,8 @@ pub struct Context {
     hook_index: usize,
     clipboard_read_fn: Option<Box<dyn Fn() -> Option<String>>>,
     clipboard_write_fn: Option<Box<dyn Fn(&str)>>,
+    pub(crate) executor: Executor,
+    pub(crate) timers: TimerManager,
 }
 
 impl Context {
@@ -17,6 +21,8 @@ impl Context {
             hook_index: 0,
             clipboard_read_fn: None,
             clipboard_write_fn: None,
+            executor: Executor::new(),
+            timers: TimerManager::new(),
         }
     }
 
@@ -82,5 +88,33 @@ impl Context {
     /// Clear dirty flag after re-render.
     pub fn clear_dirty(&mut self) {
         self.signals.clear_dirty();
+    }
+
+    /// Spawn an async task on the main thread.
+    pub fn spawn(&mut self, future: impl std::future::Future<Output = ()> + 'static) {
+        self.executor.spawn(future);
+    }
+
+    /// Schedule a one-shot callback after a duration.
+    pub fn set_timeout(
+        &mut self,
+        duration: Duration,
+        callback: impl FnOnce(&mut dyn std::any::Any) + 'static,
+    ) -> TimerId {
+        self.timers.set_timeout(duration, callback)
+    }
+
+    /// Schedule a repeating callback at an interval.
+    pub fn set_interval(
+        &mut self,
+        interval: Duration,
+        callback: impl Fn(&mut dyn std::any::Any) + 'static,
+    ) -> TimerId {
+        self.timers.set_interval(interval, callback)
+    }
+
+    /// Cancel a timer.
+    pub fn cancel_timer(&mut self, id: TimerId) {
+        self.timers.cancel(id);
     }
 }

@@ -12,5 +12,6 @@ mozui-events = { workspace = true }
 mozui-layout = { workspace = true }
 mozui-text = { workspace = true }
 mozui-reactive = { workspace = true }
+mozui-executor = { workspace = true }
 taffy = { workspace = true }
 tracing = { workspace = true }

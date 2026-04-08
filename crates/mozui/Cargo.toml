@@ -20,3 +20,7 @@ path = "../../examples/hello.rs"
 [[example]]
 name = "form"
 path = "../../examples/form.rs"
+
+[[example]]
+name = "timer"
+path = "../../examples/timer.rs"

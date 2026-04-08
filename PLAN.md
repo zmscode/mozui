@@ -1547,7 +1547,7 @@ Build a basic single-line text input.
 
 **Milestone**: A window with custom title bar, minimize/maximize/close buttons, that fetches data asynchronously.
 
-**Status**: Custom title bar with `.drag_region()` builder, `begin_drag_move()` platform API, clipboard support (Cmd+C/V/X in text inputs via platform free functions), `is_maximized()` query. Form example with draggable title bar. Remaining: async executor, background thread pool, timers.
+**Status**: All core tasks complete. Custom title bar with `.drag_region()` builder, `begin_drag_move()` platform API, clipboard support (Cmd+C/V/X in text inputs), `is_maximized()` query. Main-thread async executor with custom waker implementation. Timer system with `cx.set_timeout()` and `cx.set_interval()` for one-shot and repeating callbacks. Stopwatch example demonstrates timers. Deferred: background thread pool (not needed until network/file I/O).
 
 ---
 

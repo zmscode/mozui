@@ -113,6 +113,26 @@ impl App {
         platform.run(Box::new(move |event| {
             match event {
                 PlatformEvent::RedrawRequested => {
+                    // Fire expired timers — take timer manager out temporarily
+                    let mut timers = std::mem::replace(&mut cx.timers, mozui_executor::TimerManager::new());
+                    if timers.fire_expired(&mut cx) {
+                        needs_render = true;
+                    }
+                    cx.timers = timers;
+
+                    // Poll async tasks
+                    if cx.executor.poll_ready() {
+                        needs_render = true;
+                    }
+
+                    // Rebuild tree if anything changed
+                    if cx.is_dirty() {
+                        cx.clear_dirty();
+                        cx.reset_hooks();
+                        element_tree = root(&mut cx);
+                        needs_render = true;
+                    }
+
                     if needs_render {
                         let size = window.content_size();
                         let scale = window.scale_factor();
