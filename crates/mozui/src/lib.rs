@@ -1,5 +1,5 @@
 pub use mozui_app::{App, Context};
-pub use mozui_elements::{Div, Element, Text, div, text};
+pub use mozui_elements::{Div, Element, Text, TextInput, TextInputState, div, text, text_input};
 pub use mozui_events::{Key, Modifiers};
 pub use mozui_platform::WindowOptions;
 pub use mozui_reactive::{Signal, SetSignal};

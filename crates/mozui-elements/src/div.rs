@@ -371,6 +371,7 @@ impl Element for Div {
         index: &mut usize,
         draw_list: &mut DrawList,
         interactions: &mut InteractionMap,
+        font_system: &mozui_text::FontSystem,
     ) {
         let layout = layouts[*index];
         *index += 1;
@@ -413,7 +414,7 @@ impl Element for Div {
 
         // Paint children
         for child in &self.children {
-            child.paint(layouts, index, draw_list, interactions);
+            child.paint(layouts, index, draw_list, interactions, font_system);
         }
     }
 }

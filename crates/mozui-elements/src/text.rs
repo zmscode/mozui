@@ -93,6 +93,7 @@ impl Element for Text {
         index: &mut usize,
         draw_list: &mut DrawList,
         _interactions: &mut InteractionMap,
+        _font_system: &mozui_text::FontSystem,
     ) {
         let layout = layouts[*index];
         *index += 1;

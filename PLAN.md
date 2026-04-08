@@ -953,13 +953,13 @@ Flesh out the theme struct and make it available in components.
 
 ---
 
-## Phase 3: Reactivity & Interaction (Weeks 9-12) — IN PROGRESS
+## Phase 3: Reactivity & Interaction (Weeks 9-12) ✅ COMPLETE
 
 **Goal**: Interactive components with reactive state. A working counter app.
 
 **Milestone**: Click a button to increment a counter displayed on screen.
 
-**Status**: Core complete. Signal system with hook-style `cx.use_signal()`, NSEvent→PlatformEvent translation, hit-test-based click dispatch, `div().on_click()` handler, automatic re-render on state mutation. Counter example working. Remaining: view system, keyboard events, hover/cursor, scroll.
+**Status**: All tasks complete. Signal system with hook-style `cx.use_signal()`, NSEvent→PlatformEvent translation, hit-test-based click dispatch, keyboard events, hover cursor changes, `div().on_click()` and `div().on_key_down()` handlers, automatic re-render on state mutation. Counter example fully working with buttons and keyboard input.
 
 ---
 
@@ -1263,11 +1263,13 @@ Create a basic interactive button.
 
 ---
 
-## Phase 4: Focus & Actions (Weeks 13-16)
+## Phase 4: Focus & Actions (Weeks 13-16) — IN PROGRESS
 
 **Goal**: Full keyboard navigation with focus scopes, and a keybinding system for named actions.
 
 **Milestone**: A form with text inputs, tab navigation between them, and keyboard shortcuts.
+
+**Status**: Core focus system and TextInput element complete. InteractionMap supports focusable elements with click-to-focus, Tab cycling, text/hand cursor differentiation. TextInput with character insertion, backspace/delete, arrow keys, Home/End, Space, placeholder text, focus-aware border. Form example working. Remaining: FocusHandle abstraction, focus scopes, Shift+Tab, action system, keybindings.
 
 ---
 

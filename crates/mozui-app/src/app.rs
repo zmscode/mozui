@@ -49,6 +49,40 @@ impl App {
         cx.reset_hooks();
         let mut element_tree: Box<dyn Element> = root(&mut cx);
 
+        // Shared rebuild logic: after element tree changes, immediately
+        // re-layout and repaint so interaction handlers point to live closures.
+        let mut draw_list = DrawList::new();
+
+        let rebuild_interactions =
+            |element_tree: &Box<dyn Element>,
+             layout_engine: &mut LayoutEngine,
+             renderer: &Renderer,
+             interactions: &mut InteractionMap,
+             draw_list: &mut DrawList,
+             window: &dyn mozui_platform::PlatformWindow| {
+                let size = window.content_size();
+                layout_engine.clear();
+                let root_node = element_tree.layout(layout_engine, renderer.font_system());
+                layout_engine.compute_layout(
+                    root_node,
+                    taffy::prelude::Size {
+                        width: AvailableSpace::Definite(size.width),
+                        height: AvailableSpace::Definite(size.height),
+                    },
+                );
+                let layouts = layout_engine.collect_layouts(root_node);
+                draw_list.clear();
+                interactions.clear();
+                let mut index = 0;
+                element_tree.paint(
+                    &layouts,
+                    &mut index,
+                    draw_list,
+                    interactions,
+                    renderer.font_system(),
+                );
+            };
+
         platform.run(Box::new(move |event| {
             match event {
                 PlatformEvent::RedrawRequested => {
@@ -56,28 +90,14 @@ impl App {
                         let size = window.content_size();
                         let scale = window.scale_factor();
 
-                        // Phase 1: Build Taffy layout tree
-                        layout_engine.clear();
-                        let root_node =
-                            element_tree.layout(&mut layout_engine, renderer.font_system());
-
-                        // Phase 2: Compute layout
-                        layout_engine.compute_layout(
-                            root_node,
-                            taffy::prelude::Size {
-                                width: AvailableSpace::Definite(size.width),
-                                height: AvailableSpace::Definite(size.height),
-                            },
+                        rebuild_interactions(
+                            &element_tree,
+                            &mut layout_engine,
+                            &renderer,
+                            &mut interactions,
+                            &mut draw_list,
+                            window.as_ref(),
                         );
-
-                        // Phase 3: Collect absolute positions
-                        let layouts = layout_engine.collect_layouts(root_node);
-
-                        // Phase 4: Paint with computed layouts + collect interactions
-                        let mut draw_list = DrawList::new();
-                        interactions.clear();
-                        let mut index = 0;
-                        element_tree.paint(&layouts, &mut index, &mut draw_list, &mut interactions);
 
                         renderer.render(bg_color, &draw_list, size, scale);
                         needs_render = false;
@@ -89,32 +109,60 @@ impl App {
                     ..
                 } => {
                     if interactions.dispatch_click(position, &mut cx) {
-                        // Signal was mutated — rebuild tree
+                        cx.clear_dirty();
+                        cx.reset_hooks();
+                        element_tree = root(&mut cx);
+                        // Immediately rebuild interactions so handlers point to live tree
+                        rebuild_interactions(
+                            &element_tree,
+                            &mut layout_engine,
+                            &renderer,
+                            &mut interactions,
+                            &mut draw_list,
+                            window.as_ref(),
+                        );
+                        needs_render = true;
+                        window.request_redraw();
+                    }
+                }
+                PlatformEvent::KeyDown { key, modifiers, .. } => {
+                    if key == mozui_events::Key::Tab {
+                        if interactions.focus_next(&mut cx) {
+                            cx.clear_dirty();
+                            cx.reset_hooks();
+                            element_tree = root(&mut cx);
+                            rebuild_interactions(
+                                &element_tree,
+                                &mut layout_engine,
+                                &renderer,
+                                &mut interactions,
+                                &mut draw_list,
+                                window.as_ref(),
+                            );
+                            needs_render = true;
+                            window.request_redraw();
+                        }
+                    } else {
+                        interactions.dispatch_key(key, modifiers, &mut cx);
                         if cx.is_dirty() {
                             cx.clear_dirty();
                             cx.reset_hooks();
                             element_tree = root(&mut cx);
+                            rebuild_interactions(
+                                &element_tree,
+                                &mut layout_engine,
+                                &renderer,
+                                &mut interactions,
+                                &mut draw_list,
+                                window.as_ref(),
+                            );
                             needs_render = true;
                             window.request_redraw();
                         }
                     }
                 }
-                PlatformEvent::KeyDown { key, modifiers, .. } => {
-                    interactions.dispatch_key(key, modifiers, &mut cx);
-                    if cx.is_dirty() {
-                        cx.clear_dirty();
-                        cx.reset_hooks();
-                        element_tree = root(&mut cx);
-                        needs_render = true;
-                        window.request_redraw();
-                    }
-                }
                 PlatformEvent::MouseMove { position, .. } => {
-                    if interactions.has_handler_at(position) {
-                        mozui_platform::set_cursor_style(mozui_events::CursorStyle::Hand);
-                    } else {
-                        mozui_platform::set_cursor_style(mozui_events::CursorStyle::Arrow);
-                    }
+                    mozui_platform::set_cursor_style(interactions.cursor_at(position));
                 }
                 PlatformEvent::WindowResize { size } => {
                     let scale = window.scale_factor();

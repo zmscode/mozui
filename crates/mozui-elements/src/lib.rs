@@ -1,8 +1,10 @@
 mod div;
 mod text;
+mod text_input;
 
 pub use div::{Div, div};
 pub use text::{Text, text};
+pub use text_input::{TextInput, TextInputState, text_input};
 
 use mozui_layout::LayoutEngine;
 use mozui_renderer::DrawList;
@@ -23,6 +25,7 @@ pub trait Element {
         index: &mut usize,
         draw_list: &mut DrawList,
         interactions: &mut InteractionMap,
+        font_system: &FontSystem,
     );
 }
 
@@ -36,10 +39,21 @@ struct InteractionEntry {
     on_click: ClickHandler,
 }
 
+/// A focusable region with key handler.
+struct FocusableEntry {
+    id: usize,
+    bounds: Rect,
+    on_focus: Box<dyn Fn(bool, &mut dyn std::any::Any)>,
+    on_key: KeyHandler,
+}
+
 /// Collects interactive regions during paint, hit-tests on events.
 pub struct InteractionMap {
     entries: Vec<InteractionEntry>,
     key_handlers: Vec<KeyHandler>,
+    focusables: Vec<FocusableEntry>,
+    focused_id: Option<usize>,
+    next_focus_id: usize,
 }
 
 impl InteractionMap {
@@ -47,15 +61,20 @@ impl InteractionMap {
         Self {
             entries: Vec::new(),
             key_handlers: Vec::new(),
+            focusables: Vec::new(),
+            focused_id: None,
+            next_focus_id: 0,
         }
     }
 
     pub fn clear(&mut self) {
         self.entries.clear();
         self.key_handlers.clear();
+        self.focusables.clear();
+        self.next_focus_id = 0;
     }
 
-    /// Register a key handler.
+    /// Register a key handler (global — always receives events).
     pub fn register_key_handler(&mut self, handler: KeyHandler) {
         self.key_handlers.push(handler);
     }
@@ -68,9 +87,56 @@ impl InteractionMap {
         });
     }
 
+    /// Register a focusable element. Returns its focus ID.
+    /// on_focus is called with true/false when focus changes.
+    /// on_key is only dispatched when this element is focused.
+    pub fn register_focusable(
+        &mut self,
+        bounds: Rect,
+        on_focus: Box<dyn Fn(bool, &mut dyn std::any::Any)>,
+        on_key: KeyHandler,
+    ) -> usize {
+        let id = self.next_focus_id;
+        self.next_focus_id += 1;
+        self.focusables.push(FocusableEntry {
+            id,
+            bounds,
+            on_focus,
+            on_key,
+        });
+        id
+    }
+
     /// Find the topmost handler at a point and invoke it.
     /// Returns true if a handler was found and invoked.
-    pub fn dispatch_click(&self, position: Point, cx: &mut dyn std::any::Any) -> bool {
+    pub fn dispatch_click(&mut self, position: Point, cx: &mut dyn std::any::Any) -> bool {
+        // Check focusables first (they're painted later, so on top)
+        for entry in self.focusables.iter().rev() {
+            if entry.bounds.contains(position) {
+                let new_id = entry.id;
+                if self.focused_id != Some(new_id) {
+                    // Blur old
+                    if let Some(old_id) = self.focused_id {
+                        if let Some(old) = self.focusables.iter().find(|e| e.id == old_id) {
+                            (old.on_focus)(false, cx);
+                        }
+                    }
+                    // Focus new
+                    (entry.on_focus)(true, cx);
+                    self.focused_id = Some(new_id);
+                }
+                return true;
+            }
+        }
+
+        // Blur any focused element when clicking elsewhere
+        if let Some(old_id) = self.focused_id.take() {
+            if let Some(old) = self.focusables.iter().find(|e| e.id == old_id) {
+                (old.on_focus)(false, cx);
+            }
+        }
+
+        // Regular click handlers
         for entry in self.entries.iter().rev() {
             if entry.bounds.contains(position) {
                 (entry.on_click)(cx);
@@ -84,21 +150,73 @@ impl InteractionMap {
         self.entries.len()
     }
 
-    /// Dispatch a key event to all registered key handlers.
+    /// Dispatch a key event. If an element is focused, dispatch to it first,
+    /// then always dispatch to global key handlers too.
     pub fn dispatch_key(
         &self,
         key: mozui_events::Key,
         modifiers: mozui_events::Modifiers,
         cx: &mut dyn std::any::Any,
     ) -> bool {
+        let mut handled = false;
+
+        if let Some(focused_id) = self.focused_id {
+            if let Some(entry) = self.focusables.iter().find(|e| e.id == focused_id) {
+                (entry.on_key)(key, modifiers, cx);
+                handled = true;
+            }
+        }
+
+        // Always dispatch to global key handlers (e.g. Escape to quit)
         for handler in &self.key_handlers {
             handler(key, modifiers, cx);
+            handled = true;
         }
-        !self.key_handlers.is_empty()
+
+        handled
     }
 
-    /// Check if a point is over any interactive element.
+    /// Check if a point is over any interactive element (including focusables).
     pub fn has_handler_at(&self, position: Point) -> bool {
-        self.entries.iter().rev().any(|e| e.bounds.contains(position))
+        self.focusables.iter().rev().any(|e| e.bounds.contains(position))
+            || self.entries.iter().rev().any(|e| e.bounds.contains(position))
+    }
+
+    /// Get the appropriate cursor style for a position.
+    pub fn cursor_at(&self, position: Point) -> mozui_events::CursorStyle {
+        // Focusables (text inputs) get text cursor
+        if self.focusables.iter().rev().any(|e| e.bounds.contains(position)) {
+            return mozui_events::CursorStyle::Text;
+        }
+        // Click handlers get hand cursor
+        if self.entries.iter().rev().any(|e| e.bounds.contains(position)) {
+            return mozui_events::CursorStyle::Hand;
+        }
+        mozui_events::CursorStyle::Arrow
+    }
+
+    /// Tab to next focusable element. Returns true if focus changed.
+    pub fn focus_next(&mut self, cx: &mut dyn std::any::Any) -> bool {
+        if self.focusables.is_empty() {
+            return false;
+        }
+        let current_idx = self.focused_id
+            .and_then(|id| self.focusables.iter().position(|e| e.id == id));
+        let next_idx = match current_idx {
+            Some(idx) => (idx + 1) % self.focusables.len(),
+            None => 0,
+        };
+
+        // Blur old
+        if let Some(old_id) = self.focused_id {
+            if let Some(old) = self.focusables.iter().find(|e| e.id == old_id) {
+                (old.on_focus)(false, cx);
+            }
+        }
+
+        let next = &self.focusables[next_idx];
+        (next.on_focus)(true, cx);
+        self.focused_id = Some(next.id);
+        true
     }
 }

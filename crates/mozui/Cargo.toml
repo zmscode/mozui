@@ -16,3 +16,7 @@ tracing-subscriber = { workspace = true }
 [[example]]
 name = "hello"
 path = "../../examples/hello.rs"
+
+[[example]]
+name = "form"
+path = "../../examples/form.rs"
