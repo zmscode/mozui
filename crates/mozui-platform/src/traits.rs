@@ -45,6 +45,33 @@ pub trait Platform {
     fn clipboard_write(&self, text: &str);
 }
 
+/// Read text from the system clipboard.
+pub fn clipboard_read() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+        let pasteboard = NSPasteboard::generalPasteboard();
+        let nstype = unsafe { NSPasteboardTypeString };
+        return pasteboard.stringForType(nstype).map(|s| s.to_string());
+    }
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
+/// Write text to the system clipboard.
+pub fn clipboard_write(text: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+        use objc2_foundation::NSString;
+        let pasteboard = NSPasteboard::generalPasteboard();
+        pasteboard.clearContents();
+        let ns_string = NSString::from_str(text);
+        let nstype = unsafe { NSPasteboardTypeString };
+        let _ = pasteboard.setString_forType(&ns_string, nstype);
+    }
+}
+
 /// Set the cursor globally (can be called from anywhere on macOS).
 pub fn set_cursor_style(cursor: mozui_events::CursorStyle) {
     #[cfg(target_os = "macos")]
@@ -75,9 +102,12 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn content_size(&self) -> Size;
     fn scale_factor(&self) -> f32;
     fn is_focused(&self) -> bool;
+    fn is_maximized(&self) -> bool;
     fn set_title(&mut self, title: &str);
     fn minimize(&mut self);
     fn maximize(&mut self);
     fn close(&mut self);
     fn request_redraw(&self);
+    /// Start a window drag operation (for custom title bars).
+    fn begin_drag_move(&self);
 }

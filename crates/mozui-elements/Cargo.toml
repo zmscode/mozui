@@ -9,5 +9,6 @@ mozui-renderer = { workspace = true }
 mozui-layout = { workspace = true }
 mozui-text = { workspace = true }
 mozui-events = { workspace = true }
+mozui-platform = { workspace = true }
 taffy = { workspace = true }
 tracing = { workspace = true }

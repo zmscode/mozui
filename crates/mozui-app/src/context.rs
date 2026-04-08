@@ -5,6 +5,8 @@ pub struct Context {
     theme: Theme,
     signals: SignalStore,
     hook_index: usize,
+    clipboard_read_fn: Option<Box<dyn Fn() -> Option<String>>>,
+    clipboard_write_fn: Option<Box<dyn Fn(&str)>>,
 }
 
 impl Context {
@@ -13,6 +15,30 @@ impl Context {
             theme,
             signals: SignalStore::new(),
             hook_index: 0,
+            clipboard_read_fn: None,
+            clipboard_write_fn: None,
+        }
+    }
+
+    /// Set clipboard functions (called by App during setup).
+    pub fn set_clipboard(
+        &mut self,
+        read: impl Fn() -> Option<String> + 'static,
+        write: impl Fn(&str) + 'static,
+    ) {
+        self.clipboard_read_fn = Some(Box::new(read));
+        self.clipboard_write_fn = Some(Box::new(write));
+    }
+
+    /// Read text from the system clipboard.
+    pub fn clipboard_read(&self) -> Option<String> {
+        self.clipboard_read_fn.as_ref().and_then(|f| f())
+    }
+
+    /// Write text to the system clipboard.
+    pub fn clipboard_write(&self, text: &str) {
+        if let Some(ref f) = self.clipboard_write_fn {
+            f(text);
         }
     }
 

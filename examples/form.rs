@@ -1,6 +1,5 @@
 use mozui::*;
 
-// Define actions using the actions! macro
 actions!(app, [Quit]);
 
 fn main() {
@@ -11,7 +10,7 @@ fn main() {
     App::new()
         .theme(Theme::dark())
         .window(WindowOptions {
-            title: "mozui — Form Example".into(),
+            title: "mozui — Form".into(),
             size: Size::new(600.0, 500.0),
             ..Default::default()
         })
@@ -36,7 +35,6 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
     let email = cx.get(email_state).clone();
     let msg = cx.get(msg_state).clone();
 
-    // Preview text
     let preview = format!(
         "Name: {} | Email: {} | Message: {}",
         if name.value.is_empty() { "—" } else { &name.value },
@@ -49,45 +47,70 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .w_full()
             .h_full()
             .flex_col()
-            .items_center()
-            .justify_center()
-            .gap(20.0)
             .bg(Color::hex("#1e1e2e"))
-            .child(
-                text("Contact Form")
-                    .font_size(28.0)
-                    .bold()
-                    .color(Color::hex("#cdd6f4")),
-            )
-            // Form fields
+            // Custom title bar
+            .child(title_bar("Contact Form"))
+            // Content area
             .child(
                 div()
+                    .flex_1()
                     .flex_col()
-                    .gap(12.0)
-                    .child(label_and_input("Name", name, set_name, "Enter your name..."))
-                    .child(label_and_input("Email", email, set_email, "you@example.com"))
-                    .child(label_and_input("Message", msg, set_msg, "Type a message...")),
-            )
-            // Preview
-            .child(
-                div()
-                    .w(340.0)
-                    .p(12.0)
-                    .bg(Color::hex("#181825"))
-                    .rounded(8.0)
+                    .items_center()
+                    .justify_center()
+                    .gap(20.0)
                     .child(
-                        text(preview)
-                            .font_size(12.0)
-                            .color(Color::hex("#a6adc8")),
+                        text("Contact Form")
+                            .font_size(28.0)
+                            .bold()
+                            .color(Color::hex("#cdd6f4")),
+                    )
+                    .child(
+                        div()
+                            .flex_col()
+                            .gap(12.0)
+                            .child(label_and_input("Name", name, set_name, "Enter your name..."))
+                            .child(label_and_input("Email", email, set_email, "you@example.com"))
+                            .child(label_and_input("Message", msg, set_msg, "Type a message...")),
+                    )
+                    .child(
+                        div()
+                            .w(340.0)
+                            .p(12.0)
+                            .bg(Color::hex("#181825"))
+                            .rounded(8.0)
+                            .child(
+                                text(preview)
+                                    .font_size(12.0)
+                                    .color(Color::hex("#a6adc8")),
+                            ),
+                    )
+                    .child(
+                        text("Tab/Shift+Tab to switch | Cmd+C/V/X clipboard | Esc to quit")
+                            .font_size(11.0)
+                            .color(Color::hex("#6c7086")),
                     ),
-            )
-            // Hint
-            .child(
-                text("Tab/Shift+Tab to switch fields | Esc or Cmd+Q to quit")
-                    .font_size(11.0)
-                    .color(Color::hex("#6c7086")),
             ),
     )
+}
+
+/// Custom title bar with drag region and window title.
+fn title_bar(title: &str) -> Div {
+    div()
+        .w_full()
+        .h(38.0)
+        .flex_row()
+        .items_center()
+        .justify_center()
+        .bg(Color::hex("#181825"))
+        .drag_region()
+        // macOS traffic lights take ~70px on the left
+        .pl(70.0)
+        .pr(70.0)
+        .child(
+            text(title)
+                .font_size(13.0)
+                .color(Color::hex("#6c7086")),
+        )
 }
 
 fn label_and_input(

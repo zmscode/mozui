@@ -128,6 +128,19 @@ impl PlatformWindow for MacWindow {
     fn request_redraw(&self) {
         self.ns_view.setNeedsDisplay(true);
     }
+
+    fn is_maximized(&self) -> bool {
+        self.ns_window.isZoomed()
+    }
+
+    fn begin_drag_move(&self) {
+        // macOS: performWindowDrag with the current event
+        let mtm = MainThreadMarker::new().expect("Must be on main thread");
+        let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
+        if let Some(event) = app.currentEvent() {
+            self.ns_window.performWindowDragWithEvent(&event);
+        }
+    }
 }
 
 impl HasWindowHandle for MacWindow {

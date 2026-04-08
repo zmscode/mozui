@@ -58,6 +58,12 @@ impl App {
 
         let mut renderer = Renderer::new(window.as_ref());
         let mut cx = Context::new(self.theme.clone());
+
+        // Set up clipboard access (uses platform-specific static APIs)
+        cx.set_clipboard(
+            || mozui_platform::clipboard_read(),
+            |text| mozui_platform::clipboard_write(text),
+        );
         let mut layout_engine = LayoutEngine::new();
         let bg_color = self.theme.background;
 
@@ -122,6 +128,15 @@ impl App {
 
                         renderer.render(bg_color, &draw_list, size, scale);
                         needs_render = false;
+                    }
+                }
+                PlatformEvent::MouseDown {
+                    button: mozui_events::MouseButton::Left,
+                    position,
+                    ..
+                } => {
+                    if interactions.is_drag_region(position) {
+                        window.begin_drag_move();
                     }
                 }
                 PlatformEvent::MouseUp {

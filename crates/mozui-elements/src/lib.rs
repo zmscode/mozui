@@ -54,6 +54,7 @@ pub struct InteractionMap {
     focusables: Vec<FocusableEntry>,
     focused_id: Option<usize>,
     next_focus_id: usize,
+    drag_regions: Vec<Rect>,
 }
 
 impl InteractionMap {
@@ -64,6 +65,7 @@ impl InteractionMap {
             focusables: Vec::new(),
             focused_id: None,
             next_focus_id: 0,
+            drag_regions: Vec::new(),
         }
     }
 
@@ -72,6 +74,24 @@ impl InteractionMap {
         self.key_handlers.clear();
         self.focusables.clear();
         self.next_focus_id = 0;
+        self.drag_regions.clear();
+    }
+
+    /// Register a drag region (for window title bar dragging).
+    pub fn register_drag_region(&mut self, bounds: Rect) {
+        self.drag_regions.push(bounds);
+    }
+
+    /// Check if a point is in a drag region (and not over a clickable/focusable element).
+    pub fn is_drag_region(&self, position: Point) -> bool {
+        let in_drag = self.drag_regions.iter().any(|r| r.contains(position));
+        if !in_drag {
+            return false;
+        }
+        // Don't drag if clicking on interactive elements within the title bar
+        let on_interactive = self.entries.iter().any(|e| e.bounds.contains(position))
+            || self.focusables.iter().any(|e| e.bounds.contains(position));
+        !on_interactive
     }
 
     /// Register a key handler (global — always receives events).

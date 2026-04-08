@@ -261,10 +261,10 @@ impl Element for TextInput {
             // Key handler
             let key_handler: Box<
                 dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any),
-            > = Box::new(move |key, _mods, cx_any| unsafe {
+            > = Box::new(move |key, mods, cx_any| unsafe {
                 (*handler_ptr)(
                     Box::new(move |s| {
-                        handle_key_input(s, key);
+                        handle_key_input(s, key, mods);
                     }),
                     cx_any,
                 );
@@ -276,7 +276,41 @@ impl Element for TextInput {
 }
 
 /// Handle a key press on a text input state.
-fn handle_key_input(s: &mut TextInputState, key: mozui_events::Key) {
+fn handle_key_input(s: &mut TextInputState, key: mozui_events::Key, mods: mozui_events::Modifiers) {
+    // Cmd+key shortcuts
+    if mods.meta {
+        match key {
+            mozui_events::Key::Character('a') => {
+                // Select all — move cursor to end (full selection deferred)
+                s.cursor = s.value.chars().count();
+            }
+            mozui_events::Key::Character('c') => {
+                // Copy all text to clipboard
+                if !s.value.is_empty() {
+                    mozui_platform::clipboard_write(&s.value);
+                }
+            }
+            mozui_events::Key::Character('v') => {
+                // Paste from clipboard
+                if let Some(text) = mozui_platform::clipboard_read() {
+                    let byte_pos = char_to_byte_pos(&s.value, s.cursor);
+                    s.value.insert_str(byte_pos, &text);
+                    s.cursor += text.chars().count();
+                }
+            }
+            mozui_events::Key::Character('x') => {
+                // Cut all text
+                if !s.value.is_empty() {
+                    mozui_platform::clipboard_write(&s.value);
+                    s.value.clear();
+                    s.cursor = 0;
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
     match key {
         mozui_events::Key::Character(ch) => {
             let byte_pos = char_to_byte_pos(&s.value, s.cursor);

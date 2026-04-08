@@ -1541,11 +1541,13 @@ Build a basic single-line text input.
 
 ---
 
-## Phase 5: Async & Window Chrome (Weeks 17-20)
+## Phase 5: Async & Window Chrome (Weeks 17-20) — IN PROGRESS
 
 **Goal**: Async task execution and custom window decorations.
 
 **Milestone**: A window with custom title bar, minimize/maximize/close buttons, that fetches data asynchronously.
+
+**Status**: Custom title bar with `.drag_region()` builder, `begin_drag_move()` platform API, clipboard support (Cmd+C/V/X in text inputs via platform free functions), `is_maximized()` query. Form example with draggable title bar. Remaining: async executor, background thread pool, timers.
 
 ---
 

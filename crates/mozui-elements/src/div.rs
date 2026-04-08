@@ -24,6 +24,9 @@ pub struct Div {
     // Event handlers
     on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
     on_key_down: Option<Box<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>>,
+
+    // Window drag region
+    is_drag_region: bool,
 }
 
 pub fn div() -> Div {
@@ -37,6 +40,7 @@ pub fn div() -> Div {
         children: Vec::new(),
         on_click: None,
         on_key_down: None,
+        is_drag_region: false,
     }
 }
 
@@ -322,6 +326,13 @@ impl Div {
         self
     }
 
+    // --- Window integration ---
+    /// Mark this element as a window drag region (for custom title bars).
+    pub fn drag_region(mut self) -> Self {
+        self.is_drag_region = true;
+        self
+    }
+
     // --- Events ---
     pub fn on_click(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
         self.on_click = Some(Box::new(handler));
@@ -401,6 +412,11 @@ impl Element for Div {
         if let Some(ref handler) = self.on_click {
             let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
             interactions.register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+        }
+
+        // Register drag region if marked
+        if self.is_drag_region {
+            interactions.register_drag_region(bounds);
         }
 
         // Register key handler if present
