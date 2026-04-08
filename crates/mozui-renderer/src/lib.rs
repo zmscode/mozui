@@ -149,6 +149,7 @@ impl Renderer {
                 }
                 DrawCommand::Icon {
                     name,
+                    weight,
                     bounds,
                     color,
                     size_px,
@@ -156,13 +157,14 @@ impl Renderer {
                     let physical_size = (*size_px * scale) as u16;
                     let key = IconKey {
                         name: *name,
+                        weight: *weight,
                         size_px: physical_size,
                     };
 
                     // Rasterize if not cached
                     if self.atlas.get_icon(&key).is_none() {
                         if let Some(alpha_bitmap) =
-                            rasterize_icon_svg(name.svg_data(), physical_size as u32)
+                            rasterize_icon_svg(name.svg(*weight), physical_size as u32)
                         {
                             self.atlas.insert_icon(
                                 &self.gpu.queue,

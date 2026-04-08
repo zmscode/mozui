@@ -1,6 +1,6 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
 use crate::{Element, InteractionMap};
-use mozui_icons::IconName;
+use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutEngine;
 use mozui_renderer::{Border, DrawCommand, DrawList};
 use mozui_style::{Color, Corners, Fill, Theme};
@@ -168,6 +168,7 @@ impl Element for Checkbox {
             // Check icon
             draw_list.push(DrawCommand::Icon {
                 name: IconName::Check,
+                weight: IconWeight::Regular,
                 bounds: box_bounds,
                 color: self.check_color.with_alpha(alpha),
                 size_px: self.box_size() * 0.75,

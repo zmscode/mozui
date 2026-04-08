@@ -37,3 +37,7 @@ path = "../../examples/form_controls.rs"
 [[example]]
 name = "data_display"
 path = "../../examples/data_display.rs"
+
+[[example]]
+name = "animations"
+path = "../../examples/animations.rs"

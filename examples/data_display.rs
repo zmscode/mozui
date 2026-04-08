@@ -30,6 +30,18 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
     let (prog_val, _set_prog_val) = cx.use_signal(65.0f32);
     let pv = *cx.get(prog_val);
 
+    // Pagination state
+    let (page_sig, set_page_sig) = cx.use_signal(1usize);
+    let current_page = *cx.get(page_sig);
+
+    // Rating state
+    let (rating_sig, set_rating_sig) = cx.use_signal(3.5f32);
+    let rating_val = *cx.get(rating_sig);
+
+    // List state
+    let (list_sel, set_list_sel) = cx.use_signal(0usize);
+    let selected_list = *cx.get(list_sel);
+
     Box::new(
         div()
             .w_full()
@@ -181,28 +193,163 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .child(tab("Disabled", &theme).disabled(true)),
                     )
                     .child(
-                        div()
-                            .p(16.0)
-                            .bg(theme.surface)
-                            .rounded(8.0)
-                            .child(
-                                label(match selected_tab {
-                                    0 => "General settings content",
-                                    1 => "Appearance settings content",
-                                    2 => "Keybinding settings content",
-                                    _ => "",
-                                })
-                                .color(theme.foreground),
-                            ),
+                        div().p(16.0).bg(theme.surface).rounded(8.0).child(
+                            label(match selected_tab {
+                                0 => "General settings content",
+                                1 => "Appearance settings content",
+                                2 => "Keybinding settings content",
+                                _ => "",
+                            })
+                            .color(theme.foreground),
+                        ),
                     )
                     .child(divider().color(Color::hex("#45475a")))
                     // ── Breadcrumb ─────────────────────────────────
                     .child(label("Breadcrumb").font_size(20.0).bold().color(heading))
                     .child(
                         breadcrumb(&theme)
-                            .child(breadcrumb_item("Home").icon(IconName::House).on_click(|_| {}))
+                            .child(
+                                breadcrumb_item("Home")
+                                    .icon(IconName::House)
+                                    .on_click(|_| {}),
+                            )
                             .child(breadcrumb_item("Settings").on_click(|_| {}))
                             .child(breadcrumb_item("Profile")),
+                    )
+                    .child(divider().color(Color::hex("#45475a")))
+                    // ── Rating ─────────────────────────────────────
+                    .child(label("Rating").font_size(20.0).bold().color(heading))
+                    .child(
+                        div()
+                            .flex_col()
+                            .gap(12.0)
+                            .child(
+                                div()
+                                    .flex_row()
+                                    .gap(16.0)
+                                    .items_center()
+                                    .child(
+                                        rating(&theme)
+                                            .value(rating_val)
+                                            .on_change(move |val, cx_any| {
+                                                let cx = cx_any.downcast_mut::<Context>().unwrap();
+                                                cx.set(set_rating_sig, val);
+                                            }),
+                                    )
+                                    .child(
+                                        label(format!("{:.1}", rating_val))
+                                            .font_size(14.0)
+                                            .color(theme.foreground),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex_row()
+                                    .gap(16.0)
+                                    .items_center()
+                                    .child(rating(&theme).value(4.0).small())
+                                    .child(rating(&theme).value(2.5).large()),
+                            ),
+                    )
+                    .child(divider().color(Color::hex("#45475a")))
+                    // ── Pagination ─────────────────────────────────
+                    .child(label("Pagination").font_size(20.0).bold().color(heading))
+                    .child(
+                        div()
+                            .flex_col()
+                            .gap(16.0)
+                            .child(
+                                pagination(&theme)
+                                    .current_page(current_page)
+                                    .total_pages(10)
+                                    .on_click(move |page, cx_any| {
+                                        let cx = cx_any.downcast_mut::<Context>().unwrap();
+                                        cx.set(set_page_sig, page);
+                                    }),
+                            )
+                            .child(
+                                pagination(&theme)
+                                    .current_page(current_page)
+                                    .total_pages(10)
+                                    .compact()
+                                    .on_click(move |page, cx_any| {
+                                        let cx = cx_any.downcast_mut::<Context>().unwrap();
+                                        cx.set(set_page_sig, page);
+                                    }),
+                            ),
+                    )
+                    .child(divider().color(Color::hex("#45475a")))
+                    // ── Description List ──────────────────────────
+                    .child(label("Description List").font_size(20.0).bold().color(heading))
+                    .child(
+                        description_list(&theme)
+                            .bordered(true)
+                            .child(description_item("Name").value("John Doe"))
+                            .child(description_item("Email").value("john@example.com"))
+                            .child(description_item("Role").value("Administrator"))
+                            .child(description_item("Status").value("Active")),
+                    )
+                    .child(divider().color(Color::hex("#45475a")))
+                    // ── Group Box ─────────────────────────────────
+                    .child(label("Group Box").font_size(20.0).bold().color(heading))
+                    .child(
+                        div()
+                            .flex_row()
+                            .gap(16.0)
+                            .child(
+                                group_box("Account Settings", &theme)
+                                    .child(label("Username: admin").color(theme.foreground))
+                                    .child(label("Email: admin@example.com").color(theme.foreground)),
+                            )
+                            .child(
+                                group_box("Preferences", &theme)
+                                    .fill()
+                                    .child(label("Theme: Dark").color(theme.foreground))
+                                    .child(label("Language: English").color(theme.foreground)),
+                            ),
+                    )
+                    .child(divider().color(Color::hex("#45475a")))
+                    // ── List ──────────────────────────────────────
+                    .child(label("List").font_size(20.0).bold().color(heading))
+                    .child(
+                        div().bg(theme.surface).rounded(8.0).p(4.0).child(
+                            list(&theme)
+                                .child(
+                                    list_item("Inbox")
+                                        .icon(IconName::Envelope)
+                                        .description("12 unread messages")
+                                        .selected(selected_list == 0)
+                                        .on_click(move |cx_any| {
+                                            let cx = cx_any.downcast_mut::<Context>().unwrap();
+                                            cx.set(set_list_sel, 0);
+                                        }),
+                                )
+                                .child(
+                                    list_item("Starred")
+                                        .icon(IconName::Star)
+                                        .description("Important items")
+                                        .selected(selected_list == 1)
+                                        .on_click(move |cx_any| {
+                                            let cx = cx_any.downcast_mut::<Context>().unwrap();
+                                            cx.set(set_list_sel, 1);
+                                        }),
+                                )
+                                .child(list_item("").separator())
+                                .child(
+                                    list_item("Archive")
+                                        .icon(IconName::Folder)
+                                        .selected(selected_list == 2)
+                                        .on_click(move |cx_any| {
+                                            let cx = cx_any.downcast_mut::<Context>().unwrap();
+                                            cx.set(set_list_sel, 2);
+                                        }),
+                                )
+                                .child(
+                                    list_item("Trash")
+                                        .icon(IconName::Trash)
+                                        .disabled(true),
+                                ),
+                        ),
                     ),
             ),
     )

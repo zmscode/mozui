@@ -84,6 +84,7 @@ impl Element for Icon {
 
         draw_list.push(DrawCommand::Icon {
             name: self.name,
+            weight: self.weight,
             bounds,
             color: self.color,
             size_px: self.size_px,

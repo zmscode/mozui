@@ -2,6 +2,9 @@ use mozui_elements::ScrollOffset;
 use mozui_executor::{Executor, TimerId, TimerManager};
 use mozui_reactive::{SetSignal, Signal, SignalStore};
 use mozui_style::Theme;
+use mozui_style::animation::{Animated, Lerp, SpringHandle, Transition};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 pub struct Context {
@@ -12,6 +15,8 @@ pub struct Context {
     clipboard_write_fn: Option<Box<dyn Fn(&str)>>,
     pub(crate) executor: Executor,
     pub(crate) timers: TimerManager,
+    /// Shared flag set by animations when they're still in progress.
+    animations_active: Rc<Cell<bool>>,
 }
 
 impl Context {
@@ -24,6 +29,7 @@ impl Context {
             clipboard_write_fn: None,
             executor: Executor::new(),
             timers: TimerManager::new(),
+            animations_active: Rc::new(Cell::new(false)),
         }
     }
 
@@ -124,5 +130,48 @@ impl Context {
     pub fn use_scroll(&mut self) -> ScrollOffset {
         let (signal, _) = self.use_signal(ScrollOffset::new());
         self.get(signal).clone()
+    }
+
+    /// Create or retrieve a persistent animated value.
+    ///
+    /// The value smoothly transitions when you call `.set()` on the handle.
+    /// ```rust,ignore
+    /// let opacity = cx.use_animated(1.0f32, Transition::new(theme.transition_normal));
+    /// let current = opacity.get(); // smoothly interpolated
+    /// opacity.set(0.0); // start fading out
+    /// ```
+    pub fn use_animated<T: Lerp + 'static>(
+        &mut self,
+        initial: T,
+        transition: Transition,
+    ) -> Animated<T> {
+        let flag = self.animations_active.clone();
+        let (signal, _) = self.use_signal(Animated::new(initial, transition, flag));
+        self.get(signal).clone()
+    }
+
+    /// Create or retrieve a persistent spring animation.
+    ///
+    /// Springs provide physically-based motion with configurable stiffness/damping.
+    /// ```rust,ignore
+    /// let scale = cx.use_spring(1.0);
+    /// let current = scale.get(); // current spring value
+    /// scale.set(1.2); // spring toward new target
+    /// ```
+    pub fn use_spring(&mut self, initial: f32) -> SpringHandle {
+        let flag = self.animations_active.clone();
+        let (signal, _) = self.use_signal(SpringHandle::new(initial, flag));
+        self.get(signal).clone()
+    }
+
+    /// Returns true if any animations are currently in progress.
+    /// The app loop uses this to request continuous redraws.
+    pub fn has_active_animations(&self) -> bool {
+        self.animations_active.get()
+    }
+
+    /// Clear the animation-active flag at the start of each frame.
+    pub fn clear_animation_flag(&mut self) {
+        self.animations_active.set(false);
     }
 }

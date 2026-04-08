@@ -1,6 +1,6 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
 use crate::{Element, InteractionMap};
-use mozui_icons::IconName;
+use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutEngine;
 use mozui_renderer::{DrawCommand, DrawList};
 use mozui_style::{Color, Corners, Fill, Theme};
@@ -262,6 +262,7 @@ impl Element for Stepper {
             if is_completed {
                 draw_list.push(DrawCommand::Icon {
                     name: IconName::Check,
+                    weight: IconWeight::Regular,
                     bounds: circle_bounds,
                     color: circle_fg.with_alpha(alpha),
                     size_px: circle_sz * 0.5,
@@ -269,6 +270,7 @@ impl Element for Stepper {
             } else if let Some(icon_name) = item.icon {
                 draw_list.push(DrawCommand::Icon {
                     name: icon_name,
+                    weight: IconWeight::Regular,
                     bounds: circle_bounds,
                     color: circle_fg.with_alpha(alpha),
                     size_px: circle_sz * 0.5,

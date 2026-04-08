@@ -1,5 +1,5 @@
 use crate::{Element, InteractionMap};
-use mozui_icons::IconName;
+use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutEngine;
 use mozui_renderer::{DrawCommand, DrawList};
 use mozui_style::{Color, Theme};
@@ -157,6 +157,7 @@ impl Element for Breadcrumb {
                 );
                 draw_list.push(DrawCommand::Icon {
                     name: icon_name,
+                    weight: IconWeight::Regular,
                     bounds: icon_bounds,
                     color: if is_last {
                         self.active_color
@@ -213,6 +214,7 @@ impl Element for Breadcrumb {
                 *index += 1;
                 draw_list.push(DrawCommand::Icon {
                     name: IconName::CaretRight,
+                    weight: IconWeight::Regular,
                     bounds: mozui_style::Rect::new(
                         sep_layout.x,
                         sep_layout.y,

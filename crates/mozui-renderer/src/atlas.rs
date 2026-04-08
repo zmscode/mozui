@@ -14,6 +14,7 @@ pub struct GlyphKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IconKey {
     pub name: IconName,
+    pub weight: mozui_icons::IconWeight,
     pub size_px: u16,
 }
 
@@ -181,8 +182,12 @@ impl TextureAtlas {
     ) -> Option<AtlasRegion> {
         if width == 0 || height == 0 {
             let region = AtlasRegion {
-                x: 0, y: 0, width: 0, height: 0,
-                bearing_x: 0.0, bearing_y: 0.0,
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0,
+                bearing_x: 0.0,
+                bearing_y: 0.0,
             };
             self.icon_entries.insert(key, region);
             return Some(region);
@@ -213,7 +218,11 @@ impl TextureAtlas {
             wgpu::TexelCopyTextureInfo {
                 texture: &self.texture,
                 mip_level: 0,
-                origin: wgpu::Origin3d { x: region.x, y: region.y, z: 0 },
+                origin: wgpu::Origin3d {
+                    x: region.x,
+                    y: region.y,
+                    z: 0,
+                },
                 aspect: wgpu::TextureAspect::All,
             },
             data,
@@ -222,7 +231,11 @@ impl TextureAtlas {
                 bytes_per_row: Some(width),
                 rows_per_image: Some(height),
             },
-            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
         );
 
         self.cursor_x += width + 1;

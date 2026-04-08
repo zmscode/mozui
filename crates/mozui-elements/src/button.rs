@@ -1,6 +1,6 @@
 use crate::styled::{ComponentSize, Disableable, Selectable, Sizable};
 use crate::{Element, InteractionMap};
-use mozui_icons::IconName;
+use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutEngine;
 use mozui_renderer::{Border, DrawCommand, DrawList};
 use mozui_style::{Color, Corners, Fill, Theme};
@@ -406,6 +406,7 @@ impl Element for Button {
             *index += 1;
             draw_list.push(DrawCommand::Icon {
                 name: icon_name,
+                weight: IconWeight::Regular,
                 bounds: mozui_style::Rect::new(
                     icon_layout.x,
                     icon_layout.y,
@@ -442,6 +443,7 @@ impl Element for Button {
             *index += 1;
             draw_list.push(DrawCommand::Icon {
                 name: icon_name,
+                weight: IconWeight::Regular,
                 bounds: mozui_style::Rect::new(
                     icon_layout.x,
                     icon_layout.y,

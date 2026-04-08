@@ -148,8 +148,13 @@ impl App {
                         needs_render = true;
                     }
 
-                    // Rebuild tree if anything changed
-                    if cx.is_dirty() {
+                    // Check if animations were running from last frame,
+                    // then clear the flag so this frame's get() calls re-set it.
+                    let animations_running = cx.has_active_animations();
+                    cx.clear_animation_flag();
+
+                    // Rebuild tree if signals changed OR animations need ticking
+                    if cx.is_dirty() || animations_running {
                         cx.clear_dirty();
                         cx.reset_hooks();
                         element_tree = root(&mut cx);
@@ -171,6 +176,11 @@ impl App {
 
                         renderer.render(bg_color, &draw_list, size, scale);
                         needs_render = false;
+                    }
+
+                    // If animations are still in progress, request another frame
+                    if cx.has_active_animations() {
+                        window.request_redraw();
                     }
                 }
                 PlatformEvent::MouseDown {
@@ -268,9 +278,7 @@ impl App {
                     }
                 }
                 PlatformEvent::ScrollWheel {
-                    delta,
-                    position,
-                    ..
+                    delta, position, ..
                 } => {
                     let (dx, dy) = match delta {
                         mozui_events::ScrollDelta::Pixels(dx, dy) => (dx, dy),
