@@ -39,7 +39,7 @@ pub use mozui_icons::{IconName, IconWeight};
 pub use mozui_events::{Key, Modifiers};
 
 // ── Platform ───────────────────────────────────────────────────
-pub use mozui_platform::{TitlebarStyle, WindowOptions};
+pub use mozui_platform::{TitlebarStyle, WindowOptions, open_url};
 
 // ── Reactivity ─────────────────────────────────────────────────
 pub use mozui_reactive::{SetSignal, Signal};

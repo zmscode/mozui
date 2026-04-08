@@ -184,6 +184,10 @@ impl PlatformWindow for MacWindow {
         self.ns_window.isKeyWindow()
     }
 
+    fn is_visible(&self) -> bool {
+        self.ns_window.isVisible()
+    }
+
     fn set_title(&mut self, title: &str) {
         let ns_title = objc2_foundation::NSString::from_str(title);
         self.ns_window.setTitle(&ns_title);

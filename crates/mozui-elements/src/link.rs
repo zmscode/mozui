@@ -7,6 +7,7 @@ use taffy::prelude::*;
 
 pub struct Link {
     label: String,
+    href: Option<String>,
     color: Color,
     hover_color: Color,
     disabled: bool,
@@ -17,6 +18,7 @@ pub struct Link {
 pub fn link(label: impl Into<String>, theme: &Theme) -> Link {
     Link {
         label: label.into(),
+        href: None,
         color: theme.link,
         hover_color: theme.link_hover,
         disabled: false,
@@ -26,6 +28,11 @@ pub fn link(label: impl Into<String>, theme: &Theme) -> Link {
 }
 
 impl Link {
+    pub fn href(mut self, url: impl Into<String>) -> Self {
+        self.href = Some(url.into());
+        self
+    }
+
     pub fn color(mut self, color: Color) -> Self {
         self.color = color;
         self
@@ -134,6 +141,14 @@ impl Element for Link {
                 let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                 interactions
                     .register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+            } else if let Some(ref url) = self.href {
+                let url = url.clone();
+                interactions.register_click(
+                    bounds,
+                    Box::new(move |_cx| {
+                        mozui_platform::open_url(&url);
+                    }),
+                );
             }
         }
     }

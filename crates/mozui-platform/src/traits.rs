@@ -116,6 +116,27 @@ pub fn set_cursor_style(cursor: mozui_events::CursorStyle) {
     }
 }
 
+/// Open a URL in the default browser.
+pub fn open_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_foundation::{NSString, NSURL};
+        let ns_string = NSString::from_str(url);
+        if let Some(ns_url) = NSURL::URLWithString(&ns_string) {
+            let workspace = objc2_app_kit::NSWorkspace::sharedWorkspace();
+            workspace.openURL(&ns_url);
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd").args(["/c", "start", url]).spawn();
+    }
+}
+
 /// Handle to a platform-native window.
 pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn bounds(&self) -> Rect;
@@ -123,6 +144,7 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn content_size(&self) -> Size;
     fn scale_factor(&self) -> f32;
     fn is_focused(&self) -> bool;
+    fn is_visible(&self) -> bool;
     fn is_maximized(&self) -> bool;
     fn set_title(&mut self, title: &str);
     fn minimize(&mut self);

@@ -118,6 +118,11 @@ impl App {
         platform.run(Box::new(move |event| {
             match event {
                 PlatformEvent::RedrawRequested => {
+                    // Exit if the window was closed (e.g. traffic light close button)
+                    if !window.is_visible() {
+                        std::process::exit(0);
+                    }
+
                     // Detect window resize (macOS doesn't send resize events for live resize)
                     let current_size = window.content_size();
                     let current_scale = window.scale_factor();
