@@ -178,33 +178,65 @@ impl InteractionMap {
 
     /// Check if a point is over any interactive element (including focusables).
     pub fn has_handler_at(&self, position: Point) -> bool {
-        self.focusables.iter().rev().any(|e| e.bounds.contains(position))
-            || self.entries.iter().rev().any(|e| e.bounds.contains(position))
+        self.focusables
+            .iter()
+            .rev()
+            .any(|e| e.bounds.contains(position))
+            || self
+                .entries
+                .iter()
+                .rev()
+                .any(|e| e.bounds.contains(position))
     }
 
     /// Get the appropriate cursor style for a position.
     pub fn cursor_at(&self, position: Point) -> mozui_events::CursorStyle {
         // Focusables (text inputs) get text cursor
-        if self.focusables.iter().rev().any(|e| e.bounds.contains(position)) {
+        if self
+            .focusables
+            .iter()
+            .rev()
+            .any(|e| e.bounds.contains(position))
+        {
             return mozui_events::CursorStyle::Text;
         }
         // Click handlers get hand cursor
-        if self.entries.iter().rev().any(|e| e.bounds.contains(position)) {
+        if self
+            .entries
+            .iter()
+            .rev()
+            .any(|e| e.bounds.contains(position))
+        {
             return mozui_events::CursorStyle::Hand;
         }
         mozui_events::CursorStyle::Arrow
     }
 
-    /// Tab to next focusable element. Returns true if focus changed.
-    pub fn focus_next(&mut self, cx: &mut dyn std::any::Any) -> bool {
+    /// Tab to next/previous focusable element. Returns true if focus changed.
+    pub fn cycle_focus(&mut self, reverse: bool, cx: &mut dyn std::any::Any) -> bool {
         if self.focusables.is_empty() {
             return false;
         }
-        let current_idx = self.focused_id
+        let current_idx = self
+            .focused_id
             .and_then(|id| self.focusables.iter().position(|e| e.id == id));
-        let next_idx = match current_idx {
-            Some(idx) => (idx + 1) % self.focusables.len(),
-            None => 0,
+        let len = self.focusables.len();
+        let next_idx = if reverse {
+            match current_idx {
+                Some(idx) => {
+                    if idx == 0 {
+                        len - 1
+                    } else {
+                        idx - 1
+                    }
+                }
+                None => len - 1,
+            }
+        } else {
+            match current_idx {
+                Some(idx) => (idx + 1) % len,
+                None => 0,
+            }
         };
 
         // Blur old

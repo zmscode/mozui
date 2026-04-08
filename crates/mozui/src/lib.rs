@@ -1,6 +1,8 @@
-pub use mozui_app::{App, Context};
+pub use mozui_app::{App, Action, Context, KeyCombo, KeybindingRegistry};
 pub use mozui_elements::{Div, Element, Text, TextInput, TextInputState, div, text, text_input};
 pub use mozui_events::{Key, Modifiers};
+// Re-export the actions! macro
+pub use mozui_app::actions;
 pub use mozui_platform::WindowOptions;
 pub use mozui_reactive::{Signal, SetSignal};
 pub use mozui_renderer::{DrawList, Renderer};

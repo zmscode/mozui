@@ -1,5 +1,8 @@
 use mozui::*;
 
+// Define actions using the actions! macro
+actions!(app, [Quit]);
+
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter("mozui=debug")
@@ -11,6 +14,15 @@ fn main() {
             title: "mozui — Form Example".into(),
             size: Size::new(600.0, 500.0),
             ..Default::default()
+        })
+        .keybindings(|kb| {
+            kb.bind("escape", Quit);
+            kb.bind("cmd-q", Quit);
+        })
+        .on_action(|action, _cx| {
+            if action.as_any().is::<Quit>() {
+                std::process::exit(0);
+            }
         })
         .run(app);
 }
@@ -41,13 +53,6 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .justify_center()
             .gap(20.0)
             .bg(Color::hex("#1e1e2e"))
-            .on_key_down(move |key, _mods, cx_any| {
-                let cx = cx_any.downcast_mut::<Context>().unwrap();
-                if key == Key::Escape {
-                    std::process::exit(0);
-                }
-                let _ = cx;
-            })
             .child(
                 text("Contact Form")
                     .font_size(28.0)
@@ -78,7 +83,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             )
             // Hint
             .child(
-                text("Tab to switch fields | Esc to quit")
+                text("Tab/Shift+Tab to switch fields | Esc or Cmd+Q to quit")
                     .font_size(11.0)
                     .color(Color::hex("#6c7086")),
             ),

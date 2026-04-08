@@ -1,4 +1,5 @@
 use crate::context::Context;
+use crate::keybindings::KeybindingRegistry;
 use mozui_elements::{Element, InteractionMap};
 use mozui_events::PlatformEvent;
 use mozui_layout::LayoutEngine;
@@ -7,9 +8,13 @@ use mozui_renderer::{DrawList, Renderer};
 use mozui_style::Theme;
 use taffy::prelude::*;
 
+pub type ActionHandler = Box<dyn Fn(&dyn crate::Action, &mut Context)>;
+
 pub struct App {
     theme: Theme,
     window_options: WindowOptions,
+    keybindings: KeybindingRegistry,
+    action_handler: Option<ActionHandler>,
 }
 
 impl App {
@@ -17,6 +22,8 @@ impl App {
         Self {
             theme: Theme::dark(),
             window_options: WindowOptions::default(),
+            keybindings: KeybindingRegistry::new(),
+            action_handler: None,
         }
     }
 
@@ -27,6 +34,18 @@ impl App {
 
     pub fn window(mut self, options: WindowOptions) -> Self {
         self.window_options = options;
+        self
+    }
+
+    /// Configure keybindings.
+    pub fn keybindings(mut self, f: impl FnOnce(&mut KeybindingRegistry)) -> Self {
+        f(&mut self.keybindings);
+        self
+    }
+
+    /// Set a global action handler that fires when a keybinding matches.
+    pub fn on_action(mut self, handler: impl Fn(&dyn crate::Action, &mut Context) + 'static) -> Self {
+        self.action_handler = Some(Box::new(handler));
         self
     }
 
@@ -44,6 +63,8 @@ impl App {
 
         let mut needs_render = true;
         let mut interactions = InteractionMap::new();
+        let keybindings = self.keybindings;
+        let action_handler = self.action_handler;
 
         // Build initial element tree
         cx.reset_hooks();
@@ -126,39 +147,44 @@ impl App {
                     }
                 }
                 PlatformEvent::KeyDown { key, modifiers, .. } => {
-                    if key == mozui_events::Key::Tab {
-                        if interactions.focus_next(&mut cx) {
-                            cx.clear_dirty();
-                            cx.reset_hooks();
-                            element_tree = root(&mut cx);
-                            rebuild_interactions(
-                                &element_tree,
-                                &mut layout_engine,
-                                &renderer,
-                                &mut interactions,
-                                &mut draw_list,
-                                window.as_ref(),
-                            );
-                            needs_render = true;
-                            window.request_redraw();
+                    let mut handled = false;
+
+                    // 1. Check keybindings first
+                    if let Some(action) = keybindings.match_key(key, modifiers, &[]) {
+                        if let Some(ref handler) = action_handler {
+                            let action_clone = action.boxed_clone();
+                            handler(action_clone.as_ref(), &mut cx);
+                            handled = true;
                         }
-                    } else {
+                    }
+
+                    // 2. Tab cycles focus
+                    if !handled && key == mozui_events::Key::Tab {
+                        if interactions.cycle_focus(modifiers.shift, &mut cx) {
+                            handled = true;
+                        }
+                    }
+
+                    // 3. Dispatch to focused element + global key handlers
+                    if !handled {
                         interactions.dispatch_key(key, modifiers, &mut cx);
-                        if cx.is_dirty() {
-                            cx.clear_dirty();
-                            cx.reset_hooks();
-                            element_tree = root(&mut cx);
-                            rebuild_interactions(
-                                &element_tree,
-                                &mut layout_engine,
-                                &renderer,
-                                &mut interactions,
-                                &mut draw_list,
-                                window.as_ref(),
-                            );
-                            needs_render = true;
-                            window.request_redraw();
-                        }
+                    }
+
+                    // Rebuild if anything changed
+                    if cx.is_dirty() || handled {
+                        cx.clear_dirty();
+                        cx.reset_hooks();
+                        element_tree = root(&mut cx);
+                        rebuild_interactions(
+                            &element_tree,
+                            &mut layout_engine,
+                            &renderer,
+                            &mut interactions,
+                            &mut draw_list,
+                            window.as_ref(),
+                        );
+                        needs_render = true;
+                        window.request_redraw();
                     }
                 }
                 PlatformEvent::MouseMove { position, .. } => {

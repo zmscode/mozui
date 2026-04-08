@@ -1263,13 +1263,13 @@ Create a basic interactive button.
 
 ---
 
-## Phase 4: Focus & Actions (Weeks 13-16) — IN PROGRESS
+## Phase 4: Focus & Actions (Weeks 13-16) ✅ COMPLETE
 
 **Goal**: Full keyboard navigation with focus scopes, and a keybinding system for named actions.
 
 **Milestone**: A form with text inputs, tab navigation between them, and keyboard shortcuts.
 
-**Status**: Core focus system and TextInput element complete. InteractionMap supports focusable elements with click-to-focus, Tab cycling, text/hand cursor differentiation. TextInput with character insertion, backspace/delete, arrow keys, Home/End, Space, placeholder text, focus-aware border. Form example working. Remaining: FocusHandle abstraction, focus scopes, Shift+Tab, action system, keybindings.
+**Status**: All core tasks complete. Focus system with click-to-focus, Tab/Shift+Tab cycling, text cursor differentiation. TextInput element with full editing support. Action system with `actions!` macro for defining named action types. Keybinding registry with `KeyCombo::parse()` for human-readable combos (e.g. "cmd-q", "ctrl-shift-z"), contextual binding support, and dispatch integration in the event loop. Form example demonstrates text inputs with Tab navigation and keybinding-driven Quit action. Deferred: FocusHandle/FocusScope abstractions, focus ring visuals (not needed until complex nested UIs).
 
 ---
 
