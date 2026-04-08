@@ -29,3 +29,11 @@ path = "../../examples/timer.rs"
 [[example]]
 name = "primitives"
 path = "../../examples/primitives.rs"
+
+[[example]]
+name = "form_controls"
+path = "../../examples/form_controls.rs"
+
+[[example]]
+name = "data_display"
+path = "../../examples/data_display.rs"

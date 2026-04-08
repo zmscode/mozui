@@ -53,6 +53,13 @@ impl LayoutEngine {
         }
     }
 
+    /// Get the content size of a node (total size of children, may exceed the node's own size
+    /// if overflow is set to scroll/hidden).
+    pub fn content_size(&self, node: NodeId) -> (f32, f32) {
+        let l = self.taffy.layout(node).unwrap();
+        (l.content_size.width, l.content_size.height)
+    }
+
     /// Recursively collect layouts in pre-order, resolving absolute positions.
     pub fn collect_layouts(&self, root: NodeId) -> Vec<ComputedLayout> {
         let mut results = Vec::new();

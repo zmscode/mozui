@@ -1,3 +1,4 @@
+use mozui_elements::ScrollOffset;
 use mozui_executor::{Executor, TimerId, TimerManager};
 use mozui_reactive::{SetSignal, Signal, SignalStore};
 use mozui_style::Theme;
@@ -116,5 +117,12 @@ impl Context {
     /// Cancel a timer.
     pub fn cancel_timer(&mut self, id: TimerId) {
         self.timers.cancel(id);
+    }
+
+    /// Create or retrieve a persistent scroll offset for a scrollable container.
+    /// Call this once per scrollable element, in a stable order (like `use_signal`).
+    pub fn use_scroll(&mut self) -> ScrollOffset {
+        let (signal, _) = self.use_signal(ScrollOffset::new());
+        self.get(signal).clone()
     }
 }

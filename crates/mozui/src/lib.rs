@@ -10,7 +10,7 @@ pub use mozui_app::history::{History, HistoryItem};
 pub use mozui_app::actions;
 
 // ── Elements ───────────────────────────────────────────────────
-pub use mozui_elements::{Div, Element, Text, TextInput, TextInputState, div, text, text_input};
+pub use mozui_elements::{Div, Element, ScrollOffset, Text, TextInput, TextInputState, div, text, text_input};
 pub use mozui_elements::{Collapsible, ComponentSize, Disableable, Selectable, Sizable};
 pub use mozui_elements::{FitMode, Popover};
 pub use mozui_elements::Root;
@@ -19,6 +19,18 @@ pub use mozui_elements::{Icon, icon};
 pub use mozui_elements::{Label, LabelHighlight, LabelHighlightMode, label};
 pub use mozui_elements::{Divider, DividerDirection, divider};
 pub use mozui_elements::{Kbd, kbd};
+pub use mozui_elements::{Button, ButtonGroup, ButtonVariant, button, button_group, icon_button};
+pub use mozui_elements::{Checkbox, checkbox};
+pub use mozui_elements::{Radio, radio};
+pub use mozui_elements::{Switch, switch};
+pub use mozui_elements::{Slider, slider};
+pub use mozui_elements::{Stepper, StepperItem, stepper};
+pub use mozui_elements::{Tag, TagVariant, tag};
+pub use mozui_elements::{Progress, progress};
+pub use mozui_elements::{Link, link};
+pub use mozui_elements::{Badge, badge};
+pub use mozui_elements::{Tab, TabBar, tab, tab_bar};
+pub use mozui_elements::{Breadcrumb, BreadcrumbItem, breadcrumb, breadcrumb_item};
 
 // ── Icons ─────────────────────────────────────────────────────
 pub use mozui_icons::{IconName, IconWeight};

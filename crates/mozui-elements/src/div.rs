@@ -4,8 +4,30 @@ use mozui_layout::LayoutEngine;
 use mozui_renderer::{Border, DrawCommand, DrawList};
 use mozui_style::{Color, Corners, Fill};
 use mozui_text::FontSystem;
+use std::cell::Cell;
+use std::rc::Rc;
 use taffy::prelude::*;
 use taffy::{Overflow, Point as TaffyPoint};
+
+/// Shared scroll offset that persists across rebuilds.
+/// Create with `ScrollOffset::new()` in a `use_signal`-like scope,
+/// or store in your app state.
+#[derive(Clone)]
+pub struct ScrollOffset(Rc<Cell<f32>>);
+
+impl ScrollOffset {
+    pub fn new() -> Self {
+        Self(Rc::new(Cell::new(0.0)))
+    }
+
+    pub fn get(&self) -> f32 {
+        self.0.get()
+    }
+
+    pub fn set(&self, v: f32) {
+        self.0.set(v);
+    }
+}
 
 pub struct Div {
     // Visual style
@@ -28,6 +50,11 @@ pub struct Div {
 
     // Window drag region
     is_drag_region: bool,
+
+    // Scroll
+    scroll_y: Option<ScrollOffset>,
+    /// Content height computed during layout, used for scroll clamping.
+    content_height: Cell<f32>,
 }
 
 pub fn div() -> Div {
@@ -42,6 +69,8 @@ pub fn div() -> Div {
         on_click: None,
         on_key_down: None,
         is_drag_region: false,
+        scroll_y: None,
+        content_height: Cell::new(0.0),
     }
 }
 
@@ -288,6 +317,14 @@ impl Div {
         self
     }
 
+    /// Enable vertical scrolling. Pass a `ScrollOffset` that persists
+    /// across rebuilds (create it once in your app state or with `use_scroll`).
+    pub fn overflow_y_scroll(mut self, offset: ScrollOffset) -> Self {
+        self.scroll_y = Some(offset);
+        self.taffy_style.overflow.y = Overflow::Scroll;
+        self
+    }
+
     // --- Visual ---
     pub fn bg(mut self, fill: impl Into<Fill>) -> Self {
         self.background = Some(fill.into());
@@ -433,9 +470,57 @@ impl Element for Div {
             }));
         }
 
-        // Paint children
+        // Scroll handling
+        let scroll_offset_y = self.scroll_y.as_ref().map(|so| so.get()).unwrap_or(0.0);
+        let is_scrollable = self.scroll_y.is_some();
+
+        if is_scrollable {
+            draw_list.push_scroll_offset(-scroll_offset_y);
+            interactions.push_scroll_offset(-scroll_offset_y);
+        }
+
+        // Paint children — track index range to compute content bounds
+        let children_start = *index;
         for child in &self.children {
             child.paint(layouts, index, draw_list, interactions, font_system);
+        }
+        let children_end = *index;
+
+        if is_scrollable {
+            draw_list.pop_scroll_offset();
+            interactions.pop_scroll_offset();
+        }
+
+        // Register scroll region after painting children (so we know content height)
+        if let Some(ref scroll) = self.scroll_y {
+            let viewport_height = bounds.size.height;
+
+            // Find the bottom of the deepest child to determine content height
+            let mut content_bottom = 0.0_f32;
+            for i in children_start..children_end {
+                let cl = layouts[i];
+                let bot = cl.y + cl.height - bounds.origin.y;
+                content_bottom = content_bottom.max(bot);
+            }
+
+            let max_scroll = (content_bottom - viewport_height).max(0.0);
+            self.content_height.set(content_bottom);
+
+            // Clamp current offset
+            let clamped = scroll_offset_y.clamp(0.0, max_scroll);
+            if clamped != scroll_offset_y {
+                scroll.set(clamped);
+            }
+
+            let scroll_clone = scroll.clone();
+            interactions.register_scroll_region(
+                bounds,
+                Box::new(move |_dx, dy, _cx| {
+                    let current = scroll_clone.get();
+                    let new_val = (current - dy).clamp(0.0, max_scroll);
+                    scroll_clone.set(new_val);
+                }),
+            );
         }
     }
 }

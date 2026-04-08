@@ -173,15 +173,36 @@ impl App {
                     position,
                     ..
                 } => {
-                    if interactions.is_drag_region(position) {
+                    interactions.set_mouse_pressed(position);
+                    // Check element drag handlers first (e.g. sliders)
+                    if interactions.dispatch_drag_start(position, &mut cx) {
+                        if cx.is_dirty() {
+                            cx.clear_dirty();
+                            cx.reset_hooks();
+                            element_tree = root(&mut cx);
+                            rebuild_interactions(
+                                &element_tree,
+                                &mut layout_engine,
+                                &renderer,
+                                &mut interactions,
+                                &mut draw_list,
+                                window.as_ref(),
+                            );
+                        }
+                    } else if interactions.is_drag_region(position) {
                         window.begin_drag_move();
                     }
+                    // Re-render for active state
+                    needs_render = true;
+                    window.request_redraw();
                 }
                 PlatformEvent::MouseUp {
                     button: mozui_events::MouseButton::Left,
                     position,
                     ..
                 } => {
+                    interactions.set_mouse_released();
+                    interactions.clear_active_drag();
                     if interactions.dispatch_click(position, &mut cx) {
                         cx.clear_dirty();
                         cx.reset_hooks();
@@ -195,9 +216,10 @@ impl App {
                             &mut draw_list,
                             window.as_ref(),
                         );
-                        needs_render = true;
-                        window.request_redraw();
                     }
+                    // Always re-render on mouse-up to clear active state visuals
+                    needs_render = true;
+                    window.request_redraw();
                 }
                 PlatformEvent::KeyDown { key, modifiers, .. } => {
                     let mut handled = false;
@@ -240,8 +262,56 @@ impl App {
                         window.request_redraw();
                     }
                 }
+                PlatformEvent::ScrollWheel {
+                    delta,
+                    position,
+                    ..
+                } => {
+                    let (dx, dy) = match delta {
+                        mozui_events::ScrollDelta::Pixels(dx, dy) => (dx, dy),
+                        mozui_events::ScrollDelta::Lines(dx, dy) => (dx * 20.0, dy * 20.0),
+                    };
+                    if interactions.dispatch_scroll(position, dx, dy, &mut cx) {
+                        needs_render = true;
+                        window.request_redraw();
+                    }
+                }
                 PlatformEvent::MouseMove { position, .. } => {
+                    let old_pos = interactions.mouse_position();
+                    interactions.set_mouse_position(position);
                     mozui_platform::set_cursor_style(interactions.cursor_at(position));
+
+                    // Dispatch drag-move if a drag is active
+                    if interactions.is_mouse_pressed() {
+                        if interactions.dispatch_drag_move(position, &mut cx) {
+                            if cx.is_dirty() {
+                                cx.clear_dirty();
+                                cx.reset_hooks();
+                                element_tree = root(&mut cx);
+                                rebuild_interactions(
+                                    &element_tree,
+                                    &mut layout_engine,
+                                    &renderer,
+                                    &mut interactions,
+                                    &mut draw_list,
+                                    window.as_ref(),
+                                );
+                            }
+                            needs_render = true;
+                            window.request_redraw();
+                        }
+                    }
+
+                    // Re-render when over interactive elements (hover visuals need updating)
+                    // or when mouse is pressed (active state tracks cursor position)
+                    if old_pos != position
+                        && (interactions.has_handler_at(position)
+                            || interactions.has_handler_at(old_pos)
+                            || interactions.is_mouse_pressed())
+                    {
+                        needs_render = true;
+                        window.request_redraw();
+                    }
                 }
                 PlatformEvent::WindowResize { size } => {
                     let scale = window.scale_factor();

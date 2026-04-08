@@ -33,17 +33,47 @@ pub enum DrawCommand {
 
 pub struct DrawList {
     commands: Vec<DrawCommand>,
+    /// Stack of cumulative Y offsets for scroll containers.
+    offset_stack: Vec<f32>,
+    /// Current cumulative Y offset.
+    current_offset_y: f32,
 }
 
 impl DrawList {
     pub fn new() -> Self {
         Self {
             commands: Vec::new(),
+            offset_stack: Vec::new(),
+            current_offset_y: 0.0,
         }
     }
 
-    pub fn push(&mut self, command: DrawCommand) {
+    pub fn push(&mut self, mut command: DrawCommand) {
+        // Apply current scroll offset to the command's bounds
+        if self.current_offset_y != 0.0 {
+            match &mut command {
+                DrawCommand::Rect { bounds, .. }
+                | DrawCommand::Text { bounds, .. }
+                | DrawCommand::Icon { bounds, .. } => {
+                    bounds.origin.y += self.current_offset_y;
+                }
+            }
+        }
         self.commands.push(command);
+    }
+
+    /// Push a vertical scroll offset. All subsequent `push` calls will have
+    /// their Y coordinates shifted by this amount (cumulative with parent offsets).
+    pub fn push_scroll_offset(&mut self, offset_y: f32) {
+        self.offset_stack.push(self.current_offset_y);
+        self.current_offset_y += offset_y;
+    }
+
+    /// Pop the most recent scroll offset, restoring the previous one.
+    pub fn pop_scroll_offset(&mut self) {
+        if let Some(prev) = self.offset_stack.pop() {
+            self.current_offset_y = prev;
+        }
     }
 
     pub fn commands(&self) -> impl Iterator<Item = &DrawCommand> {
@@ -52,6 +82,8 @@ impl DrawList {
 
     pub fn clear(&mut self) {
         self.commands.clear();
+        self.offset_stack.clear();
+        self.current_offset_y = 0.0;
     }
 
     pub fn is_empty(&self) -> bool {
