@@ -1,0 +1,6 @@
+[package]
+name = "mozui-icons"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

@@ -1,5 +1,5 @@
 use crate::traits::{EventCallback, Platform, PlatformWindow, Screen, WindowOptions};
-use mozui_events::{CursorStyle, MouseButton, Modifiers, PlatformEvent, ScrollDelta};
+use mozui_events::{CursorStyle, Modifiers, MouseButton, PlatformEvent, ScrollDelta};
 use mozui_style::{Point, Rect};
 
 use objc2::MainThreadMarker;

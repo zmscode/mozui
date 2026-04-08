@@ -1,10 +1,26 @@
 mod div;
+mod divider;
+mod icon;
+mod kbd;
+mod label;
+mod popover;
+mod root;
+mod styled;
 mod text;
 mod text_input;
+mod virtual_list;
 
 pub use div::{Div, div};
+pub use divider::{Divider, DividerDirection, divider};
+pub use icon::{Icon, icon};
+pub use kbd::{Kbd, kbd};
+pub use label::{Label, LabelHighlight, LabelHighlightMode, label};
+pub use popover::{FitMode, Popover};
+pub use root::Root;
+pub use styled::{Collapsible, ComponentSize, Disableable, Selectable, Sizable};
 pub use text::{Text, text};
 pub use text_input::{TextInput, TextInputState, text_input};
+pub use virtual_list::{VirtualList, VirtualListDirection};
 
 use mozui_layout::LayoutEngine;
 use mozui_renderer::DrawList;
@@ -47,6 +63,14 @@ struct FocusableEntry {
     on_key: KeyHandler,
 }
 
+/// A focus trap scope that constrains Tab navigation within a region.
+/// Used by modals/dialogs to prevent focus from escaping.
+struct FocusTrap {
+    id: usize,
+    /// The focusable IDs that belong to this trap.
+    focusable_ids: Vec<usize>,
+}
+
 /// Collects interactive regions during paint, hit-tests on events.
 pub struct InteractionMap {
     entries: Vec<InteractionEntry>,
@@ -55,6 +79,10 @@ pub struct InteractionMap {
     focused_id: Option<usize>,
     next_focus_id: usize,
     drag_regions: Vec<Rect>,
+    focus_traps: Vec<FocusTrap>,
+    next_trap_id: usize,
+    /// The currently active trap (last pushed). Tab cycles within this trap only.
+    active_trap_id: Option<usize>,
 }
 
 impl InteractionMap {
@@ -66,6 +94,9 @@ impl InteractionMap {
             focused_id: None,
             next_focus_id: 0,
             drag_regions: Vec::new(),
+            focus_traps: Vec::new(),
+            next_trap_id: 0,
+            active_trap_id: None,
         }
     }
 
@@ -75,6 +106,9 @@ impl InteractionMap {
         self.focusables.clear();
         self.next_focus_id = 0;
         self.drag_regions.clear();
+        self.focus_traps.clear();
+        self.next_trap_id = 0;
+        self.active_trap_id = None;
     }
 
     /// Register a drag region (for window title bar dragging).
@@ -124,6 +158,7 @@ impl InteractionMap {
             on_focus,
             on_key,
         });
+        self.add_to_active_trap(id);
         id
     }
 
@@ -232,15 +267,70 @@ impl InteractionMap {
         mozui_events::CursorStyle::Arrow
     }
 
+    // ── Focus trap management ──────────────────────────────────────
+
+    /// Push a focus trap. All focusable elements registered after this call
+    /// (until `pop_focus_trap`) will belong to this trap. Tab navigation
+    /// will be constrained to these elements when this trap is active.
+    /// Returns a trap ID.
+    pub fn push_focus_trap(&mut self) -> usize {
+        let id = self.next_trap_id;
+        self.next_trap_id += 1;
+        self.focus_traps.push(FocusTrap {
+            id,
+            focusable_ids: Vec::new(),
+        });
+        self.active_trap_id = Some(id);
+        id
+    }
+
+    /// Pop the most recent focus trap and restore the previous one (if any).
+    pub fn pop_focus_trap(&mut self) {
+        if let Some(active_id) = self.active_trap_id {
+            self.focus_traps.retain(|t| t.id != active_id);
+            self.active_trap_id = self.focus_traps.last().map(|t| t.id);
+        }
+    }
+
+    /// Add a focusable ID to the currently active trap (called internally
+    /// by `register_focusable` when a trap is active).
+    fn add_to_active_trap(&mut self, focusable_id: usize) {
+        if let Some(trap_id) = self.active_trap_id {
+            if let Some(trap) = self.focus_traps.iter_mut().find(|t| t.id == trap_id) {
+                trap.focusable_ids.push(focusable_id);
+            }
+        }
+    }
+
     /// Tab to next/previous focusable element. Returns true if focus changed.
+    /// Respects the active focus trap — if one is set, only cycles within
+    /// the trapped focusable elements.
     pub fn cycle_focus(&mut self, reverse: bool, cx: &mut dyn std::any::Any) -> bool {
-        if self.focusables.is_empty() {
+        // Determine which focusables to cycle through
+        let eligible_ids: Option<Vec<usize>> = self.active_trap_id.and_then(|trap_id| {
+            self.focus_traps
+                .iter()
+                .find(|t| t.id == trap_id)
+                .map(|t| t.focusable_ids.clone())
+        });
+
+        let eligible: Vec<&FocusableEntry> = match &eligible_ids {
+            Some(ids) => self
+                .focusables
+                .iter()
+                .filter(|e| ids.contains(&e.id))
+                .collect(),
+            None => self.focusables.iter().collect(),
+        };
+
+        if eligible.is_empty() {
             return false;
         }
+
         let current_idx = self
             .focused_id
-            .and_then(|id| self.focusables.iter().position(|e| e.id == id));
-        let len = self.focusables.len();
+            .and_then(|id| eligible.iter().position(|e| e.id == id));
+        let len = eligible.len();
         let next_idx = if reverse {
             match current_idx {
                 Some(idx) => {
@@ -266,7 +356,7 @@ impl InteractionMap {
             }
         }
 
-        let next = &self.focusables[next_idx];
+        let next = eligible[next_idx];
         (next.on_focus)(true, cx);
         self.focused_id = Some(next.id);
         true

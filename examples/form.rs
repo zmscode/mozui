@@ -12,6 +12,7 @@ fn main() {
         .window(WindowOptions {
             title: "mozui — Form".into(),
             size: Size::new(600.0, 500.0),
+            titlebar: TitlebarStyle::Transparent,
             ..Default::default()
         })
         .keybindings(|kb| {
@@ -37,9 +38,21 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
 
     let preview = format!(
         "Name: {} | Email: {} | Message: {}",
-        if name.value.is_empty() { "—" } else { &name.value },
-        if email.value.is_empty() { "—" } else { &email.value },
-        if msg.value.is_empty() { "—" } else { &msg.value },
+        if name.value.is_empty() {
+            "—"
+        } else {
+            &name.value
+        },
+        if email.value.is_empty() {
+            "—"
+        } else {
+            &email.value
+        },
+        if msg.value.is_empty() {
+            "—"
+        } else {
+            &msg.value
+        },
     );
 
     Box::new(
@@ -68,9 +81,24 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                         div()
                             .flex_col()
                             .gap(12.0)
-                            .child(label_and_input("Name", name, set_name, "Enter your name..."))
-                            .child(label_and_input("Email", email, set_email, "you@example.com"))
-                            .child(label_and_input("Message", msg, set_msg, "Type a message...")),
+                            .child(label_and_input(
+                                "Name",
+                                name,
+                                set_name,
+                                "Enter your name...",
+                            ))
+                            .child(label_and_input(
+                                "Email",
+                                email,
+                                set_email,
+                                "you@example.com",
+                            ))
+                            .child(label_and_input(
+                                "Message",
+                                msg,
+                                set_msg,
+                                "Type a message...",
+                            )),
                     )
                     .child(
                         div()
@@ -78,11 +106,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .p(12.0)
                             .bg(Color::hex("#181825"))
                             .rounded(8.0)
-                            .child(
-                                text(preview)
-                                    .font_size(12.0)
-                                    .color(Color::hex("#a6adc8")),
-                            ),
+                            .child(text(preview).font_size(12.0).color(Color::hex("#a6adc8"))),
                     )
                     .child(
                         text("Tab/Shift+Tab to switch | Cmd+C/V/X clipboard | Esc to quit")
@@ -106,11 +130,7 @@ fn title_bar(title: &str) -> Div {
         // macOS traffic lights take ~70px on the left
         .pl(70.0)
         .pr(70.0)
-        .child(
-            text(title)
-                .font_size(13.0)
-                .color(Color::hex("#6c7086")),
-        )
+        .child(text(title).font_size(13.0).color(Color::hex("#6c7086")))
 }
 
 fn label_and_input(

@@ -10,5 +10,6 @@ mozui-layout = { workspace = true }
 mozui-text = { workspace = true }
 mozui-events = { workspace = true }
 mozui-platform = { workspace = true }
+mozui-icons = { workspace = true }
 taffy = { workspace = true }
 tracing = { workspace = true }

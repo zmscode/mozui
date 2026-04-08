@@ -137,6 +137,159 @@ impl From<f32> for Corners {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Layout geometry helpers (matching gpui-component)
+// ---------------------------------------------------------------------------
+
+/// Placement direction for popovers, tooltips, sheets, etc.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Placement {
+    #[default]
+    Bottom,
+    Top,
+    Left,
+    Right,
+}
+
+impl Placement {
+    pub fn is_horizontal(&self) -> bool {
+        matches!(self, Self::Left | Self::Right)
+    }
+
+    pub fn is_vertical(&self) -> bool {
+        matches!(self, Self::Top | Self::Bottom)
+    }
+
+    pub fn opposite(&self) -> Self {
+        match self {
+            Self::Top => Self::Bottom,
+            Self::Bottom => Self::Top,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
+
+    pub fn axis(&self) -> Axis {
+        match self {
+            Self::Top | Self::Bottom => Axis::Vertical,
+            Self::Left | Self::Right => Axis::Horizontal,
+        }
+    }
+}
+
+/// Anchor corner for positioned elements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Anchor {
+    #[default]
+    TopLeft,
+    TopCenter,
+    TopRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+impl Anchor {
+    pub fn is_top(&self) -> bool {
+        matches!(self, Self::TopLeft | Self::TopCenter | Self::TopRight)
+    }
+
+    pub fn is_bottom(&self) -> bool {
+        matches!(
+            self,
+            Self::BottomLeft | Self::BottomCenter | Self::BottomRight
+        )
+    }
+
+    pub fn swap_vertical(&self) -> Self {
+        match self {
+            Self::TopLeft => Self::BottomLeft,
+            Self::TopCenter => Self::BottomCenter,
+            Self::TopRight => Self::BottomRight,
+            Self::BottomLeft => Self::TopLeft,
+            Self::BottomCenter => Self::TopCenter,
+            Self::BottomRight => Self::TopRight,
+        }
+    }
+
+    pub fn swap_horizontal(&self) -> Self {
+        match self {
+            Self::TopLeft => Self::TopRight,
+            Self::TopCenter => Self::TopCenter,
+            Self::TopRight => Self::TopLeft,
+            Self::BottomLeft => Self::BottomRight,
+            Self::BottomCenter => Self::BottomCenter,
+            Self::BottomRight => Self::BottomLeft,
+        }
+    }
+}
+
+/// Layout axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Axis {
+    Horizontal,
+    Vertical,
+}
+
+impl Axis {
+    pub fn is_horizontal(&self) -> bool {
+        matches!(self, Self::Horizontal)
+    }
+
+    pub fn is_vertical(&self) -> bool {
+        matches!(self, Self::Vertical)
+    }
+}
+
+/// Left or right side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Side {
+    Left,
+    Right,
+}
+
+/// Edge insets (like CSS padding/margin with per-side values).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Edges {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
+}
+
+impl Edges {
+    pub const ZERO: Edges = Edges {
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+        left: 0.0,
+    };
+
+    pub fn all(value: f32) -> Self {
+        Self {
+            top: value,
+            right: value,
+            bottom: value,
+            left: value,
+        }
+    }
+
+    pub fn symmetric(horizontal: f32, vertical: f32) -> Self {
+        Self {
+            top: vertical,
+            right: horizontal,
+            bottom: vertical,
+            left: horizontal,
+        }
+    }
+}
+
+impl From<f32> for Edges {
+    fn from(value: f32) -> Self {
+        Self::all(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

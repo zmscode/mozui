@@ -1,3 +1,4 @@
+use mozui_icons::IconName;
 use mozui_text::FontId;
 use rustc_hash::FxHashMap;
 
@@ -7,6 +8,13 @@ pub struct GlyphKey {
     pub font_id: FontId,
     pub glyph_id: u32,
     pub size_px: u16, // Quantized font size in pixels
+}
+
+/// Key for looking up a cached icon in the atlas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IconKey {
+    pub name: IconName,
+    pub size_px: u16,
 }
 
 /// Region within the atlas texture.
@@ -20,12 +28,13 @@ pub struct AtlasRegion {
     pub bearing_y: f32,
 }
 
-/// Simple shelf-packing texture atlas for glyph bitmaps.
+/// Simple shelf-packing texture atlas for glyph and icon bitmaps.
 pub struct TextureAtlas {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub size: u32,
     entries: FxHashMap<GlyphKey, AtlasRegion>,
+    icon_entries: FxHashMap<IconKey, AtlasRegion>,
     // Shelf allocator state
     shelf_y: u32,
     shelf_height: u32,
@@ -57,6 +66,7 @@ impl TextureAtlas {
             view,
             size,
             entries: FxHashMap::default(),
+            icon_entries: FxHashMap::default(),
             shelf_y: 0,
             shelf_height: 0,
             cursor_x: 0,
@@ -67,6 +77,11 @@ impl TextureAtlas {
     /// Get a cached glyph region, or return None if not cached.
     pub fn get(&self, key: &GlyphKey) -> Option<&AtlasRegion> {
         self.entries.get(key)
+    }
+
+    /// Get a cached icon region, or return None if not cached.
+    pub fn get_icon(&self, key: &IconKey) -> Option<&AtlasRegion> {
+        self.icon_entries.get(key)
     }
 
     /// Insert a glyph bitmap into the atlas. Returns the region.
@@ -103,7 +118,11 @@ impl TextureAtlas {
 
         if self.shelf_y + height > self.size {
             // Atlas is full
-            tracing::warn!("Glyph atlas full ({}x{}), glyph dropped", self.size, self.size);
+            tracing::warn!(
+                "Glyph atlas full ({}x{}), glyph dropped",
+                self.size,
+                self.size
+            );
             return None;
         }
 
@@ -145,6 +164,70 @@ impl TextureAtlas {
         self.cursor_x += width + 1; // +1 pixel padding
         self.shelf_height = self.shelf_height.max(height + 1);
         self.entries.insert(key, region);
+        self.dirty = true;
+
+        Some(region)
+    }
+
+    /// Insert a rasterized icon into the atlas. Returns the region.
+    /// The `data` should be an alpha (R8) bitmap.
+    pub fn insert_icon(
+        &mut self,
+        queue: &wgpu::Queue,
+        key: IconKey,
+        width: u32,
+        height: u32,
+        data: &[u8],
+    ) -> Option<AtlasRegion> {
+        if width == 0 || height == 0 {
+            let region = AtlasRegion {
+                x: 0, y: 0, width: 0, height: 0,
+                bearing_x: 0.0, bearing_y: 0.0,
+            };
+            self.icon_entries.insert(key, region);
+            return Some(region);
+        }
+
+        // Check if icon fits on current shelf
+        if self.cursor_x + width > self.size {
+            self.shelf_y += self.shelf_height;
+            self.shelf_height = 0;
+            self.cursor_x = 0;
+        }
+
+        if self.shelf_y + height > self.size {
+            tracing::warn!("Atlas full, icon dropped");
+            return None;
+        }
+
+        let region = AtlasRegion {
+            x: self.cursor_x,
+            y: self.shelf_y,
+            width,
+            height,
+            bearing_x: 0.0,
+            bearing_y: 0.0,
+        };
+
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: region.x, y: region.y, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+
+        self.cursor_x += width + 1;
+        self.shelf_height = self.shelf_height.max(height + 1);
+        self.icon_entries.insert(key, region);
         self.dirty = true;
 
         Some(region)

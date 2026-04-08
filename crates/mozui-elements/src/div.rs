@@ -1,11 +1,11 @@
 use crate::{Element, InteractionMap};
+use mozui_events;
 use mozui_layout::LayoutEngine;
 use mozui_renderer::{Border, DrawCommand, DrawList};
 use mozui_style::{Color, Corners, Fill};
 use mozui_text::FontSystem;
 use taffy::prelude::*;
 use taffy::{Overflow, Point as TaffyPoint};
-use mozui_events;
 
 pub struct Div {
     // Visual style
@@ -23,7 +23,8 @@ pub struct Div {
 
     // Event handlers
     on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
-    on_key_down: Option<Box<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>>,
+    on_key_down:
+        Option<Box<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>>,
 
     // Window drag region
     is_drag_region: bool,
@@ -422,7 +423,11 @@ impl Element for Div {
         // Register key handler if present
         if let Some(ref handler) = self.on_key_down {
             let handler_ptr = handler.as_ref()
-                as *const dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any);
+                as *const dyn Fn(
+                    mozui_events::Key,
+                    mozui_events::Modifiers,
+                    &mut dyn std::any::Any,
+                );
             interactions.register_key_handler(Box::new(move |key, mods, cx| unsafe {
                 (*handler_ptr)(key, mods, cx)
             }));

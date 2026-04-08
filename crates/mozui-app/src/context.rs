@@ -1,5 +1,5 @@
-use mozui_executor::{Executor, TimerManager, TimerId};
-use mozui_reactive::{Signal, SetSignal, SignalStore};
+use mozui_executor::{Executor, TimerId, TimerManager};
+use mozui_reactive::{SetSignal, Signal, SignalStore};
 use mozui_style::Theme;
 use std::time::Duration;
 

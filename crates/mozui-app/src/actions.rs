@@ -11,7 +11,7 @@ pub trait Action: Any + Debug {
 
 /// Define action types in a namespace.
 ///
-/// ```rust
+/// ```rust,ignore
 /// actions!(editor, [Copy, Paste, Cut, Undo, Redo]);
 /// ```
 #[macro_export]
@@ -30,3 +30,25 @@ macro_rules! actions {
         )*
     };
 }
+
+// ---------------------------------------------------------------------------
+// Shared actions used across components (matching gpui-component)
+// ---------------------------------------------------------------------------
+
+actions!(
+    ui,
+    [
+        Confirm,
+        Cancel,
+        SelectUp,
+        SelectDown,
+        SelectLeft,
+        SelectRight,
+        SelectFirst,
+        SelectLast,
+        SelectPageUp,
+        SelectPageDown,
+        SelectPrevColumn,
+        SelectNextColumn,
+    ]
+);

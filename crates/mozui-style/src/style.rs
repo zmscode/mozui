@@ -24,7 +24,7 @@ impl Default for Style {
             width: None,
             height: None,
             background: None,
-            corner_radii: Corners::ZERO,
+            corner_radii: Corners::uniform(12.0),
             border_width: 0.0,
             border_color: Color::TRANSPARENT,
             shadow: None,

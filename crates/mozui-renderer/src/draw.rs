@@ -1,3 +1,4 @@
+use mozui_icons::IconName;
 use mozui_style::{Color, Corners, Fill, Rect};
 
 #[derive(Debug, Clone)]
@@ -21,6 +22,12 @@ pub enum DrawCommand {
         color: Color,
         weight: u32,
         italic: bool,
+    },
+    Icon {
+        name: IconName,
+        bounds: Rect,
+        color: Color,
+        size_px: f32,
     },
 }
 

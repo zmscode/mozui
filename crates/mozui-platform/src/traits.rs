@@ -2,6 +2,20 @@ use mozui_events::PlatformEvent;
 use mozui_style::{Point, Rect, Size};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
+/// Title bar style for a window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TitlebarStyle {
+    /// Native system title bar with standard decorations.
+    #[default]
+    Native,
+    /// Transparent title bar — content extends behind it.
+    /// Traffic light buttons remain visible on macOS.
+    Transparent,
+    /// Fully hidden title bar — no native chrome at all.
+    /// You must provide your own window controls.
+    Hidden,
+}
+
 pub struct WindowOptions {
     pub title: String,
     pub size: Size,
@@ -10,6 +24,11 @@ pub struct WindowOptions {
     pub position: Option<Point>,
     pub resizable: bool,
     pub visible: bool,
+    pub titlebar: TitlebarStyle,
+    /// Height of the titlebar area in logical points (macOS only).
+    /// Traffic light buttons will be vertically centered in this area.
+    /// Defaults to 38.0.
+    pub titlebar_height: f32,
 }
 
 impl Default for WindowOptions {
@@ -22,6 +41,8 @@ impl Default for WindowOptions {
             position: None,
             resizable: true,
             visible: true,
+            titlebar: TitlebarStyle::default(),
+            titlebar_height: 38.0,
         }
     }
 }
@@ -110,4 +131,8 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn request_redraw(&self);
     /// Start a window drag operation (for custom title bars).
     fn begin_drag_move(&self);
+    /// Height of the titlebar area in logical points.
+    fn titlebar_height(&self) -> f32;
+    /// The titlebar style this window was created with.
+    fn titlebar_style(&self) -> TitlebarStyle;
 }

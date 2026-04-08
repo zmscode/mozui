@@ -44,7 +44,10 @@ impl App {
     }
 
     /// Set a global action handler that fires when a keybinding matches.
-    pub fn on_action(mut self, handler: impl Fn(&dyn crate::Action, &mut Context) + 'static) -> Self {
+    pub fn on_action(
+        mut self,
+        handler: impl Fn(&dyn crate::Action, &mut Context) + 'static,
+    ) -> Self {
         self.action_handler = Some(Box::new(handler));
         self
     }
@@ -71,6 +74,8 @@ impl App {
         let mut interactions = InteractionMap::new();
         let keybindings = self.keybindings;
         let action_handler = self.action_handler;
+        let mut last_size = window.content_size();
+        let mut last_scale = window.scale_factor();
 
         // Build initial element tree
         cx.reset_hooks();
@@ -113,8 +118,21 @@ impl App {
         platform.run(Box::new(move |event| {
             match event {
                 PlatformEvent::RedrawRequested => {
+                    // Detect window resize (macOS doesn't send resize events for live resize)
+                    let current_size = window.content_size();
+                    let current_scale = window.scale_factor();
+                    if current_size != last_size || current_scale != last_scale {
+                        renderer.resize(current_size, current_scale);
+                        last_size = current_size;
+                        last_scale = current_scale;
+                        cx.reset_hooks();
+                        element_tree = root(&mut cx);
+                        needs_render = true;
+                    }
+
                     // Fire expired timers — take timer manager out temporarily
-                    let mut timers = std::mem::replace(&mut cx.timers, mozui_executor::TimerManager::new());
+                    let mut timers =
+                        std::mem::replace(&mut cx.timers, mozui_executor::TimerManager::new());
                     if timers.fire_expired(&mut cx) {
                         needs_render = true;
                     }

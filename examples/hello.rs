@@ -10,6 +10,7 @@ fn main() {
         .window(WindowOptions {
             title: "Hello mozui".into(),
             size: Size::new(800.0, 600.0),
+            titlebar: TitlebarStyle::Transparent,
             ..Default::default()
         })
         .run(app);

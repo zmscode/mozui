@@ -13,6 +13,7 @@ fn main() {
         .window(WindowOptions {
             title: "mozui — Timer Example".into(),
             size: Size::new(400.0, 300.0),
+            titlebar: TitlebarStyle::Transparent,
             ..Default::default()
         })
         .keybindings(|kb| {
@@ -92,18 +93,20 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     cx.set(set_running, false);
                                 } else {
                                     // Start — set interval
-                                    let tid = cx.set_interval(
-                                        Duration::from_secs(1),
-                                        move |cx_any| {
+                                    let tid =
+                                        cx.set_interval(Duration::from_secs(1), move |cx_any| {
                                             let cx = cx_any.downcast_mut::<Context>().unwrap();
                                             cx.update(set_seconds, |n| *n += 1);
-                                        },
-                                    );
+                                        });
                                     cx.set(set_timer_id, Some(tid));
                                     cx.set(set_running, true);
                                 }
                             })
-                            .child(text(button_label).font_size(14.0).color(Color::hex("#1e1e2e"))),
+                            .child(
+                                text(button_label)
+                                    .font_size(14.0)
+                                    .color(Color::hex("#1e1e2e")),
+                            ),
                     )
                     .child(
                         div()

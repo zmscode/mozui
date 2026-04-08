@@ -46,13 +46,23 @@ impl SignalStore {
     /// Get or create a signal at a given hook index.
     /// On first call with this index, creates with `initial`.
     /// On subsequent calls, returns the existing signal (ignoring `initial`).
-    pub fn get_or_create<T: 'static>(&mut self, index: usize, initial: T) -> (Signal<T>, SetSignal<T>) {
+    pub fn get_or_create<T: 'static>(
+        &mut self,
+        index: usize,
+        initial: T,
+    ) -> (Signal<T>, SetSignal<T>) {
         if index >= self.slots.len() {
             self.slots.push(Box::new(initial));
         }
         (
-            Signal { id: index, _marker: PhantomData },
-            SetSignal { id: index, _marker: PhantomData },
+            Signal {
+                id: index,
+                _marker: PhantomData,
+            },
+            SetSignal {
+                id: index,
+                _marker: PhantomData,
+            },
         )
     }
 

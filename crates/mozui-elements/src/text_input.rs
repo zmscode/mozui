@@ -241,8 +241,8 @@ impl Element for TextInput {
 
         // Register as focusable for click-to-focus and key input
         if let Some(ref on_change) = self.on_change {
-            let handler_ptr =
-                on_change.as_ref() as *const dyn Fn(Box<dyn FnOnce(&mut TextInputState)>, &mut dyn std::any::Any);
+            let handler_ptr = on_change.as_ref()
+                as *const dyn Fn(Box<dyn FnOnce(&mut TextInputState)>, &mut dyn std::any::Any);
 
             // Focus handler
             let focus_handler: Box<dyn Fn(bool, &mut dyn std::any::Any)> =

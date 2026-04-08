@@ -8,7 +8,7 @@ pub use draw::{Border, DrawCommand, DrawList};
 pub use gpu::GpuContext;
 pub use rect_pipeline::RectInstance;
 
-use atlas::{GlyphKey, TextureAtlas};
+use atlas::{GlyphKey, IconKey, TextureAtlas};
 use glyph_pipeline::{GlyphInstance, GlyphPipeline};
 use mozui_platform::PlatformWindow;
 use mozui_style::{Color, Size};
@@ -146,6 +146,58 @@ impl Renderer {
                         border_color,
                         _padding: [0.0; 3],
                     });
+                }
+                DrawCommand::Icon {
+                    name,
+                    bounds,
+                    color,
+                    size_px,
+                } => {
+                    let physical_size = (*size_px * scale) as u16;
+                    let key = IconKey {
+                        name: *name,
+                        size_px: physical_size,
+                    };
+
+                    // Rasterize if not cached
+                    if self.atlas.get_icon(&key).is_none() {
+                        if let Some(alpha_bitmap) =
+                            rasterize_icon_svg(name.svg_data(), physical_size as u32)
+                        {
+                            self.atlas.insert_icon(
+                                &self.gpu.queue,
+                                key,
+                                physical_size as u32,
+                                physical_size as u32,
+                                &alpha_bitmap,
+                            );
+                            self.atlas_dirty = true;
+                        }
+                    }
+
+                    if let Some(region) = self.atlas.get_icon(&key) {
+                        if region.width > 0 && region.height > 0 {
+                            let atlas_size = self.atlas.size as f32;
+                            // Center the icon within the bounds
+                            let icon_w = region.width as f32;
+                            let icon_h = region.height as f32;
+                            let gx = bounds.origin.x * scale
+                                + (bounds.size.width * scale - icon_w) / 2.0;
+                            let gy = bounds.origin.y * scale
+                                + (bounds.size.height * scale - icon_h) / 2.0;
+
+                            glyph_instances.push(GlyphInstance {
+                                bounds: [gx, gy, icon_w, icon_h],
+                                uv: [
+                                    region.x as f32 / atlas_size,
+                                    region.y as f32 / atlas_size,
+                                    (region.x + region.width) as f32 / atlas_size,
+                                    (region.y + region.height) as f32 / atlas_size,
+                                ],
+                                color: color.to_array(),
+                            });
+                        }
+                    }
                 }
                 DrawCommand::Text {
                     text,
@@ -363,4 +415,34 @@ impl Renderer {
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
     }
+}
+
+/// Rasterize an SVG string to an alpha bitmap at the given pixel size.
+/// Returns a Vec<u8> of R8 alpha values, or None on failure.
+fn rasterize_icon_svg(svg_data: &str, size_px: u32) -> Option<Vec<u8>> {
+    // Phosphor icons use currentColor — replace with white so we get full alpha
+    let svg_white = svg_data.replace("currentColor", "white");
+
+    let tree = resvg::usvg::Tree::from_str(&svg_white, &resvg::usvg::Options::default()).ok()?;
+
+    let mut pixmap = tiny_skia::Pixmap::new(size_px, size_px)?;
+
+    let svg_size = tree.size();
+    let scale_x = size_px as f32 / svg_size.width();
+    let scale_y = size_px as f32 / svg_size.height();
+
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale_x, scale_y),
+        &mut pixmap.as_mut(),
+    );
+
+    // Convert RGBA pixmap to R8 alpha channel only
+    let rgba = pixmap.data();
+    let mut alpha = Vec::with_capacity((size_px * size_px) as usize);
+    for pixel in rgba.chunks_exact(4) {
+        alpha.push(pixel[3]); // alpha channel
+    }
+
+    Some(alpha)
 }
