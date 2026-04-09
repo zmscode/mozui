@@ -17,3 +17,4 @@ image = { workspace = true }
 resvg = { workspace = true }
 usvg = { workspace = true }
 tiny-skia = "0.12"
+time = { workspace = true }

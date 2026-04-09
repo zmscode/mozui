@@ -1,11 +1,15 @@
 mod accordion;
+mod alert;
 mod avatar;
 mod badge;
 mod breadcrumb;
 mod button;
+mod card;
 mod checkbox;
-mod color_picker;
 pub(crate) mod collapsible;
+mod color_picker;
+mod command_palette;
+mod date_picker;
 mod description_list;
 mod dialog;
 mod div;
@@ -19,65 +23,97 @@ mod link;
 mod list;
 mod menu;
 mod notification;
+mod number_input;
 mod pagination;
 mod popover;
 mod progress;
 mod radio;
 mod rating;
+mod resizable;
 mod root;
 mod select;
+mod sheet;
+mod sidebar;
 mod skeleton;
-mod table;
 mod slider;
+mod spinner;
 mod stepper;
 mod styled;
 mod switch;
 mod tab;
+mod table;
 mod tag;
 mod text;
 mod text_input;
+mod toggle_group;
 mod tooltip;
+mod tree;
 mod virtual_list;
 
 pub use accordion::{Accordion, AccordionItem, accordion, accordion_item};
+pub use alert::{Alert, AlertVariant, alert};
 pub use avatar::{Avatar, AvatarStatus, avatar};
 pub use badge::{Badge, badge};
 pub use breadcrumb::{Breadcrumb, BreadcrumbItem, breadcrumb, breadcrumb_item};
 pub use button::{Button, ButtonGroup, ButtonVariant, button, button_group, icon_button};
+pub use card::{Card, card};
 pub use checkbox::{Checkbox, checkbox};
-pub use color_picker::{ColorPicker, color_picker};
 pub use collapsible::{CollapsibleContainer, collapsible};
+pub use color_picker::{ColorPicker, color_picker};
+pub use command_palette::{
+    CommandItem, CommandPalette, command_item, command_palette, command_palette_anim,
+};
+pub use date_picker::{
+    Calendar, DatePicker, DateSelection, DisabledMatcher, calendar, date_picker,
+};
 pub use description_list::{DescriptionItem, DescriptionList, description_item, description_list};
 pub use dialog::{DIALOG_ANIM_MS, Dialog, dialog, dialog_anim};
 pub use div::{Div, ScrollOffset, div};
 pub use divider::{Divider, DividerDirection, DividerVariant, divider};
 pub use group_box::{GroupBox, group_box};
 pub use icon::{Icon, icon};
-pub use img::{AnimatedImage, ImageSource, Img, decode_gif_frames, decode_image, decode_image_file, decode_svg, decode_svg_file, img, img_animated};
+pub use img::{
+    AnimatedImage, ImageSource, Img, decode_gif_frames, decode_image, decode_image_file,
+    decode_svg, decode_svg_file, img, img_animated,
+};
 pub use kbd::{Kbd, kbd};
 pub use label::{Label, LabelHighlight, LabelHighlightMode, label};
 pub use link::{Link, link};
 pub use list::{List, ListItem, list, list_item};
 pub use menu::{Menu, MenuItem, menu, menu_item, menu_separator};
-pub use notification::{NOTIFICATION_ANIM_MS, Notification, NotificationPlacement, NotificationType, STACK_GAP as NOTIFICATION_STACK_GAP, notification, notification_anim};
+pub use notification::{
+    NOTIFICATION_ANIM_MS, Notification, NotificationPlacement, NotificationType,
+    STACK_GAP as NOTIFICATION_STACK_GAP, notification, notification_anim,
+};
+pub use number_input::{NumberInput, number_input};
 pub use pagination::{Pagination, pagination};
 pub use popover::{FitMode, Popover};
 pub use progress::{Progress, progress};
 pub use radio::{Radio, radio};
 pub use rating::{Rating, rating};
+pub use resizable::{
+    ResizablePanel, ResizablePanelGroup, ResizeAxis, h_resizable, resizable_panel, v_resizable,
+};
 pub use root::Root;
 pub use select::{Select, SelectOption, select, select_option};
+pub use sheet::{SHEET_ANIM_MS, SheetPlacement, Sheet, sheet, sheet_anim};
+pub use sidebar::{SidebarSide, Sidebar, SidebarGroup, SidebarItem, sidebar, sidebar_group, sidebar_item};
 pub use skeleton::{Skeleton, SkeletonShape, skeleton};
-pub use table::{ColumnWidth, SortDirection, Table, TableColumn, TableRow, table, table_column, table_row};
 pub use slider::{Slider, slider};
+pub use spinner::{Spinner, spinner};
 pub use stepper::{Stepper, StepperItem, stepper};
 pub use styled::{Collapsible, ComponentSize, Disableable, Selectable, Sizable};
 pub use switch::{Switch, switch};
 pub use tab::{Tab, TabBar, TabBarVariant, tab, tab_bar};
+pub use table::{
+    ColumnWidth, SortDirection, Table, TableColumn, TableRow, table, table_column, table_row,
+};
 pub use tag::{Tag, TagVariant, tag};
 pub use text::{Text, text};
 pub use text_input::{TextInput, TextInputState, text_input};
+pub use toggle_group::{ToggleGroup, ToggleItem, toggle_group, toggle_item};
 pub use tooltip::{Tooltip, tooltip};
+pub use tree::{TreeNode, TreeView, tree_node, tree_view};
 pub use virtual_list::{VirtualList, VirtualListDirection};
 
 use mozui_layout::LayoutEngine;
@@ -214,6 +250,8 @@ pub struct InteractionMap {
     // ── Hover regions ──────────────────────────────────────────────
     /// Bounds that trigger re-render on hover (e.g. tooltip anchors).
     hover_regions: Vec<Rect>,
+    // ── Custom cursor regions ────────────────────────────────────
+    cursor_regions: Vec<(Rect, mozui_events::CursorStyle)>,
     // ── Drag-and-drop ─────────────────────────────────────────────
     dnd_sources: Vec<DndSource>,
     dnd_targets: Vec<DndTarget>,
@@ -243,6 +281,7 @@ impl InteractionMap {
             scroll_offset_stack: Vec::new(),
             current_scroll_offset_y: 0.0,
             hover_regions: Vec::new(),
+            cursor_regions: Vec::new(),
             dnd_sources: Vec::new(),
             dnd_targets: Vec::new(),
             active_dnd: None,
@@ -266,6 +305,7 @@ impl InteractionMap {
         self.scroll_offset_stack.clear();
         self.current_scroll_offset_y = 0.0;
         self.hover_regions.clear();
+        self.cursor_regions.clear();
         self.dnd_sources.clear();
         self.dnd_targets.clear();
         // Note: active_dnd persists across clears (drag spans rebuilds)
@@ -334,15 +374,21 @@ impl InteractionMap {
         let adjusted = self.adjust_bounds(bounds);
         self.mouse_pressed
             && adjusted.contains(self.mouse_position)
-            && self.press_origin_bounds.map_or(false, |origin| {
-                origin == adjusted
-            })
+            && self
+                .press_origin_bounds
+                .map_or(false, |origin| origin == adjusted)
     }
 
     /// Register a hover-sensitive region. When the mouse is over any hover region,
     /// the app loop will trigger a re-render (needed for tooltips, etc.).
     pub fn register_hover_region(&mut self, bounds: Rect) {
         self.hover_regions.push(self.adjust_bounds(bounds));
+    }
+
+    /// Register a custom cursor for a region (e.g. resize handles).
+    pub fn register_cursor_region(&mut self, bounds: Rect, cursor: mozui_events::CursorStyle) {
+        self.cursor_regions
+            .push((self.adjust_bounds(bounds), cursor));
     }
 
     // ── Scroll offset transform ───────────────────────────────
@@ -525,9 +571,7 @@ impl InteractionMap {
 
     /// Returns true if a DnD drag is in progress (mouse has moved past threshold).
     pub fn is_dnd_active(&self) -> bool {
-        self.active_dnd
-            .as_ref()
-            .map_or(false, |d| d.activated)
+        self.active_dnd.as_ref().map_or(false, |d| d.activated)
     }
 
     /// Get the source ID of the active DnD session, if any.
@@ -729,14 +773,17 @@ impl InteractionMap {
                 .iter()
                 .rev()
                 .any(|e| e.bounds.contains(position))
-            || self
-                .hover_regions
-                .iter()
-                .any(|r| r.contains(position))
+            || self.hover_regions.iter().any(|r| r.contains(position))
     }
 
     /// Get the appropriate cursor style for a position.
     pub fn cursor_at(&self, position: Point) -> mozui_events::CursorStyle {
+        // Custom cursor regions take priority (resize handles, etc.)
+        for (bounds, cursor) in self.cursor_regions.iter().rev() {
+            if bounds.contains(position) {
+                return *cursor;
+            }
+        }
         // Focusables (text inputs) get text cursor
         if self
             .focusables

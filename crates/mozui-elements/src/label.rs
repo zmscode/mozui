@@ -162,6 +162,10 @@ impl Element for Label {
                 width: length(measured.width),
                 height: length(measured.height),
             },
+            min_size: Size {
+                width: length(0.0),
+                height: auto(),
+            },
             ..Default::default()
         })
     }

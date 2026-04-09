@@ -84,6 +84,10 @@ pub struct DrawList {
     current_offset_y: f32,
     /// Stack of clip rects. Commands outside the top clip rect are discarded.
     clip_stack: Vec<Rect>,
+    /// Stack of opacity multipliers. The effective opacity is the product of all values.
+    opacity_stack: Vec<f32>,
+    /// Current effective opacity (product of all stack entries).
+    current_opacity: f32,
 }
 
 impl DrawList {
@@ -93,6 +97,8 @@ impl DrawList {
             offset_stack: Vec::new(),
             current_offset_y: 0.0,
             clip_stack: Vec::new(),
+            opacity_stack: Vec::new(),
+            current_opacity: 1.0,
         }
     }
 
@@ -132,6 +138,37 @@ impl DrawList {
             }
         }
 
+        // Apply opacity to command colors
+        if self.current_opacity < 1.0 {
+            let opacity = self.current_opacity;
+            match &mut command {
+                DrawCommand::Rect { background, border, shadow, .. } => {
+                    match background {
+                        Fill::Solid(c) => c.a *= opacity,
+                        Fill::LinearGradient { stops, .. } => {
+                            for (_, c) in stops.iter_mut() {
+                                c.a *= opacity;
+                            }
+                        }
+                        Fill::RadialGradient { stops, .. } => {
+                            for (_, c) in stops.iter_mut() {
+                                c.a *= opacity;
+                            }
+                        }
+                    }
+                    if let Some(b) = border {
+                        b.color.a *= opacity;
+                    }
+                    if let Some(s) = shadow {
+                        s.color.a *= opacity;
+                    }
+                }
+                DrawCommand::Text { color, .. } => color.a *= opacity,
+                DrawCommand::Icon { color, .. } => color.a *= opacity,
+                DrawCommand::Image { opacity: img_opacity, .. } => *img_opacity *= opacity,
+            }
+        }
+
         self.commands.push(command);
     }
 
@@ -157,6 +194,20 @@ impl DrawList {
         self.clip_stack.pop();
     }
 
+    /// Push an opacity multiplier. All subsequent commands will have their
+    /// alpha values multiplied by this factor. Nests multiplicatively.
+    pub fn push_opacity(&mut self, opacity: f32) {
+        self.opacity_stack.push(self.current_opacity);
+        self.current_opacity *= opacity.clamp(0.0, 1.0);
+    }
+
+    /// Pop the most recent opacity multiplier, restoring the previous one.
+    pub fn pop_opacity(&mut self) {
+        if let Some(prev) = self.opacity_stack.pop() {
+            self.current_opacity = prev;
+        }
+    }
+
     /// Push a vertical scroll offset. All subsequent `push` calls will have
     /// their Y coordinates shifted by this amount (cumulative with parent offsets).
     pub fn push_scroll_offset(&mut self, offset_y: f32) {
@@ -180,6 +231,8 @@ impl DrawList {
         self.offset_stack.clear();
         self.current_offset_y = 0.0;
         self.clip_stack.clear();
+        self.opacity_stack.clear();
+        self.current_opacity = 1.0;
     }
 
     pub fn is_empty(&self) -> bool {

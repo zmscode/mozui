@@ -39,16 +39,16 @@ GPUI ships production software on all 3 desktop platforms. mozui is macOS-only. 
 
 Remaining rendering gap: custom shaders (Canvas element equivalent).
 
-### Component Library (42 components)
+### Component Library (54 components)
 
 | Category | GPUI | mozui | Details |
 |----------|------|-------|---------|
 | Primitives | div, text, img, svg, canvas | div, text, label, icon, img (5) | GPUI has canvas (custom shaders); mozui has label (styled text) and icon (Phosphor icon atlas) |
-| Form controls | Minimal (div + handlers) | **11 components** | button, button_group, icon_button, checkbox, radio, switch, slider, text_input, rating, **select** (+ combobox), **color_picker** (HSV + alpha) |
-| Data display | Not built-in | **10 components** | badge, tag, kbd, progress, description_list, pagination, **table** (sortable, selectable), virtual_list, **skeleton** (rect/circle/pill), **avatar** (initials, icon, image, status) |
-| Navigation | Not built-in | **4 components** | tab/tab_bar (4 variants), breadcrumb, link, stepper |
-| Layout | Not built-in | **6 components** | accordion, collapsible, group_box, divider (3 variants), list, virtual_list |
-| Overlays | Core feature | **5 components** | dialog (animated), menu, tooltip, popover, notification (animated, 5 types, **6 placements**) |
+| Form controls | Minimal (div + handlers) | **15 components** | button, button_group, icon_button, checkbox, radio, switch, slider, text_input, rating, **select** (+ combobox), **color_picker** (HSV + alpha), **date_picker** (calendar dropdown), **calendar** (standalone grid), **number_input** (±buttons), **toggle_group** (segmented) |
+| Data display | Not built-in | **12 components** | badge, tag, kbd, progress, spinner, description_list, pagination, **table** (sortable, selectable), virtual_list, **skeleton** (rect/circle/pill), **avatar** (initials, icon, image, status), **alert** (4 variants, dismissible) |
+| Navigation | Not built-in | **6 components** | tab/tab_bar (4 variants), breadcrumb, link, stepper, **tree_view** (hierarchical, expand/collapse, icons), **sidebar** (collapsible, groups, icons, active state) |
+| Layout | Not built-in | **9 components** | accordion, collapsible, group_box, divider (3 variants), list, virtual_list, **card** (header/body/footer), **resizable_panel** (drag-to-resize, h/v axis), **sheet** (slide-in overlay, 4 placements, animated) |
+| Overlays | Core feature | **6 components** | dialog (animated), menu, tooltip, popover, notification (animated, 5 types, **6 placements**), **command_palette** (searchable action list, animated) |
 
 Key insight: GPUI provides **low-level primitives** (div, text, img, svg, canvas) and leaves component building to the application (Zed builds its own buttons, tabs, etc.). mozui ships a **component library** out of the box — more accessible for users who want ready-made components.
 
@@ -148,14 +148,24 @@ mozui now has a complete React-style hook system: signals, memo, effects, animat
 - ~~Table/DataGrid (sortable, selectable)~~
 - ~~use_memo / use_effect hooks~~
 - ~~File dialogs (open/save)~~
+- ~~Color picker (HSV + alpha)~~
+- ~~Skeleton/Loading (rect, circle, pill, presets)~~
+- ~~Avatar (initials, icon, image, status indicator)~~
+- ~~Toast positioning (6 placements)~~
+- ~~Spinner (animated icon + label)~~
+- ~~Date picker / Calendar (single, range, disabled dates, month navigation)~~
+- ~~Tree View (hierarchical, expand/collapse, icons)~~
+- ~~Number Input (±buttons, min/max/step/precision)~~
+- ~~Toggle Group (segmented control, exclusive selection)~~
+- ~~Card (header/body/footer container)~~
+- ~~Alert/Banner (info/success/warning/danger, dismissible)~~
+- ~~Command Palette (searchable action list, keyboard highlight, animated)~~
+- ~~Resizable Panel (drag-to-resize, horizontal/vertical axis, min/max constraints)~~
+- ~~Sheet (slide-in overlay panel, 4 placements, animated entrance)~~
+- ~~Sidebar (collapsible, groups, icons, active state, left/right)~~
 
 ### High Priority — Components
-1. **Color picker** — Form control for color selection. Useful for creative/design apps.
-2. **Date picker** — Calendar-based date selection. Common form need.
-3. **Skeleton/Loading** — Placeholder components for async content loading.
-4. **Avatar** — User avatar display with image, initials fallback, status indicator.
-5. **Toast positioning** — Notifications with configurable placement (top/bottom/left/right/center).
-6. **Scroll-to / programmatic scroll** — `cx.scroll_to(offset)` or element-based scroll targeting.
+1. **Scroll-to / programmatic scroll** — `cx.scroll_to(offset)` or element-based scroll targeting.
 
 ### High Priority — Platform & Infrastructure
 7. **Windows platform shell** — Blocks adoption for the largest desktop platform. HWND, DX12/Vulkan backend via wgpu.

@@ -12,12 +12,16 @@ pub use mozui_app::actions;
 // ── Elements ───────────────────────────────────────────────────
 pub use mozui_elements::Root;
 pub use mozui_elements::{Accordion, AccordionItem, accordion, accordion_item};
+pub use mozui_elements::{Alert, AlertVariant, alert};
 pub use mozui_elements::{Avatar, AvatarStatus, avatar};
 pub use mozui_elements::{Badge, badge};
 pub use mozui_elements::{Breadcrumb, BreadcrumbItem, breadcrumb, breadcrumb_item};
 pub use mozui_elements::{Button, ButtonGroup, ButtonVariant, button, button_group, icon_button};
+pub use mozui_elements::{Card, card};
 pub use mozui_elements::{Checkbox, checkbox};
+pub use mozui_elements::{CommandItem, CommandPalette, command_item, command_palette, command_palette_anim};
 pub use mozui_elements::{ColorPicker, color_picker};
+pub use mozui_elements::{Calendar, DatePicker, DateSelection, DisabledMatcher, calendar, date_picker};
 pub use mozui_elements::{Collapsible, ComponentSize, Disableable, Selectable, Sizable};
 pub use mozui_elements::{CollapsibleContainer, collapsible};
 pub use mozui_elements::{DescriptionItem, DescriptionList, description_item, description_list};
@@ -38,19 +42,26 @@ pub use mozui_elements::{Link, link};
 pub use mozui_elements::{List, ListItem, list, list_item};
 pub use mozui_elements::{Menu, MenuItem, menu, menu_item, menu_separator};
 pub use mozui_elements::{NOTIFICATION_ANIM_MS, Notification, NotificationPlacement, NotificationType, NOTIFICATION_STACK_GAP, notification, notification_anim};
+pub use mozui_elements::{NumberInput, number_input};
 pub use mozui_elements::{Pagination, pagination};
 pub use mozui_elements::{Progress, progress};
 pub use mozui_elements::{Radio, radio};
 pub use mozui_elements::{Rating, rating};
+pub use mozui_elements::{ResizeAxis, ResizablePanel, ResizablePanelGroup, h_resizable, resizable_panel, v_resizable};
 pub use mozui_elements::{Select, SelectOption, select, select_option};
+pub use mozui_elements::{SHEET_ANIM_MS, SheetPlacement, Sheet, sheet, sheet_anim};
+pub use mozui_elements::{SidebarSide, Sidebar, SidebarGroup, SidebarItem, sidebar, sidebar_group, sidebar_item};
 pub use mozui_elements::{Skeleton, SkeletonShape, skeleton};
+pub use mozui_elements::{Spinner, spinner};
 pub use mozui_elements::{ColumnWidth, SortDirection, Table, TableColumn, TableRow, table, table_column, table_row};
 pub use mozui_elements::{Slider, slider};
 pub use mozui_elements::{Stepper, StepperItem, stepper};
 pub use mozui_elements::{Switch, switch};
 pub use mozui_elements::{Tab, TabBar, TabBarVariant, tab, tab_bar};
 pub use mozui_elements::{Tag, TagVariant, tag};
+pub use mozui_elements::{ToggleGroup, ToggleItem, toggle_group, toggle_item};
 pub use mozui_elements::{Tooltip, tooltip};
+pub use mozui_elements::{TreeNode, TreeView, tree_node, tree_view};
 pub use mozui_elements::{VirtualList, VirtualListDirection};
 
 // ── Icons ─────────────────────────────────────────────────────
@@ -77,4 +88,5 @@ pub use mozui_style::{
     Size, Style, Theme, ThemeMode,
 };
 
+pub use time;
 pub use tracing_subscriber;
