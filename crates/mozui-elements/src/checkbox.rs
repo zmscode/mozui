@@ -4,6 +4,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 pub struct Checkbox {
@@ -18,7 +19,7 @@ pub struct Checkbox {
     border_color: Color,
     checked_bg: Color,
     label_color: Color,
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
 }
 
 pub fn checkbox(theme: &Theme) -> Checkbox {
@@ -50,7 +51,7 @@ impl Checkbox {
     }
 
     pub fn on_click(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 
@@ -203,10 +204,9 @@ impl Element for Checkbox {
         // Click handler on full bounds
         if !self.disabled {
             if let Some(ref handler) = self.on_click {
-                let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                 cx.interactions.register_click(
                     bounds,
-                    Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
+                    handler.clone(),
                 );
             }
         }

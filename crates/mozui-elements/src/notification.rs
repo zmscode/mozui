@@ -104,7 +104,7 @@ pub struct Notification {
     title: Option<String>,
     message: String,
     icon_override: Option<IconName>,
-    on_dismiss: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_dismiss: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     bg: Color,
     fg: Color,
     accent_color: Color,
@@ -202,7 +202,7 @@ impl Notification {
 
     /// Handler called when the close button is clicked.
     pub fn on_dismiss(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_dismiss = Some(Box::new(handler));
+        self.on_dismiss = Some(Rc::new(handler));
         self
     }
 
@@ -295,7 +295,7 @@ struct NotificationOverlay {
     title: Option<String>,
     message: String,
     icon_override: Option<IconName>,
-    on_dismiss: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_dismiss: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     bg: Color,
     fg: Color,
     accent_color: Color,
@@ -598,10 +598,9 @@ impl Element for NotificationOverlay {
         }
 
         if let Some(ref handler) = self.on_dismiss {
-            let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
             cx.interactions.register_click(
                 close_bounds,
-                Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
+                handler.clone(),
             );
         }
     }

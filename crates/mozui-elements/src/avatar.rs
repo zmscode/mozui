@@ -4,6 +4,7 @@ use mozui_icons::IconName;
 use mozui_layout::LayoutId;
 use mozui_renderer::{DrawCommand, ImageData};
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use std::sync::Arc;
 use taffy::prelude::*;
 
@@ -45,7 +46,7 @@ pub struct Avatar {
     border_color: Color,
     status: Option<AvatarStatus>,
     status_color: Option<Color>,
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     layout_id: LayoutId,
     circle_id: LayoutId,
     dot_id: LayoutId,
@@ -115,7 +116,7 @@ impl Avatar {
 
     /// Set a click handler.
     pub fn on_click(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 
@@ -268,9 +269,8 @@ impl Element for Avatar {
 
         // Click handler
         if let Some(ref handler) = self.on_click {
-            let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
             cx.interactions
-                .register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+                .register_click(bounds, handler.clone());
             cx.interactions.register_hover_region(bounds);
         }
 

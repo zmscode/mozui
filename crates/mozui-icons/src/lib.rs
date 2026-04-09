@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 // Phosphor Icons — https://phosphoricons.com/ — MIT License
 // Auto-generated. 1512 icons across 6 weights.
 

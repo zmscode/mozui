@@ -3,6 +3,7 @@ use mozui_events;
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 /// Persistent state for a text input, stored in a signal.
@@ -33,7 +34,7 @@ impl TextInputState {
     }
 }
 
-type StateUpdater = Box<dyn Fn(Box<dyn FnOnce(&mut TextInputState)>, &mut dyn std::any::Any)>;
+type StateUpdater = Rc<dyn Fn(Box<dyn FnOnce(&mut TextInputState)>, &mut dyn std::any::Any)>;
 
 pub struct TextInput {
     // Current snapshot (read from signal by user)
@@ -95,7 +96,7 @@ impl TextInput {
         mut self,
         handler: impl Fn(Box<dyn FnOnce(&mut TextInputState)>, &mut dyn std::any::Any) + 'static,
     ) -> Self {
-        self.on_change = Some(Box::new(handler));
+        self.on_change = Some(Rc::new(handler));
         self
     }
 
@@ -241,13 +242,11 @@ impl Element for TextInput {
 
         // Register as focusable for click-to-focus and key input
         if let Some(ref on_change) = self.on_change {
-            let handler_ptr = on_change.as_ref()
-                as *const dyn Fn(Box<dyn FnOnce(&mut TextInputState)>, &mut dyn std::any::Any);
-
             // Focus handler
-            let focus_handler: Box<dyn Fn(bool, &mut dyn std::any::Any)> =
-                Box::new(move |focused, cx_any| unsafe {
-                    (*handler_ptr)(
+            let h_focus = on_change.clone();
+            let focus_handler: Rc<dyn Fn(bool, &mut dyn std::any::Any)> =
+                Rc::new(move |focused, cx_any| {
+                    h_focus(
                         Box::new(move |s| {
                             s.focused = focused;
                             if focused {
@@ -259,10 +258,11 @@ impl Element for TextInput {
                 });
 
             // Key handler
-            let key_handler: Box<
+            let h_key = on_change.clone();
+            let key_handler: Rc<
                 dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any),
-            > = Box::new(move |key, mods, cx_any| unsafe {
-                (*handler_ptr)(
+            > = Rc::new(move |key, mods, cx_any| {
+                h_key(
                     Box::new(move |s| {
                         handle_key_input(s, key, mods);
                     }),

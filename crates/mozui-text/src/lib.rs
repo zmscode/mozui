@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 mod font_system;
 pub mod shaping;
 

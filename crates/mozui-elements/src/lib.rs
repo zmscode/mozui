@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 mod accordion;
 mod alert;
 mod avatar;
@@ -129,6 +131,7 @@ pub use mozui_layout::cache::{LayoutCache, LayoutCacheKey};
 use mozui_layout::LayoutEngine;
 use mozui_renderer::DrawList;
 use mozui_style::{Placement, Point, Rect, Size};
+use std::rc::Rc;
 use mozui_text::FontSystem;
 
 /// A node in the UI element tree.
@@ -356,16 +359,16 @@ impl<'a> PaintContext<'a> {
 }
 
 /// Stored click handler — captures signal setters etc.
-type ClickHandler = Box<dyn Fn(&mut dyn std::any::Any)>;
-type KeyHandler = Box<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>;
+type ClickHandler = Rc<dyn Fn(&mut dyn std::any::Any)>;
+type KeyHandler = Rc<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>;
 /// Drag handler receives the current mouse position (x, y) in absolute coordinates.
-type DragHandler = Box<dyn Fn(Point, &mut dyn std::any::Any)>;
+type DragHandler = Rc<dyn Fn(Point, &mut dyn std::any::Any)>;
 /// Scroll handler receives (delta_x, delta_y) in pixels.
-type ScrollHandler = Box<dyn Fn(f32, f32, &mut dyn std::any::Any)>;
+type ScrollHandler = Rc<dyn Fn(f32, f32, &mut dyn std::any::Any)>;
 /// Drop handler receives (source_id, mouse position) when an item is dropped.
-type DropHandler = Box<dyn Fn(DragId, Point, &mut dyn std::any::Any)>;
+type DropHandler = Rc<dyn Fn(DragId, Point, &mut dyn std::any::Any)>;
 /// Right-click handler receives the mouse position where the context menu should appear.
-type RightClickHandler = Box<dyn Fn(Point, &mut dyn std::any::Any)>;
+type RightClickHandler = Rc<dyn Fn(Point, &mut dyn std::any::Any)>;
 
 /// Unique identifier for a drag source, used to match sources with compatible targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -387,7 +390,7 @@ struct RightClickEntry {
 struct FocusableEntry {
     id: usize,
     bounds: Rect,
-    on_focus: Box<dyn Fn(bool, &mut dyn std::any::Any)>,
+    on_focus: Rc<dyn Fn(bool, &mut dyn std::any::Any)>,
     on_key: KeyHandler,
 }
 
@@ -719,12 +722,12 @@ impl InteractionMap {
         &mut self,
         id: DragId,
         bounds: Rect,
-        on_drop: impl Fn(DragId, Point, &mut dyn std::any::Any) + 'static,
+        on_drop: DropHandler,
     ) {
         self.dnd_targets.push(DndTarget {
             id,
             bounds: self.adjust_bounds(bounds),
-            on_drop: Box::new(on_drop),
+            on_drop,
         });
     }
 
@@ -899,7 +902,7 @@ impl InteractionMap {
     pub fn register_focusable(
         &mut self,
         bounds: Rect,
-        on_focus: Box<dyn Fn(bool, &mut dyn std::any::Any)>,
+        on_focus: Rc<dyn Fn(bool, &mut dyn std::any::Any)>,
         on_key: KeyHandler,
     ) -> usize {
         let id = self.next_focus_id;

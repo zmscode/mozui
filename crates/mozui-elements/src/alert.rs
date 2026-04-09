@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 const PAD_X: f32 = 16.0;
@@ -76,7 +77,7 @@ pub struct Alert {
     title: String,
     description: Option<String>,
     dismissible: bool,
-    on_dismiss: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_dismiss: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     colors: AlertColors,
     muted_fg: Color,
     corner_radius: f32,
@@ -116,7 +117,7 @@ impl Alert {
 
     pub fn dismissible(mut self, on_dismiss: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
         self.dismissible = true;
-        self.on_dismiss = Some(Box::new(on_dismiss));
+        self.on_dismiss = Some(Rc::new(on_dismiss));
         self
     }
 }
@@ -297,9 +298,8 @@ impl Element for Alert {
             });
 
             if let Some(ref on_dismiss) = self.on_dismiss {
-                let ptr = on_dismiss.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                 cx.interactions
-                    .register_click(close_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
+                    .register_click(close_bounds, on_dismiss.clone());
                 cx.interactions.register_hover_region(close_bounds);
             }
         }

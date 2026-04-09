@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 mod actions;
 mod app;
 mod context;

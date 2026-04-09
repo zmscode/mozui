@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 /// A single item in a menu — either a clickable entry or a separator.
@@ -12,7 +13,7 @@ pub enum MenuItem {
         icon: Option<IconName>,
         shortcut: Option<String>,
         disabled: bool,
-        on_select: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+        on_select: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     },
     Separator,
 }
@@ -70,7 +71,7 @@ impl MenuItem {
             ..
         } = self
         {
-            *h = Some(Box::new(handler));
+            *h = Some(Rc::new(handler));
         }
         self
     }
@@ -92,7 +93,7 @@ pub struct Menu {
     item_ids: Vec<LayoutId>,
 
     items: Vec<MenuItem>,
-    on_dismiss: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_dismiss: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     bg: Color,
     fg: Color,
     muted_fg: Color,
@@ -141,7 +142,7 @@ impl Menu {
 
     /// Handler called when the menu should close (Escape or selection).
     pub fn on_dismiss(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_dismiss = Some(Box::new(handler));
+        self.on_dismiss = Some(Rc::new(handler));
         self
     }
 
@@ -309,10 +310,10 @@ impl Element for Menu {
 
         // Register escape key handler
         if let Some(ref handler) = self.on_dismiss {
-            let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            cx.interactions.register_key_handler(Box::new(move |key, _mods, cx| {
+            let h = handler.clone();
+            cx.interactions.register_key_handler(Rc::new(move |key, _mods, cx| {
                 if key == mozui_events::Key::Escape {
-                    unsafe { (*handler_ptr)(cx) };
+                    h(cx);
                 }
             }));
         }
@@ -394,23 +395,21 @@ impl Element for Menu {
                     // Click handler
                     if !*disabled {
                         if let Some(handler) = on_select {
-                            let handler_ptr =
-                                handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                             // If on_dismiss is set, call both the item handler and dismiss
                             if let Some(ref dismiss) = self.on_dismiss {
-                                let dismiss_ptr =
-                                    dismiss.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
+                                let h = handler.clone();
+                                let d = dismiss.clone();
                                 cx.interactions.register_click(
                                     row_bounds,
-                                    Box::new(move |cx| unsafe {
-                                        (*handler_ptr)(cx);
-                                        (*dismiss_ptr)(cx);
+                                    Rc::new(move |cx: &mut dyn std::any::Any| {
+                                        h(cx);
+                                        d(cx);
                                     }),
                                 );
                             } else {
                                 cx.interactions.register_click(
                                     row_bounds,
-                                    Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
+                                    handler.clone(),
                                 );
                             }
                         }

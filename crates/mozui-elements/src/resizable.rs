@@ -3,6 +3,7 @@ use mozui_events::CursorStyle;
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Point, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 const HANDLE_SIZE: f32 = 1.0;
@@ -67,7 +68,7 @@ pub struct ResizablePanelGroup {
     axis: ResizeAxis,
     panels: Vec<ResizablePanel>,
     sizes: Vec<f32>,
-    on_resize: Option<Box<dyn Fn(Vec<f32>, &mut dyn std::any::Any)>>,
+    on_resize: Option<Rc<dyn Fn(Vec<f32>, &mut dyn std::any::Any)>>,
     handle_color: Color,
     handle_hover_color: Color,
     layout_id: LayoutId,
@@ -115,7 +116,7 @@ impl ResizablePanelGroup {
     }
 
     pub fn on_resize(mut self, f: impl Fn(Vec<f32>, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_resize = Some(Box::new(f));
+        self.on_resize = Some(Rc::new(f));
         self
     }
 
@@ -327,8 +328,7 @@ impl Element for ResizablePanelGroup {
                 cx.interactions.register_hover_region(hit_bounds);
 
                 if let Some(ref on_resize) = self.on_resize {
-                    let ptr =
-                        on_resize.as_ref() as *const dyn Fn(Vec<f32>, &mut dyn std::any::Any);
+                    let h = on_resize.clone();
                     let panel_idx = i;
                     let axis = self.axis;
                     let sizes = actual_sizes.clone();
@@ -341,7 +341,7 @@ impl Element for ResizablePanelGroup {
 
                     cx.interactions.register_drag_handler(
                         hit_bounds,
-                        Box::new(move |pos: Point, cx| {
+                        Rc::new(move |pos: Point, cx: &mut dyn std::any::Any| {
                             let mouse = match axis {
                                 ResizeAxis::Horizontal => pos.x,
                                 ResizeAxis::Vertical => pos.y,
@@ -362,7 +362,7 @@ impl Element for ResizablePanelGroup {
                             ns[li] += actual;
                             ns[panel_idx] = new_right;
 
-                            unsafe { (*ptr)(ns, cx) };
+                            h(ns, cx);
                         }),
                     );
                 }

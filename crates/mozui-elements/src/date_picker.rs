@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 use time::{Date, Month};
 
@@ -110,8 +111,8 @@ pub struct Calendar {
     view_month: Month,
     today: Option<Date>,
     disabled: Vec<DisabledMatcher>,
-    on_select: Option<Box<dyn Fn(Date, &mut dyn std::any::Any)>>,
-    on_nav: Option<Box<dyn Fn(i32, Month, &mut dyn std::any::Any)>>,
+    on_select: Option<Rc<dyn Fn(Date, &mut dyn std::any::Any)>>,
+    on_nav: Option<Rc<dyn Fn(i32, Month, &mut dyn std::any::Any)>>,
     // Theme colors
     bg: Color,
     fg: Color,
@@ -183,13 +184,13 @@ impl Calendar {
     }
 
     pub fn on_select(mut self, f: impl Fn(Date, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_select = Some(Box::new(f));
+        self.on_select = Some(Rc::new(f));
         self
     }
 
     /// Called when prev/next month buttons are clicked. Args: (year, month, cx).
     pub fn on_nav(mut self, f: impl Fn(i32, Month, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_nav = Some(Box::new(f));
+        self.on_nav = Some(Rc::new(f));
         self
     }
 
@@ -436,10 +437,10 @@ impl Element for Calendar {
         });
         if let Some(ref nav) = self.on_nav {
             let (y, m) = self.prev_month();
-            let nav_ptr = nav.as_ref() as *const dyn Fn(i32, Month, &mut dyn std::any::Any);
+            let h = nav.clone();
             cx.interactions.register_click(
                 prev_bounds,
-                Box::new(move |cx| unsafe { (*nav_ptr)(y, m, cx) }),
+                Rc::new(move |cx: &mut dyn std::any::Any| { h(y, m, cx) }),
             );
         }
 
@@ -482,10 +483,10 @@ impl Element for Calendar {
         });
         if let Some(ref nav) = self.on_nav {
             let (y, m) = self.next_month();
-            let nav_ptr = nav.as_ref() as *const dyn Fn(i32, Month, &mut dyn std::any::Any);
+            let h = nav.clone();
             cx.interactions.register_click(
                 next_bounds,
-                Box::new(move |cx| unsafe { (*nav_ptr)(y, m, cx) }),
+                Rc::new(move |cx: &mut dyn std::any::Any| { h(y, m, cx) }),
             );
         }
 
@@ -588,10 +589,10 @@ impl Element for Calendar {
                 // Click handler
                 if !is_disabled && in_current_month {
                     if let Some(ref on_select) = self.on_select {
-                        let ptr = on_select.as_ref() as *const dyn Fn(Date, &mut dyn std::any::Any);
+                        let h = on_select.clone();
                         cx.interactions.register_click(
                             cell_bounds,
-                            Box::new(move |cx| unsafe { (*ptr)(date, cx) }),
+                            Rc::new(move |cx: &mut dyn std::any::Any| { h(date, cx) }),
                         );
                     }
                     cx.interactions.register_hover_region(cell_bounds);
@@ -623,7 +624,7 @@ pub struct DatePicker {
     calendar: Calendar,
     placeholder: String,
     open: bool,
-    on_toggle: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_toggle: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     // Theme colors (trigger)
     trigger_bg: Color,
     trigger_fg: Color,
@@ -703,17 +704,17 @@ impl DatePicker {
     }
 
     pub fn on_select(mut self, f: impl Fn(Date, &mut dyn std::any::Any) + 'static) -> Self {
-        self.calendar.on_select = Some(Box::new(f));
+        self.calendar.on_select = Some(Rc::new(f));
         self
     }
 
     pub fn on_nav(mut self, f: impl Fn(i32, Month, &mut dyn std::any::Any) + 'static) -> Self {
-        self.calendar.on_nav = Some(Box::new(f));
+        self.calendar.on_nav = Some(Rc::new(f));
         self
     }
 
     pub fn on_toggle(mut self, f: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_toggle = Some(Box::new(f));
+        self.on_toggle = Some(Rc::new(f));
         self
     }
 
@@ -864,10 +865,9 @@ impl DatePicker {
 
         // Click to toggle
         if let Some(ref toggle) = self.on_toggle {
-            let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
             cx.interactions.register_click(
                 trigger_bounds,
-                Box::new(move |cx| unsafe { (*toggle_ptr)(cx) }),
+                toggle.clone(),
             );
         }
     }
@@ -917,10 +917,10 @@ impl Element for DatePicker {
 
             // Escape to close
             if let Some(ref toggle) = self.on_toggle {
-                let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                cx.interactions.register_key_handler(Box::new(move |key, _mods, cx| {
+                let t = toggle.clone();
+                cx.interactions.register_key_handler(Rc::new(move |key, _mods, cx| {
                     if key == mozui_events::Key::Escape {
-                        unsafe { (*toggle_ptr)(cx) };
+                        t(cx);
                     }
                 }));
             }

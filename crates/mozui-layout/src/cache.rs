@@ -1,5 +1,6 @@
 use crate::LayoutId;
 use std::collections::HashMap;
+use std::fmt::Write;
 
 /// Cache key for a layout subtree. Composed of a style hash
 /// (from the taffy Style bytes) and a children hash (from child LayoutIds).
@@ -70,27 +71,26 @@ impl LayoutCache {
     }
 }
 
-/// Hash a taffy Style by treating it as raw bytes (FNV-1a).
-/// Padding bytes may cause false misses but never false hits.
+/// Hash a taffy Style via its Debug representation (FNV-1a).
+/// taffy::Style doesn't implement Hash (its fields contain f32),
+/// so we hash the deterministic Debug output instead.
 pub fn hash_style(style: &taffy::Style) -> u64 {
-    let bytes = unsafe {
-        std::slice::from_raw_parts(
-            style as *const taffy::Style as *const u8,
-            std::mem::size_of::<taffy::Style>(),
-        )
-    };
-    fnv1a(bytes)
+    let mut buf = String::new();
+    let _ = write!(buf, "{:?}", style);
+    fnv1a(buf.as_bytes())
 }
 
 /// Hash a slice of child LayoutIds into a children_hash.
 pub fn hash_children(children: &[LayoutId]) -> u64 {
-    let bytes = unsafe {
-        std::slice::from_raw_parts(
-            children.as_ptr() as *const u8,
-            children.len() * std::mem::size_of::<LayoutId>(),
-        )
-    };
-    fnv1a(bytes)
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for child in children {
+        let id = child.0 as u64;
+        for &b in &id.to_ne_bytes() {
+            hash ^= b as u64;
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    hash
 }
 
 fn fnv1a(bytes: &[u8]) -> u64 {

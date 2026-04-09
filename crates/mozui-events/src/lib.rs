@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use mozui_style::{Point, Size};
 
 /// Unique identifier for a window.

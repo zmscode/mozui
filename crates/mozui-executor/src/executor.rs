@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use std::task::{Context, Poll, Wake, Waker};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TaskId(usize);
@@ -90,10 +90,7 @@ impl Executor {
 
 // Simple waker implementation that pushes task ID to wake queue
 fn make_waker(id: TaskId, wake_queue: Arc<Mutex<VecDeque<TaskId>>>) -> Waker {
-    let data = Arc::new(WakerData { id, wake_queue });
-    let raw = Arc::into_raw(data) as *const ();
-    let vtable = &WAKER_VTABLE;
-    unsafe { Waker::from_raw(RawWaker::new(raw, vtable)) }
+    Waker::from(Arc::new(WakerData { id, wake_queue }))
 }
 
 struct WakerData {
@@ -101,32 +98,14 @@ struct WakerData {
     wake_queue: Arc<Mutex<VecDeque<TaskId>>>,
 }
 
-const WAKER_VTABLE: RawWakerVTable =
-    RawWakerVTable::new(waker_clone, waker_wake, waker_wake_by_ref, waker_drop);
-
-unsafe fn waker_clone(data: *const ()) -> RawWaker {
-    let arc = unsafe { Arc::from_raw(data as *const WakerData) };
-    let cloned = arc.clone();
-    std::mem::forget(arc);
-    let ptr = Arc::into_raw(cloned) as *const ();
-    RawWaker::new(ptr, &WAKER_VTABLE)
-}
-
-unsafe fn waker_wake(data: *const ()) {
-    let arc = unsafe { Arc::from_raw(data as *const WakerData) };
-    let mut queue = arc.wake_queue.lock().unwrap();
-    queue.push_back(arc.id);
-}
-
-unsafe fn waker_wake_by_ref(data: *const ()) {
-    let arc = unsafe { Arc::from_raw(data as *const WakerData) };
-    {
-        let mut queue = arc.wake_queue.lock().unwrap();
-        queue.push_back(arc.id);
+impl Wake for WakerData {
+    fn wake(self: Arc<Self>) {
+        let mut queue = self.wake_queue.lock().unwrap();
+        queue.push_back(self.id);
     }
-    std::mem::forget(arc);
-}
 
-unsafe fn waker_drop(data: *const ()) {
-    let _arc = unsafe { Arc::from_raw(data as *const WakerData) };
+    fn wake_by_ref(self: &Arc<Self>) {
+        let mut queue = self.wake_queue.lock().unwrap();
+        queue.push_back(self.id);
+    }
 }

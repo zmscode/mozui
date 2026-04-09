@@ -4,6 +4,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 pub struct Pagination {
@@ -22,7 +23,7 @@ pub struct Pagination {
     active_fg: Color,
     hover_bg: Color,
     border_color: Color,
-    on_click: Option<Box<dyn Fn(usize, &mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(usize, &mut dyn std::any::Any)>>,
 }
 
 pub fn pagination(theme: &Theme) -> Pagination {
@@ -66,7 +67,7 @@ impl Pagination {
     }
 
     pub fn on_click(mut self, handler: impl Fn(usize, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 
@@ -267,7 +268,7 @@ impl Element for Pagination {
                             is_active: bool,
                             enabled: bool,
                             button_ids: &[LayoutId],
-                            on_click: &Option<Box<dyn Fn(usize, &mut dyn std::any::Any)>>,
+                            on_click: &Option<Rc<dyn Fn(usize, &mut dyn std::any::Any)>>,
                             fg: Color,
                             active_bg: Color,
                             active_fg: Color,
@@ -348,11 +349,10 @@ impl Element for Pagination {
             // Click handler
             if enabled {
                 if let (Some(page), Some(handler)) = (page, on_click) {
-                    let handler_ptr =
-                        handler.as_ref() as *const dyn Fn(usize, &mut dyn std::any::Any);
+                    let h = handler.clone();
                     cx.interactions.register_click(
                         bounds,
-                        Box::new(move |cx| unsafe { (*handler_ptr)(page, cx) }),
+                        Rc::new(move |cx: &mut dyn std::any::Any| { h(page, cx) }),
                     );
                 }
             }

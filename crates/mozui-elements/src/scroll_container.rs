@@ -3,6 +3,7 @@ use crate::{Element, LayoutContext, PaintContext};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use std::cell::Cell;
 use taffy::Overflow;
 use taffy::prelude::*;
@@ -234,7 +235,7 @@ impl Element for ScrollContainer {
             let scroll_clone = scroll.clone();
             cx.interactions.register_scroll_region(
                 bounds,
-                Box::new(move |_dx, dy, _cx| {
+                Rc::new(move |_dx, dy, _cx: &mut dyn std::any::Any| {
                     scroll_clone.scroll_by(dy, max_scroll);
                 }),
             );

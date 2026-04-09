@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 const INPUT_HEIGHT: f32 = 34.0;
@@ -19,7 +20,7 @@ pub struct NumberInput {
     precision: usize,
     disabled: bool,
     width: f32,
-    on_change: Option<Box<dyn Fn(f64, &mut dyn std::any::Any)>>,
+    on_change: Option<Rc<dyn Fn(f64, &mut dyn std::any::Any)>>,
     // Theme
     bg: Color,
     fg: Color,
@@ -94,7 +95,7 @@ impl NumberInput {
     }
 
     pub fn on_change(mut self, f: impl Fn(f64, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_change = Some(Box::new(f));
+        self.on_change = Some(Rc::new(f));
         self
     }
 
@@ -296,21 +297,21 @@ impl Element for NumberInput {
         // Click handlers
         if !self.disabled {
             if let Some(ref on_change) = self.on_change {
-                let ptr = on_change.as_ref() as *const dyn Fn(f64, &mut dyn std::any::Any);
-
                 if self.can_decrement() {
+                    let h = on_change.clone();
                     let new_val = (self.value - self.step).max(self.min);
                     cx.interactions.register_click(
                         dec_bounds,
-                        Box::new(move |cx| unsafe { (*ptr)(new_val, cx) }),
+                        Rc::new(move |cx: &mut dyn std::any::Any| { h(new_val, cx) }),
                     );
                 }
 
                 if self.can_increment() {
+                    let h = on_change.clone();
                     let new_val = (self.value + self.step).min(self.max);
                     cx.interactions.register_click(
                         inc_bounds,
-                        Box::new(move |cx| unsafe { (*ptr)(new_val, cx) }),
+                        Rc::new(move |cx: &mut dyn std::any::Any| { h(new_val, cx) }),
                     );
                 }
             }

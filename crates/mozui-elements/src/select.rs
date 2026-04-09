@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 /// A single option in a select dropdown.
@@ -53,8 +54,8 @@ pub struct Select {
     selected_value: Option<String>,
     placeholder: String,
     open: bool,
-    on_select: Option<Box<dyn Fn(&str, &mut dyn std::any::Any)>>,
-    on_toggle: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_select: Option<Rc<dyn Fn(&str, &mut dyn std::any::Any)>>,
+    on_toggle: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     // Theme colors
     bg: Color,
     fg: Color,
@@ -135,12 +136,12 @@ impl Select {
     }
 
     pub fn on_select(mut self, handler: impl Fn(&str, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_select = Some(Box::new(handler));
+        self.on_select = Some(Rc::new(handler));
         self
     }
 
     pub fn on_toggle(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_toggle = Some(Box::new(handler));
+        self.on_toggle = Some(Rc::new(handler));
         self
     }
 
@@ -497,23 +498,23 @@ impl Element for Select {
             if !filtered[i].disabled {
                 if let Some(ref handler) = self.on_select {
                     let value = filtered[i].value.clone();
-                    let handler_ptr =
-                        handler.as_ref() as *const dyn Fn(&str, &mut dyn std::any::Any);
                     // Also dismiss on select
                     if let Some(ref toggle) = self.on_toggle {
-                        let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
+                        let h = handler.clone();
+                        let t = toggle.clone();
                         cx.interactions.register_click(
                             item_bounds,
-                            Box::new(move |cx| unsafe {
-                                (*handler_ptr)(&value, cx);
-                                (*toggle_ptr)(cx);
+                            Rc::new(move |cx: &mut dyn std::any::Any| {
+                                h(&value, cx);
+                                t(cx);
                             }),
                         );
                     } else {
+                        let h = handler.clone();
                         cx.interactions.register_click(
                             item_bounds,
-                            Box::new(move |cx| unsafe {
-                                (*handler_ptr)(&value, cx);
+                            Rc::new(move |cx: &mut dyn std::any::Any| {
+                                h(&value, cx);
                             }),
                         );
                     }
@@ -523,11 +524,11 @@ impl Element for Select {
 
         // Escape to close
         if let Some(ref toggle) = self.on_toggle {
-            let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
+            let t = toggle.clone();
             cx.interactions
-                .register_key_handler(Box::new(move |key, _mods, cx| {
+                .register_key_handler(Rc::new(move |key, _mods, cx| {
                     if key == mozui_events::Key::Escape {
-                        unsafe { (*toggle_ptr)(cx) };
+                        t(cx);
                     }
                 }));
         }
@@ -608,10 +609,9 @@ impl Select {
         // Click handler to toggle
         if !self.disabled {
             if let Some(ref toggle) = self.on_toggle {
-                let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                 cx.interactions.register_click(
                     trigger_bounds,
-                    Box::new(move |cx| unsafe { (*toggle_ptr)(cx) }),
+                    toggle.clone(),
                 );
             }
         }

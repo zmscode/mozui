@@ -2,7 +2,7 @@ use crate::{DeferredPosition, Element, LayoutContext, PaintContext};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::animation::{Animated, Transition};
-use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
+use mozui_style::{Color, Corners, Fill, Point, Rect, Shadow, Theme};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -36,7 +36,7 @@ pub struct Sheet {
     title: Option<Box<dyn Element>>,
     footer: Option<Box<dyn Element>>,
     overlay: bool,
-    on_close: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_close: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     bg: Color,
     border_color: Color,
     overlay_color: Color,
@@ -97,7 +97,7 @@ impl Sheet {
     }
 
     pub fn on_close(mut self, f: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_close = Some(Box::new(f));
+        self.on_close = Some(Rc::new(f));
         self
     }
 
@@ -160,7 +160,7 @@ struct SheetOverlay {
     title: Option<Box<dyn Element>>,
     footer: Option<Box<dyn Element>>,
     overlay: bool,
-    on_close: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_close: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     bg: Color,
     border_color: Color,
     overlay_color: Color,
@@ -302,13 +302,12 @@ impl Element for SheetOverlay {
             // Block all interaction behind the overlay
             cx.interactions.register_hover_region(overlay_bounds);
             cx.interactions
-                .register_drag_handler(overlay_bounds, Box::new(|_pos, _cx| {}));
+                .register_drag_handler(overlay_bounds, Rc::new(|_pos: Point, _cx: &mut dyn std::any::Any| {}));
 
             // Click overlay to close
             if let Some(ref on_close) = self.on_close {
-                let ptr = on_close.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                 cx.interactions
-                    .register_click(overlay_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
+                    .register_click(overlay_bounds, on_close.clone());
             }
         }
 
@@ -361,7 +360,7 @@ impl Element for SheetOverlay {
 
         // Prevent overlay click from firing when clicking inside panel
         cx.interactions
-            .register_click(panel_bounds, Box::new(|_| {}));
+            .register_click(panel_bounds, Rc::new(|_: &mut dyn std::any::Any| {}));
 
         // Clip and fade entire panel uniformly
         cx.draw_list.push_clip(panel_bounds);

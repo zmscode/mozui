@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 // ── App framework ──────────────────────────────────────────────
 pub use mozui_app::history::{History, HistoryItem};
 pub use mozui_app::{Action, App, Context, KeyCombo, KeybindingRegistry, TimerId};

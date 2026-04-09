@@ -3,12 +3,13 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 pub struct BreadcrumbItem {
     label: String,
     icon: Option<IconName>,
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
 }
 
 pub fn breadcrumb_item(label: impl Into<String>) -> BreadcrumbItem {
@@ -26,7 +27,7 @@ impl BreadcrumbItem {
     }
 
     pub fn on_click(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 }
@@ -214,10 +215,9 @@ impl Element for Breadcrumb {
             // Click handler (not on last item)
             if !is_last {
                 if let Some(ref handler) = item.on_click {
-                    let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                     cx.interactions.register_click(
                         text_bounds,
-                        Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
+                        handler.clone(),
                     );
                 }
             }

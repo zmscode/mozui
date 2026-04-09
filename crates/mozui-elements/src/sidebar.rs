@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 const EXPANDED_WIDTH: f32 = 240.0;
@@ -28,7 +29,7 @@ pub struct SidebarItem {
     icon: Option<IconName>,
     active: bool,
     disabled: bool,
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
 }
 
 pub fn sidebar_item(id: impl Into<String>, label: impl Into<String>) -> SidebarItem {
@@ -59,7 +60,7 @@ impl SidebarItem {
     }
 
     pub fn on_click(mut self, f: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(f));
+        self.on_click = Some(Rc::new(f));
         self
     }
 }
@@ -110,7 +111,7 @@ pub struct Sidebar {
     side: SidebarSide,
     width_factor: f32,
     groups: Vec<SidebarGroup>,
-    on_toggle: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_toggle: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     header: Option<Box<dyn Element>>,
     footer: Option<Box<dyn Element>>,
     // Theme
@@ -169,7 +170,7 @@ impl Sidebar {
 
     /// Toggle button callback. An icon button is drawn at the bottom of the sidebar.
     pub fn on_toggle(mut self, f: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_toggle = Some(Box::new(f));
+        self.on_toggle = Some(Rc::new(f));
         self
     }
 
@@ -431,9 +432,8 @@ impl Element for Sidebar {
 
                 if !item.disabled {
                     if let Some(ref on_click) = item.on_click {
-                        let ptr = on_click.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                         cx.interactions
-                            .register_click(item_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
+                            .register_click(item_bounds, on_click.clone());
                     }
                     cx.interactions.register_hover_region(item_bounds);
                 }
@@ -499,8 +499,7 @@ impl Element for Sidebar {
                 });
             }
 
-            let ptr = on_toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            cx.interactions.register_click(btn_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
+            cx.interactions.register_click(btn_bounds, on_toggle.clone());
             cx.interactions.register_hover_region(btn_bounds);
         }
 

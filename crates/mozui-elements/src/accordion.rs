@@ -5,6 +5,7 @@ use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use std::cell::Cell;
+use std::rc::Rc;
 use taffy::Overflow;
 use taffy::prelude::*;
 
@@ -16,7 +17,7 @@ pub struct AccordionItem {
     height_factor: f32,
     disabled: bool,
     children: Vec<Box<dyn Element>>,
-    on_toggle: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_toggle: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     /// Remembers content height for animation calculations.
     content_height: Cell<f32>,
 }
@@ -52,7 +53,7 @@ impl AccordionItem {
     }
 
     pub fn on_toggle(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_toggle = Some(Box::new(handler));
+        self.on_toggle = Some(Rc::new(handler));
         self
     }
 
@@ -394,10 +395,9 @@ impl Element for Accordion {
             // Click handler on header
             if !self.items[i].disabled {
                 if let Some(ref handler) = self.items[i].on_toggle {
-                    let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                     cx.interactions.register_click(
                         header_bounds,
-                        Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
+                        handler.clone(),
                     );
                 }
             }

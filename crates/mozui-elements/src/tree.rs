@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 const INDENT: f32 = 20.0;
@@ -19,8 +20,8 @@ pub struct TreeNode {
     expanded: bool,
     selected: bool,
     children: Vec<TreeNode>,
-    on_toggle: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_toggle: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
 }
 
 pub fn tree_node(label: impl Into<String>) -> TreeNode {
@@ -62,12 +63,12 @@ impl TreeNode {
     }
 
     pub fn on_toggle(mut self, f: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_toggle = Some(Box::new(f));
+        self.on_toggle = Some(Rc::new(f));
         self
     }
 
     pub fn on_click(mut self, f: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(f));
+        self.on_click = Some(Rc::new(f));
         self
     }
 
@@ -296,13 +297,11 @@ impl TreeView {
         // Click handler — register on content area, not full row
         if node.is_branch() {
             if let Some(ref on_toggle) = node.on_toggle {
-                let ptr = on_toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                 cx.interactions
-                    .register_click(content_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
+                    .register_click(content_bounds, on_toggle.clone());
             }
         } else if let Some(ref on_click) = node.on_click {
-            let ptr = on_click.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            cx.interactions.register_click(content_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
+            cx.interactions.register_click(content_bounds, on_click.clone());
         }
 
         cx.interactions.register_hover_region(content_bounds);

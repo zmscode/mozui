@@ -5,6 +5,7 @@ use mozui_style::{Color, Corners, Fill, Point, Rect, Theme};
 use taffy::prelude::*;
 
 use std::f32::consts::FRAC_PI_2;
+use std::rc::Rc;
 
 /// Width of the saturation/brightness gradient area.
 const AREA_SIZE: f32 = 200.0;
@@ -102,7 +103,7 @@ impl Hsv {
 
 pub struct ColorPicker {
     color: Color,
-    on_change: Option<Box<dyn Fn(Color, &mut dyn std::any::Any)>>,
+    on_change: Option<Rc<dyn Fn(Color, &mut dyn std::any::Any)>>,
     show_alpha: bool,
     show_preview: bool,
     show_hex: bool,
@@ -148,7 +149,7 @@ impl ColorPicker {
     }
 
     pub fn on_change(mut self, handler: impl Fn(Color, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_change = Some(Box::new(handler));
+        self.on_change = Some(Rc::new(handler));
         self
     }
 
@@ -369,7 +370,7 @@ impl Element for ColorPicker {
 
         // SV drag handler
         if let Some(ref handler) = self.on_change {
-            let handler_ptr = handler.as_ref() as *const dyn Fn(Color, &mut dyn std::any::Any);
+            let h = handler.clone();
             let screen_sv = cx.interactions.adjust_bounds(sv_bounds);
             let sv_origin = screen_sv.origin;
             let sv_size = screen_sv.size;
@@ -377,7 +378,7 @@ impl Element for ColorPicker {
             let alpha = hsv.a;
             cx.interactions.register_drag_handler(
                 sv_bounds,
-                Box::new(move |pos: Point, cx| {
+                Rc::new(move |pos: Point, cx: &mut dyn std::any::Any| {
                     let s = ((pos.x - sv_origin.x) / sv_size.width).clamp(0.0, 1.0);
                     let v = 1.0 - ((pos.y - sv_origin.y) / sv_size.height).clamp(0.0, 1.0);
                     let new_color = Hsv {
@@ -387,7 +388,7 @@ impl Element for ColorPicker {
                         a: alpha,
                     }
                     .to_color();
-                    unsafe { (*handler_ptr)(new_color, cx) };
+                    h(new_color, cx);
                 }),
             );
         }
@@ -460,7 +461,7 @@ impl Element for ColorPicker {
 
         // Hue drag handler
         if let Some(ref handler) = self.on_change {
-            let handler_ptr = handler.as_ref() as *const dyn Fn(Color, &mut dyn std::any::Any);
+            let h = handler.clone();
             let screen_hue = cx.interactions.adjust_bounds(hue_bounds);
             let hue_origin_x = screen_hue.origin.x;
             let hue_width = screen_hue.size.width;
@@ -469,16 +470,16 @@ impl Element for ColorPicker {
             let alpha = hsv.a;
             cx.interactions.register_drag_handler(
                 hue_bounds,
-                Box::new(move |pos: Point, cx| {
-                    let h = ((pos.x - hue_origin_x) / hue_width).clamp(0.0, 1.0) * 360.0;
+                Rc::new(move |pos: Point, cx: &mut dyn std::any::Any| {
+                    let hue = ((pos.x - hue_origin_x) / hue_width).clamp(0.0, 1.0) * 360.0;
                     let new_color = Hsv {
-                        h,
+                        h: hue,
                         s: sat,
                         v: val,
                         a: alpha,
                     }
                     .to_color();
-                    unsafe { (*handler_ptr)(new_color, cx) };
+                    h(new_color, cx);
                 }),
             );
         }
@@ -559,7 +560,7 @@ impl Element for ColorPicker {
 
             // Alpha drag handler
             if let Some(ref handler) = self.on_change {
-                let handler_ptr = handler.as_ref() as *const dyn Fn(Color, &mut dyn std::any::Any);
+                let hh = handler.clone();
                 let screen_alpha = cx.interactions.adjust_bounds(alpha_bounds);
                 let alpha_origin_x = screen_alpha.origin.x;
                 let alpha_width = screen_alpha.size.width;
@@ -568,10 +569,10 @@ impl Element for ColorPicker {
                 let v = hsv.v;
                 cx.interactions.register_drag_handler(
                     alpha_bounds,
-                    Box::new(move |pos: Point, cx| {
+                    Rc::new(move |pos: Point, cx: &mut dyn std::any::Any| {
                         let a = ((pos.x - alpha_origin_x) / alpha_width).clamp(0.0, 1.0);
                         let new_color = Hsv { h, s, v, a }.to_color();
-                        unsafe { (*handler_ptr)(new_color, cx) };
+                        hh(new_color, cx);
                     }),
                 );
             }

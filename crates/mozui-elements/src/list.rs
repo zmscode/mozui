@@ -4,6 +4,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 pub struct ListItem {
@@ -13,7 +14,7 @@ pub struct ListItem {
     selected: bool,
     disabled: bool,
     separator: bool,
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
 }
 
 pub fn list_item(label: impl Into<String>) -> ListItem {
@@ -40,7 +41,7 @@ impl ListItem {
     }
 
     pub fn on_click(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 
@@ -414,10 +415,9 @@ impl Element for List {
             // Click handler
             if !item.disabled {
                 if let Some(ref handler) = item.on_click {
-                    let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                     cx.interactions.register_click(
                         item_bounds,
-                        Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
+                        handler.clone(),
                     );
                 }
             }

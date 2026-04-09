@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 /// Column sort direction.
@@ -100,8 +101,8 @@ pub struct Table {
     rows: Vec<TableRow>,
     sort_key: Option<String>,
     sort_dir: SortDirection,
-    on_sort: Option<Box<dyn Fn(&str, SortDirection, &mut dyn std::any::Any)>>,
-    on_row_click: Option<Box<dyn Fn(usize, &mut dyn std::any::Any)>>,
+    on_sort: Option<Rc<dyn Fn(&str, SortDirection, &mut dyn std::any::Any)>>,
+    on_row_click: Option<Rc<dyn Fn(usize, &mut dyn std::any::Any)>>,
     striped: bool,
     // Theme colors
     header_bg: Color,
@@ -170,7 +171,7 @@ impl Table {
         mut self,
         handler: impl Fn(&str, SortDirection, &mut dyn std::any::Any) + 'static,
     ) -> Self {
-        self.on_sort = Some(Box::new(handler));
+        self.on_sort = Some(Rc::new(handler));
         self
     }
 
@@ -178,7 +179,7 @@ impl Table {
         mut self,
         handler: impl Fn(usize, &mut dyn std::any::Any) + 'static,
     ) -> Self {
-        self.on_row_click = Some(Box::new(handler));
+        self.on_row_click = Some(Rc::new(handler));
         self
     }
 
@@ -448,12 +449,11 @@ impl Element for Table {
                     } else {
                         SortDirection::Ascending
                     };
-                    let handler_ptr = handler.as_ref()
-                        as *const dyn Fn(&str, SortDirection, &mut dyn std::any::Any);
+                    let h = handler.clone();
                     cx.interactions.register_click(
                         cell_bounds,
-                        Box::new(move |cx| unsafe {
-                            (*handler_ptr)(&key, next_dir, cx);
+                        Rc::new(move |cx: &mut dyn std::any::Any| {
+                            h(&key, next_dir, cx);
                         }),
                     );
                 }
@@ -551,12 +551,12 @@ impl Element for Table {
 
             // Row click handler
             if let Some(ref handler) = self.on_row_click {
-                let handler_ptr = handler.as_ref() as *const dyn Fn(usize, &mut dyn std::any::Any);
+                let h = handler.clone();
                 let idx = row_idx;
                 cx.interactions.register_click(
                     row_bounds,
-                    Box::new(move |cx| unsafe {
-                        (*handler_ptr)(idx, cx);
+                    Rc::new(move |cx: &mut dyn std::any::Any| {
+                        h(idx, cx);
                     }),
                 );
             }

@@ -30,7 +30,7 @@ pub const DIALOG_ANIM_MS: u64 = 200;
 /// ```
 pub struct Dialog {
     children: Vec<Box<dyn Element>>,
-    on_dismiss: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_dismiss: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     dismiss_on_backdrop: bool,
     dismiss_on_escape: bool,
     backdrop_color: Color,
@@ -93,7 +93,7 @@ impl Dialog {
 
     /// Handler called when the dialog should be dismissed (Escape or backdrop click).
     pub fn on_dismiss(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_dismiss = Some(Box::new(handler));
+        self.on_dismiss = Some(Rc::new(handler));
         self
     }
 
@@ -179,7 +179,7 @@ impl Element for Dialog {
 /// laid out and painted by the deferred system.
 struct DialogOverlay {
     children: Vec<Box<dyn Element>>,
-    on_dismiss: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_dismiss: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     dismiss_on_backdrop: bool,
     dismiss_on_escape: bool,
     backdrop_color: Color,
@@ -298,11 +298,11 @@ impl Element for DialogOverlay {
         // Register escape key handler
         if self.dismiss_on_escape {
             if let Some(ref handler) = self.on_dismiss {
-                let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
+                let h = handler.clone();
                 cx.interactions
-                    .register_key_handler(Box::new(move |key, _mods, cx| {
+                    .register_key_handler(Rc::new(move |key, _mods, cx| {
                         if key == mozui_events::Key::Escape {
-                            unsafe { (*handler_ptr)(cx) };
+                            h(cx);
                         }
                     }));
             }
@@ -311,14 +311,13 @@ impl Element for DialogOverlay {
         // Register backdrop click handler (dismiss on clicking outside content)
         if self.dismiss_on_backdrop {
             if let Some(ref handler) = self.on_dismiss {
-                let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                 // Register the content area click first as a no-op to prevent
                 // backdrop click from triggering when clicking content.
                 cx.interactions
-                    .register_click(content_bounds, Box::new(move |_cx| { /* absorb click */ }));
+                    .register_click(content_bounds, Rc::new(move |_cx: &mut dyn std::any::Any| { /* absorb click */ }));
                 cx.interactions.register_click(
                     backdrop_bounds,
-                    Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
+                    handler.clone(),
                 );
             }
         }

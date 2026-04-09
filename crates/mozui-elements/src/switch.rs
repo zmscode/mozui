@@ -3,6 +3,7 @@ use crate::{Element, LayoutContext, PaintContext};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 pub struct Switch {
@@ -16,7 +17,7 @@ pub struct Switch {
     active_color: Color,
     inactive_color: Color,
     label_color: Color,
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
 }
 
 pub fn switch(theme: &Theme) -> Switch {
@@ -52,7 +53,7 @@ impl Switch {
     }
 
     pub fn on_click(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 
@@ -216,10 +217,9 @@ impl Element for Switch {
         // Click handler
         if !self.disabled {
             if let Some(ref handler) = self.on_click {
-                let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                 cx.interactions.register_click(
                     bounds,
-                    Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
+                    handler.clone(),
                 );
             }
         }

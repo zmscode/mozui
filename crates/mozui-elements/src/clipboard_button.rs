@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 /// A button that copies text to the clipboard on click.
@@ -32,7 +33,7 @@ pub struct ClipboardButton {
     hover_bg: Color,
     corner_radius: f32,
     padding: f32,
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     layout_id: LayoutId,
 }
 
@@ -75,7 +76,7 @@ impl ClipboardButton {
     /// Set the click handler. The handler should write to the clipboard
     /// and toggle the `copied` state with a timeout to reset it.
     pub fn on_click(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 }
@@ -148,9 +149,8 @@ impl Element for ClipboardButton {
 
         // Register click
         if let Some(ref handler) = self.on_click {
-            let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
             cx.interactions
-                .register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+                .register_click(bounds, handler.clone());
         }
 
         // Register hover for visual feedback

@@ -64,8 +64,8 @@ pub struct CommandPalette {
     items: Vec<CommandItem>,
     query: String,
     selected_index: usize,
-    on_select: Option<Box<dyn Fn(&str, &mut dyn std::any::Any)>>,
-    on_query_change: Option<Box<dyn Fn(&str, &mut dyn std::any::Any)>>,
+    on_select: Option<Rc<dyn Fn(&str, &mut dyn std::any::Any)>>,
+    on_query_change: Option<Rc<dyn Fn(&str, &mut dyn std::any::Any)>>,
     // Theme
     bg: Color,
     fg: Color,
@@ -146,12 +146,12 @@ impl CommandPalette {
     }
 
     pub fn on_select(mut self, f: impl Fn(&str, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_select = Some(Box::new(f));
+        self.on_select = Some(Rc::new(f));
         self
     }
 
     pub fn on_query_change(mut self, f: impl Fn(&str, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_query_change = Some(Box::new(f));
+        self.on_query_change = Some(Rc::new(f));
         self
     }
 
@@ -476,10 +476,10 @@ impl Element for CommandPalette {
             if !item.disabled {
                 if let Some(ref on_select) = self.on_select {
                     let id = item.id.clone();
-                    let ptr = on_select.as_ref() as *const dyn Fn(&str, &mut dyn std::any::Any);
+                    let h = on_select.clone();
                     cx.interactions.register_click(
                         item_bounds,
-                        Box::new(move |cx| unsafe { (*ptr)(&id, cx) }),
+                        Rc::new(move |cx: &mut dyn std::any::Any| { h(&id, cx) }),
                     );
                 }
                 cx.interactions.register_hover_region(item_bounds);

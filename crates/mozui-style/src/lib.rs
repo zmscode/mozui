@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 pub mod animation;
 mod color;
 mod fill;

@@ -3,6 +3,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 const ITEM_HEIGHT: f32 = 32.0;
@@ -44,7 +45,7 @@ impl ToggleItem {
 pub struct ToggleGroup {
     items: Vec<ToggleItem>,
     selected: Option<String>,
-    on_change: Option<Box<dyn Fn(&str, &mut dyn std::any::Any)>>,
+    on_change: Option<Rc<dyn Fn(&str, &mut dyn std::any::Any)>>,
     // Theme
     bg: Color,
     muted_fg: Color,
@@ -87,7 +88,7 @@ impl ToggleGroup {
     }
 
     pub fn on_change(mut self, f: impl Fn(&str, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_change = Some(Box::new(f));
+        self.on_change = Some(Rc::new(f));
         self
     }
 }
@@ -230,10 +231,10 @@ impl Element for ToggleGroup {
             if !self.items[i].disabled && !is_selected {
                 if let Some(ref on_change) = self.on_change {
                     let value = self.items[i].value.clone();
-                    let ptr = on_change.as_ref() as *const dyn Fn(&str, &mut dyn std::any::Any);
+                    let h = on_change.clone();
                     cx.interactions.register_click(
                         cell_bounds,
-                        Box::new(move |cx| unsafe { (*ptr)(&value, cx) }),
+                        Rc::new(move |cx: &mut dyn std::any::Any| { h(&value, cx) }),
                     );
                 }
                 cx.interactions.register_hover_region(cell_bounds);

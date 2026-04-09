@@ -116,10 +116,10 @@ pub struct Div {
     children: Vec<Box<dyn Element>>,
 
     // Event handlers
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     on_key_down:
-        Option<Box<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>>,
-    on_right_click: Option<Box<dyn Fn(StylePoint, &mut dyn std::any::Any)>>,
+        Option<Rc<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>>,
+    on_right_click: Option<Rc<dyn Fn(StylePoint, &mut dyn std::any::Any)>>,
 
     // Window drag region
     is_drag_region: bool,
@@ -133,7 +133,7 @@ pub struct Div {
     dnd_source: Option<DragId>,
     dnd_target: Option<(
         DragId,
-        Box<dyn Fn(DragId, StylePoint, &mut dyn std::any::Any)>,
+        Rc<dyn Fn(DragId, StylePoint, &mut dyn std::any::Any)>,
     )>,
 }
 
@@ -464,7 +464,7 @@ impl Div {
 
     // --- Events ---
     pub fn on_click(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 
@@ -472,7 +472,7 @@ impl Div {
         mut self,
         handler: impl Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any) + 'static,
     ) -> Self {
-        self.on_key_down = Some(Box::new(handler));
+        self.on_key_down = Some(Rc::new(handler));
         self
     }
 
@@ -482,7 +482,7 @@ impl Div {
         mut self,
         handler: impl Fn(StylePoint, &mut dyn std::any::Any) + 'static,
     ) -> Self {
-        self.on_right_click = Some(Box::new(handler));
+        self.on_right_click = Some(Rc::new(handler));
         self
     }
 
@@ -502,7 +502,7 @@ impl Div {
         id: DragId,
         handler: impl Fn(DragId, StylePoint, &mut dyn std::any::Any) + 'static,
     ) -> Self {
-        self.dnd_target = Some((id, Box::new(handler)));
+        self.dnd_target = Some((id, Rc::new(handler)));
         self
     }
 
@@ -591,19 +591,13 @@ impl Element for Div {
 
         // Register click handler if present
         if let Some(ref handler) = self.on_click {
-            let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
             cx.interactions
-                .register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+                .register_click(bounds, handler.clone());
         }
 
         // Register right-click handler if present
         if let Some(ref handler) = self.on_right_click {
-            let handler_ptr =
-                handler.as_ref() as *const dyn Fn(StylePoint, &mut dyn std::any::Any);
-            cx.interactions.register_right_click(
-                bounds,
-                Box::new(move |pos, cx| unsafe { (*handler_ptr)(pos, cx) }),
-            );
+            cx.interactions.register_right_click(bounds, handler.clone());
         }
 
         // Register drag region if marked
@@ -613,16 +607,7 @@ impl Element for Div {
 
         // Register key handler if present
         if let Some(ref handler) = self.on_key_down {
-            let handler_ptr = handler.as_ref()
-                as *const dyn Fn(
-                    mozui_events::Key,
-                    mozui_events::Modifiers,
-                    &mut dyn std::any::Any,
-                );
-            cx.interactions
-                .register_key_handler(Box::new(move |key, mods, cx| unsafe {
-                    (*handler_ptr)(key, mods, cx)
-                }));
+            cx.interactions.register_key_handler(handler.clone());
         }
 
         // Register DnD source
@@ -632,12 +617,8 @@ impl Element for Div {
 
         // Register DnD target
         if let Some((id, ref handler)) = self.dnd_target {
-            let handler_ptr =
-                handler.as_ref() as *const dyn Fn(DragId, StylePoint, &mut dyn std::any::Any);
             cx.interactions
-                .register_drop_target(id, bounds, move |source_id, pos, cx| unsafe {
-                    (*handler_ptr)(source_id, pos, cx)
-                });
+                .register_drop_target(id, bounds, handler.clone());
         }
 
         // Scroll handling
@@ -692,7 +673,7 @@ impl Element for Div {
             let scroll_clone = scroll.clone();
             cx.interactions.register_scroll_region(
                 bounds,
-                Box::new(move |_dx, dy, _cx| {
+                Rc::new(move |_dx, dy, _cx| {
                     scroll_clone.scroll_by(dy, max_scroll);
                 }),
             );

@@ -4,6 +4,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 pub struct Rating {
@@ -13,7 +14,7 @@ pub struct Rating {
     size: ComponentSize,
     color: Color,
     empty_color: Color,
-    on_change: Option<Box<dyn Fn(f32, &mut dyn std::any::Any)>>,
+    on_change: Option<Rc<dyn Fn(f32, &mut dyn std::any::Any)>>,
     layout_id: LayoutId,
     star_ids: Vec<LayoutId>,
 }
@@ -49,7 +50,7 @@ impl Rating {
     }
 
     pub fn on_change(mut self, handler: impl Fn(f32, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_change = Some(Box::new(handler));
+        self.on_change = Some(Rc::new(handler));
         self
     }
 
@@ -166,12 +167,11 @@ impl Element for Rating {
             // Click handler — set rating to this star
             if !self.disabled {
                 if let Some(ref handler) = self.on_change {
-                    let handler_ptr =
-                        handler.as_ref() as *const dyn Fn(f32, &mut dyn std::any::Any);
+                    let h = handler.clone();
                     let new_value = (i + 1) as f32;
                     cx.interactions.register_click(
                         star_bounds,
-                        Box::new(move |cx| unsafe { (*handler_ptr)(new_value, cx) }),
+                        Rc::new(move |cx: &mut dyn std::any::Any| { h(new_value, cx) }),
                     );
                 }
             }

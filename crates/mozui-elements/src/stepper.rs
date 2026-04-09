@@ -4,6 +4,7 @@ use mozui_icons::{IconName, IconWeight};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 /// A single step in a Stepper.
@@ -54,7 +55,7 @@ pub struct Stepper {
     label_color: Color,
     muted_color: Color,
     line_color: Color,
-    on_click: Option<Box<dyn Fn(usize, &mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(usize, &mut dyn std::any::Any)>>,
 }
 
 pub fn stepper(theme: &Theme) -> Stepper {
@@ -93,7 +94,7 @@ impl Stepper {
     }
 
     pub fn on_click(mut self, handler: impl Fn(usize, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 
@@ -314,12 +315,11 @@ impl Element for Stepper {
             // Register click handler for step circle
             if !self.disabled {
                 if let Some(ref handler) = self.on_click {
-                    let handler_ptr =
-                        handler.as_ref() as *const dyn Fn(usize, &mut dyn std::any::Any);
+                    let h = handler.clone();
                     let step_idx = i;
                     cx.interactions.register_click(
                         circle_bounds,
-                        Box::new(move |cx| unsafe { (*handler_ptr)(step_idx, cx) }),
+                        Rc::new(move |cx: &mut dyn std::any::Any| { h(step_idx, cx) }),
                     );
                 }
             }

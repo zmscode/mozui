@@ -3,6 +3,7 @@ use crate::{Element, LayoutContext, PaintContext};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Point, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 pub struct Slider {
@@ -15,7 +16,7 @@ pub struct Slider {
     track_color: Color,
     fill_color: Color,
     thumb_color: Color,
-    on_change: Option<Box<dyn Fn(f32, &mut dyn std::any::Any)>>,
+    on_change: Option<Rc<dyn Fn(f32, &mut dyn std::any::Any)>>,
     layout_id: LayoutId,
 }
 
@@ -57,7 +58,7 @@ impl Slider {
     }
 
     pub fn on_change(mut self, handler: impl Fn(f32, &mut dyn std::any::Any) + 'static) -> Self {
-        self.on_change = Some(Box::new(handler));
+        self.on_change = Some(Rc::new(handler));
         self
     }
 
@@ -207,15 +208,15 @@ impl Element for Slider {
         // Register drag handler for value changes
         if !self.disabled {
             if let Some(ref handler) = self.on_change {
-                let handler_ptr = handler.as_ref() as *const dyn Fn(f32, &mut dyn std::any::Any);
+                let h = handler.clone();
                 let min = self.min;
                 let max = self.max;
                 let step = self.step;
                 cx.interactions.register_drag_handler(
                     bounds,
-                    Box::new(move |pos: Point, cx| {
+                    Rc::new(move |pos: Point, cx: &mut dyn std::any::Any| {
                         let val = Slider::value_from_x(pos.x, track_x, track_w, min, max, step);
-                        unsafe { (*handler_ptr)(val, cx) };
+                        h(val, cx);
                     }),
                 );
             }

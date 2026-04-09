@@ -2,6 +2,7 @@ use crate::{Element, LayoutContext, PaintContext};
 use mozui_layout::LayoutId;
 use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Rect, Theme};
+use std::rc::Rc;
 use taffy::prelude::*;
 
 pub struct Link {
@@ -11,7 +12,7 @@ pub struct Link {
     hover_color: Color,
     disabled: bool,
     font_size: f32,
-    on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    on_click: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
     layout_id: LayoutId,
     text_id: LayoutId,
 }
@@ -52,7 +53,7 @@ impl Link {
     }
 
     pub fn on_click(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.on_click = Some(Rc::new(handler));
         self
     }
 }
@@ -131,14 +132,13 @@ impl Element for Link {
         // Click handler
         if !self.disabled {
             if let Some(ref handler) = self.on_click {
-                let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
                 cx.interactions
-                    .register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+                    .register_click(bounds, handler.clone());
             } else if let Some(ref url) = self.href {
                 let url = url.clone();
                 cx.interactions.register_click(
                     bounds,
-                    Box::new(move |_cx| {
+                    Rc::new(move |_cx| {
                         mozui_platform::open_url(&url);
                     }),
                 );
