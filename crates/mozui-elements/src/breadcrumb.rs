@@ -80,6 +80,14 @@ impl Breadcrumb {
 }
 
 impl Element for Breadcrumb {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Breadcrumb",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut row_children = Vec::new();
         self.entry_layouts = Vec::new();

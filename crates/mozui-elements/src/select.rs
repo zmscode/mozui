@@ -197,6 +197,14 @@ const GAP: f32 = 4.0;
 const CHEVRON_SIZE: f32 = 14.0;
 
 impl Element for Select {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Select",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let display_text = self.selected_label().unwrap_or(&self.placeholder);
         let text_style = mozui_text::TextStyle {

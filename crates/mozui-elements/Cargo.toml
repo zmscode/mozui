@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+mozui-devtools = { workspace = true }
 mozui-style = { workspace = true }
 mozui-renderer = { workspace = true }
 mozui-layout = { workspace = true }

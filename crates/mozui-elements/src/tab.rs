@@ -143,6 +143,14 @@ impl Selectable for Tab {
 }
 
 impl Element for Tab {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Tab",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut children = Vec::new();
 
@@ -404,6 +412,14 @@ impl TabBar {
 }
 
 impl Element for TabBar {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "TabBar",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.tab_ids = self
             .tabs

@@ -167,6 +167,14 @@ impl Sizable for List {
 }
 
 impl Element for List {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "List",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let px = self.item_px();
         let py = self.item_py();

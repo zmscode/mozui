@@ -169,6 +169,14 @@ fn layout_node(
 }
 
 impl Element for TreeView {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "TreeView",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.row_ids.clear();
         let row_count = self.total_visible();

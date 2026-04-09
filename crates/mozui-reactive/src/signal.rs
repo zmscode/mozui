@@ -1,6 +1,9 @@
 use std::any::Any;
 use std::marker::PhantomData;
 
+/// Callback invoked on each signal mutation: (slot_id, type_name).
+pub type MutationCallback = Box<dyn Fn(usize, &'static str)>;
+
 /// Opaque handle for reading a signal value.
 #[derive(Debug)]
 pub struct Signal<T> {
@@ -32,15 +35,24 @@ impl<T> Copy for SetSignal<T> {}
 /// Central store for all signal values.
 pub struct SignalStore {
     slots: Vec<Box<dyn Any>>,
+    type_names: Vec<&'static str>,
     dirty: bool,
+    mutation_callback: Option<MutationCallback>,
 }
 
 impl SignalStore {
     pub fn new() -> Self {
         Self {
             slots: Vec::new(),
+            type_names: Vec::new(),
             dirty: false,
+            mutation_callback: None,
         }
+    }
+
+    /// Install a callback that fires on every `set()` / `update()`.
+    pub fn set_mutation_callback(&mut self, cb: MutationCallback) {
+        self.mutation_callback = Some(cb);
     }
 
     /// Get or create a signal at a given hook index.
@@ -53,6 +65,7 @@ impl SignalStore {
     ) -> (Signal<T>, SetSignal<T>) {
         if index >= self.slots.len() {
             self.slots.push(Box::new(initial));
+            self.type_names.push(std::any::type_name::<T>());
         }
         (
             Signal {
@@ -75,6 +88,14 @@ impl SignalStore {
 
     /// Set a signal's value and mark the store dirty.
     pub fn set<T: 'static>(&mut self, signal: SetSignal<T>, value: T) {
+        if let Some(ref cb) = self.mutation_callback {
+            let type_name = self
+                .type_names
+                .get(signal.id)
+                .copied()
+                .unwrap_or("unknown");
+            cb(signal.id, type_name);
+        }
         *self.slots[signal.id]
             .downcast_mut::<T>()
             .expect("signal type mismatch") = value;
@@ -83,6 +104,14 @@ impl SignalStore {
 
     /// Update a signal's value in place and mark dirty.
     pub fn update<T: 'static>(&mut self, signal: SetSignal<T>, f: impl FnOnce(&mut T)) {
+        if let Some(ref cb) = self.mutation_callback {
+            let type_name = self
+                .type_names
+                .get(signal.id)
+                .copied()
+                .unwrap_or("unknown");
+            cb(signal.id, type_name);
+        }
         let val = self.slots[signal.id]
             .downcast_mut::<T>()
             .expect("signal type mismatch");
@@ -103,6 +132,23 @@ impl SignalStore {
     /// Number of allocated slots.
     pub fn slot_count(&self) -> usize {
         self.slots.len()
+    }
+
+    /// Get the type name for a given slot.
+    pub fn type_name(&self, slot_id: usize) -> &'static str {
+        self.type_names
+            .get(slot_id)
+            .copied()
+            .unwrap_or("unknown")
+    }
+
+    /// Return a summary of all signal slots: (slot_id, type_name).
+    pub fn signal_summary(&self) -> Vec<(usize, &'static str)> {
+        self.type_names
+            .iter()
+            .enumerate()
+            .map(|(i, tn)| (i, *tn))
+            .collect()
     }
 
     /// Get signal handles for an existing slot (panics if slot doesn't exist).

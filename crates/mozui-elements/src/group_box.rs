@@ -64,6 +64,14 @@ impl GroupBox {
 }
 
 impl Element for GroupBox {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "GroupBox",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let title_style = mozui_text::TextStyle {
             font_size: self.title_font_size(),

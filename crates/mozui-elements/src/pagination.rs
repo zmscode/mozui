@@ -149,6 +149,14 @@ impl Disableable for Pagination {
 }
 
 impl Element for Pagination {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Pagination",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let btn_sz = self.button_size();
         self.button_ids.clear();

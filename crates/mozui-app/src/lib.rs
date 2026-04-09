@@ -1,6 +1,7 @@
 mod actions;
 mod app;
 mod context;
+mod devtools;
 pub mod history;
 mod keybindings;
 

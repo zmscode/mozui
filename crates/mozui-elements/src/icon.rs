@@ -60,6 +60,18 @@ impl Sizable for Icon {
 }
 
 impl Element for Icon {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Icon",
+            layout_id: self.layout_id,
+            properties: vec![
+                ("name", format!("{:?}", self.name)),
+                ("size", format!("{}", self.size_px)),
+                ("color", format!("{:?}", self.color)),
+            ],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.layout_id = cx.new_leaf(Style {
             size: Size {
@@ -72,6 +84,7 @@ impl Element for Icon {
     }
 
     fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        cx.collect_debug_info(self, bounds);
         cx.draw_list.push(DrawCommand::Icon {
             name: self.name,
             weight: self.weight,

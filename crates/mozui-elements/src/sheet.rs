@@ -108,6 +108,14 @@ impl Sheet {
 }
 
 impl Element for Sheet {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Sheet",
+            layout_id: LayoutId::NONE,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Defer the entire sheet overlay for paint-on-top z-ordering
         cx.defer(
@@ -174,6 +182,14 @@ impl SheetOverlay {
 }
 
 impl Element for SheetOverlay {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "SheetOverlay",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.child_ids.clear();
 

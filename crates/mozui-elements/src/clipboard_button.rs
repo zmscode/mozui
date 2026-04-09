@@ -81,6 +81,14 @@ impl ClipboardButton {
 }
 
 impl Element for ClipboardButton {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "ClipboardButton",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let total = self.icon_size + self.padding * 2.0;
         self.layout_id = cx.new_leaf(Style {

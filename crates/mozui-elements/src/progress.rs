@@ -53,6 +53,14 @@ impl Sizable for Progress {
 }
 
 impl Element for Progress {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Progress",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.layout_id = cx.new_leaf(Style {
             size: Size {

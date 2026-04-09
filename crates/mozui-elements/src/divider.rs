@@ -88,6 +88,14 @@ impl Divider {
 }
 
 impl Element for Divider {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Divider",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         if self.label.is_some() {
             // Labeled divider: row with [line, text, line]

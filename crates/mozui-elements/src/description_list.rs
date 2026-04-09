@@ -118,6 +118,14 @@ impl Sizable for DescriptionList {
 }
 
 impl Element for DescriptionList {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "DescriptionList",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let font_size = self.text_size();
         let row_py = self.row_padding();

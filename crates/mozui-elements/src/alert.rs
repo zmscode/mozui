@@ -122,6 +122,14 @@ impl Alert {
 }
 
 impl Element for Alert {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Alert",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Icon
         self.icon_id = cx.new_leaf(Style {

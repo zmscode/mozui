@@ -79,6 +79,14 @@ impl Disableable for Rating {
 }
 
 impl Element for Rating {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Rating",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let star_sz = self.star_size();
         self.star_ids.clear();

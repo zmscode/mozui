@@ -259,6 +259,14 @@ fn centered_text_bounds(
 }
 
 impl Element for Calendar {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Calendar",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let grid_width = CELL_SIZE * GRID_COLS as f32 + GAP * (GRID_COLS - 1) as f32;
         let total_width = grid_width + PAD * 2.0;
@@ -866,6 +874,14 @@ impl DatePicker {
 }
 
 impl Element for DatePicker {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "DatePicker",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let trigger_id = self.layout_trigger(cx);
 

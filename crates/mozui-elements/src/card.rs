@@ -99,6 +99,14 @@ impl Card {
 }
 
 impl Element for Card {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Card",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.section_ids.clear();
         self.body_child_ids.clear();

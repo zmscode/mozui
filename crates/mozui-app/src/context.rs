@@ -268,6 +268,11 @@ impl Context {
         self.animations_active.get()
     }
 
+    /// Return a summary of all signal slots for devtools display.
+    pub fn signal_summary(&self) -> Vec<(usize, &'static str)> {
+        self.signals.signal_summary()
+    }
+
     /// Clear the animation-active flag at the start of each frame.
     pub fn clear_animation_flag(&mut self) {
         self.animations_active.set(false);

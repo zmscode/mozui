@@ -154,6 +154,25 @@ impl Sizable for Label {
 }
 
 impl Element for Label {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        let truncated: String = self.text.chars().take(50).collect();
+        let mut props = vec![
+            ("text", truncated),
+            ("font_size", format!("{}", self.font_size)),
+            ("color", format!("{:?}", self.color)),
+            ("weight", format!("{}", self.weight)),
+            ("single_line", format!("{}", self.single_line)),
+        ];
+        if self.italic {
+            props.push(("italic", "true".into()));
+        }
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Label",
+            layout_id: self.layout_id,
+            properties: props,
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let display_text = self.display_text();
 
@@ -176,6 +195,7 @@ impl Element for Label {
     }
 
     fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        cx.collect_debug_info(self, bounds);
         let display_text = self.display_text();
 
         // TODO: render highlight background rects behind matched ranges

@@ -242,6 +242,14 @@ impl Notification {
 }
 
 impl Element for Notification {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Notification",
+            layout_id: LayoutId::NONE,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Defer the notification overlay for paint-on-top z-ordering
         cx.defer(
@@ -308,6 +316,14 @@ struct NotificationOverlay {
 }
 
 impl Element for NotificationOverlay {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "NotificationOverlay",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let has_icon = self.icon_override.is_some() || self.notification_type.icon().is_some();
 

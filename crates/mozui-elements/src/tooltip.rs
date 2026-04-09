@@ -73,6 +73,14 @@ impl Tooltip {
 }
 
 impl Element for Tooltip {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Tooltip",
+            layout_id: LayoutId::NONE,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Layout anchor in the main tree
         if let Some(ref mut anchor) = self.anchor {
@@ -134,6 +142,14 @@ struct TooltipBubble {
 }
 
 impl Element for TooltipBubble {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "TooltipBubble",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut tip_children = Vec::new();
 

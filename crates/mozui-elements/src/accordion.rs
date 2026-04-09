@@ -158,6 +158,14 @@ impl Sizable for Accordion {
 }
 
 impl Element for Accordion {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Accordion",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let py = self.header_py();
         let icon_sz = self.icon_size();

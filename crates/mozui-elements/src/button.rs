@@ -270,6 +270,20 @@ impl Selectable for Button {
 }
 
 impl Element for Button {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        let mut props = Vec::new();
+        if let Some(ref label) = self.label {
+            props.push(("label", label.clone()));
+        }
+        props.push(("variant", format!("{:?}", self.variant)));
+        props.push(("disabled", format!("{}", self.disabled)));
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Button",
+            layout_id: self.layout_id,
+            properties: props,
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let px = self.px();
         let py = self.py();
@@ -345,6 +359,7 @@ impl Element for Button {
     }
 
     fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        cx.collect_debug_info(self, bounds);
         // Determine background color based on hover/active state
         let bg = if self.disabled {
             self.colors.bg.with_alpha(0.5)
@@ -471,6 +486,14 @@ impl ButtonGroup {
 }
 
 impl Element for ButtonGroup {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "ButtonGroup",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.child_ids.clear();
         for button in &mut self.buttons {

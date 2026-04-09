@@ -170,6 +170,14 @@ impl ScrollContainer {
 }
 
 impl Element for ScrollContainer {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "ScrollContainer",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.child_ids = self
             .children

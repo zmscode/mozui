@@ -176,6 +176,14 @@ impl CommandPalette {
 }
 
 impl Element for CommandPalette {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "CommandPalette",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.item_ids.clear();
         let mut children = Vec::new();

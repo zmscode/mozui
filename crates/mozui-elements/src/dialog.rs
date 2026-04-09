@@ -133,6 +133,14 @@ impl Dialog {
 }
 
 impl Element for Dialog {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Dialog",
+            layout_id: LayoutId::NONE,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Defer the entire dialog overlay for paint-on-top z-ordering
         cx.defer(
@@ -189,6 +197,14 @@ struct DialogOverlay {
 }
 
 impl Element for DialogOverlay {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "DialogOverlay",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.child_ids.clear();
 

@@ -112,6 +112,14 @@ impl NumberInput {
 }
 
 impl Element for NumberInput {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "NumberInput",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // [- button] [value text] [+ button]
         self.dec_id = cx.new_leaf(Style {

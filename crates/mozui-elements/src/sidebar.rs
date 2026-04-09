@@ -193,6 +193,14 @@ impl Sidebar {
 }
 
 impl Element for Sidebar {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Sidebar",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.content_ids.clear();
         let mut children = Vec::new();

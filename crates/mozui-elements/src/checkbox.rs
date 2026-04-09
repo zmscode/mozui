@@ -84,6 +84,14 @@ impl Disableable for Checkbox {
 }
 
 impl Element for Checkbox {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Checkbox",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let box_sz = self.box_size();
         let mut children = Vec::new();

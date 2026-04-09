@@ -53,6 +53,14 @@ impl CollapsibleContainer {
 }
 
 impl Element for CollapsibleContainer {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "CollapsibleContainer",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Always lay out children so we get a stable node count and
         // can measure content height even when collapsed.

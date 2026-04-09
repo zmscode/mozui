@@ -137,6 +137,14 @@ impl Disableable for Stepper {
 }
 
 impl Element for Stepper {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Stepper",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Layout: single flex row with alternating [step-column, connector-line] pairs.
         // Each step-column is: circle (fixed) + label text below it.

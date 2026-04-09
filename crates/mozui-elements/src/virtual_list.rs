@@ -136,6 +136,14 @@ impl VirtualList {
 }
 
 impl Element for VirtualList {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "VirtualList",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // The virtual list itself occupies the viewport size
         let style = taffy::Style {

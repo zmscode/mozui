@@ -112,6 +112,14 @@ impl Sizable for Skeleton {
 }
 
 impl Element for Skeleton {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Skeleton",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let (w, h) = self.resolved_size();
         self.layout_id = cx.new_leaf(Style {

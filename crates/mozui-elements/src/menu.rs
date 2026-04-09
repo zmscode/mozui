@@ -152,6 +152,14 @@ impl Menu {
 }
 
 impl Element for Menu {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Menu",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.item_ids.clear();
         let mut item_nodes = Vec::new();

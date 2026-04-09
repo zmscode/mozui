@@ -525,6 +525,26 @@ impl Div {
 }
 
 impl Element for Div {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        let mut props = Vec::new();
+        props.push(("flex_direction", format!("{:?}", self.taffy_style.flex_direction)));
+        props.push(("gap", format!("{:?}", self.taffy_style.gap)));
+        props.push(("padding", format!("{:?}", self.taffy_style.padding)));
+        if let Some(ref bg) = self.background {
+            props.push(("background", format!("{:?}", bg)));
+        }
+        if self.border_width > 0.0 {
+            props.push(("border", format!("{}px {:?}", self.border_width, self.border_color)));
+        }
+        props.push(("overflow", format!("{:?}", self.taffy_style.overflow)));
+        props.push(("children", format!("{}", self.children.len())));
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Div",
+            layout_id: self.layout_id,
+            properties: props,
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Always recurse into children (they may have animations/state)
         self.child_ids = self
@@ -629,11 +649,16 @@ impl Element for Div {
             cx.interactions.push_scroll_offset(-scroll_offset_y);
         }
 
-        // Paint children
+        // Collect debug info for inspector
+        cx.collect_debug_info(self, bounds);
+
+        // Paint children (collect debug info for leaf elements that don't paint children)
+        cx.debug_depth += 1;
         for i in 0..self.children.len() {
             let child_bounds = cx.bounds(self.child_ids[i]);
             self.children[i].paint(child_bounds, cx);
         }
+        cx.debug_depth -= 1;
 
         if is_scrollable {
             cx.draw_list.pop_scroll_offset();

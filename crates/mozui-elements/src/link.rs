@@ -58,6 +58,14 @@ impl Link {
 }
 
 impl Element for Link {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Link",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let text_style = mozui_text::TextStyle {
             font_size: self.font_size,

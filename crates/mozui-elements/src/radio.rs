@@ -76,6 +76,14 @@ impl Disableable for Radio {
 }
 
 impl Element for Radio {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Radio",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let circle_sz = self.circle_size();
 

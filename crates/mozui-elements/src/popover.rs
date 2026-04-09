@@ -40,6 +40,14 @@ impl Popover {
 }
 
 impl Element for Popover {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Popover",
+            layout_id: LayoutId::NONE,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Defer the child for independent layout + paint-on-top.
         // We need to take the child out since it moves into the DeferredEntry.

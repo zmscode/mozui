@@ -1,3 +1,3 @@
 mod signal;
 
-pub use signal::{SetSignal, Signal, SignalStore};
+pub use signal::{MutationCallback, SetSignal, Signal, SignalStore};

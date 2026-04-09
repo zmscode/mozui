@@ -125,6 +125,14 @@ impl ResizablePanelGroup {
 }
 
 impl Element for ResizablePanelGroup {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "ResizablePanelGroup",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let n = self.panels.len();
         let has_sizes = self.has_valid_sizes();

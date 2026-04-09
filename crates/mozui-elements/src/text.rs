@@ -80,6 +80,19 @@ impl Text {
 }
 
 impl Element for Text {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        let truncated: String = self.content.chars().take(50).collect();
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Text",
+            layout_id: self.layout_id,
+            properties: vec![
+                ("content", truncated),
+                ("font_size", format!("{}", self.font_size)),
+                ("color", format!("{:?}", self.color)),
+            ],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Use a measured leaf so taffy calls our measure function with
         // the actual available width — text wraps automatically.
@@ -100,6 +113,7 @@ impl Element for Text {
     }
 
     fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        cx.collect_debug_info(self, bounds);
         cx.draw_list.push(DrawCommand::Text {
             text: self.content.clone(),
             bounds,

@@ -84,6 +84,14 @@ impl HoverCard {
 }
 
 impl Element for HoverCard {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "HoverCard",
+            layout_id: LayoutId::NONE,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Layout trigger in the main tree
         if let Some(ref mut trigger) = self.trigger {
@@ -143,6 +151,14 @@ struct HoverCardPanel {
 }
 
 impl Element for HoverCardPanel {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "HoverCardPanel",
+            layout_id: self.wrapper_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.content_inner_id = self.content.layout(cx);
         let p = self.padding;

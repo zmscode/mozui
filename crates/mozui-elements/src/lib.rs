@@ -147,6 +147,11 @@ pub trait Element {
 
     /// Emit draw commands and register interactions using the resolved bounds.
     fn paint(&mut self, bounds: Rect, cx: &mut PaintContext);
+
+    /// Return debug metadata for the devtools inspector.
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        None
+    }
 }
 
 // ── Deferred elements ─────────────────────────────────────────────
@@ -295,6 +300,10 @@ pub struct PaintContext<'a> {
     /// For deferred elements: the resolved bounds of the anchor element
     /// from the main layout tree. `None` for main-tree elements and overlays.
     pub anchor_bounds: Option<Rect>,
+    /// Optional collector for element debug info (used by devtools inspector).
+    pub debug_collector: Option<&'a mut Vec<mozui_devtools::ElementTreeEntry>>,
+    /// Current depth in the element tree (for debug collector).
+    pub debug_depth: u32,
 }
 
 impl<'a> PaintContext<'a> {
@@ -312,6 +321,25 @@ impl<'a> PaintContext<'a> {
             font_system,
             window_size,
             anchor_bounds: None,
+            debug_collector: None,
+            debug_depth: 0,
+        }
+    }
+
+    /// Collect debug info for an element if the inspector is active.
+    pub fn collect_debug_info(&mut self, element: &dyn Element, bounds: Rect) {
+        if let Some(ref mut collector) = self.debug_collector {
+            if let Some(info) = element.debug_info() {
+                collector.push(mozui_devtools::ElementTreeEntry {
+                    type_name: info.type_name,
+                    x: bounds.origin.x,
+                    y: bounds.origin.y,
+                    width: bounds.size.width,
+                    height: bounds.size.height,
+                    depth: self.debug_depth,
+                    properties: info.properties,
+                });
+            }
         }
     }
 

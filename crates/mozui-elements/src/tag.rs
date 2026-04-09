@@ -188,6 +188,14 @@ impl Sizable for Tag {
 }
 
 impl Element for Tag {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Tag",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let text_style = mozui_text::TextStyle {
             font_size: self.text_size(),

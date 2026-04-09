@@ -249,6 +249,14 @@ impl Img {
 }
 
 impl Element for Img {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Img",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let data = self.current_data();
         let w = self.width.unwrap_or(data.width as f32);

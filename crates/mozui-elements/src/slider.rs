@@ -113,6 +113,14 @@ impl Disableable for Slider {
 }
 
 impl Element for Slider {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Slider",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Single node — we handle all drawing ourselves
         self.layout_id = cx.new_leaf(Style {

@@ -97,6 +97,14 @@ impl Kbd {
 }
 
 impl Element for Kbd {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Kbd",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let display = self.display_string();
         let text_style = mozui_text::TextStyle {

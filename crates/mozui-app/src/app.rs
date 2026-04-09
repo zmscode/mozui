@@ -34,6 +34,7 @@ struct WindowState {
     bg_color: mozui_style::Color,
     frame_count: u64,
     devtools: DevtoolsState,
+    signal_summary_cache: Vec<(usize, &'static str)>,
 }
 
 impl WindowState {
@@ -61,6 +62,7 @@ impl WindowState {
             bg_color,
             frame_count: 0,
             devtools: DevtoolsState::new(),
+            signal_summary_cache: Vec::new(),
         }
     }
 
@@ -112,6 +114,29 @@ impl WindowState {
             self.renderer.font_system(),
         );
 
+        // Inject devtools overlays
+        if self.devtools.perf_overlay_active {
+            deferred.push(DeferredEntry {
+                element: crate::devtools::perf_overlay(&self.devtools.timings),
+                position: DeferredPosition::Overlay,
+            });
+        }
+        if self.devtools.signal_debugger_active {
+            deferred.push(DeferredEntry {
+                element: crate::devtools::signal_panel::signal_panel(
+                    &self.devtools.signal_log,
+                    &self.signal_summary_cache,
+                ),
+                position: DeferredPosition::Overlay,
+            });
+        }
+        if self.devtools.inspector_active {
+            deferred.push(DeferredEntry {
+                element: crate::devtools::inspector::inspector_overlay(&self.devtools.inspector),
+                position: DeferredPosition::Overlay,
+            });
+        }
+
         // Resolve deferred elements (independent layout trees)
         let mut resolved_deferred = resolve_deferred(
             deferred,
@@ -130,6 +155,7 @@ impl WindowState {
             mozui_style::Rect::new(cl.x, cl.y, cl.width, cl.height)
         };
         {
+            let mut debug_tree = Vec::new();
             let mut pcx = PaintContext::new(
                 &self.layout_engine,
                 &mut self.draw_list,
@@ -137,8 +163,29 @@ impl WindowState {
                 self.renderer.font_system(),
                 window_size,
             );
+            if self.devtools.inspector_active {
+                pcx.debug_collector = Some(&mut debug_tree);
+            }
             tree.prepaint(root_bounds, &mut pcx);
             tree.paint(root_bounds, &mut pcx);
+
+            // Update inspector element tree and do hit-testing
+            if self.devtools.inspector_active {
+                pcx.debug_collector = None;
+                let mouse = self.interactions.mouse_position();
+                self.devtools.inspector.tree = debug_tree;
+                self.devtools.inspector.hovered = self
+                    .devtools
+                    .inspector
+                    .tree
+                    .iter()
+                    .rposition(|e| {
+                        mouse.x >= e.x
+                            && mouse.x <= e.x + e.width
+                            && mouse.y >= e.y
+                            && mouse.y <= e.y + e.height
+                    });
+            }
         }
 
         // Paint deferred elements on top of the main tree
@@ -181,6 +228,11 @@ impl WindowState {
         // children into their overlay, so the tree can't be reused across frames.
         cx.reset_hooks();
         self.element_tree = Some((self.root_builder)(cx));
+
+        // Capture signal summary for devtools before layout
+        if self.devtools.signal_debugger_active {
+            self.signal_summary_cache = cx.signal_summary();
+        }
 
         let size = self.window.content_size();
         let scale = self.window.scale_factor();
@@ -344,9 +396,14 @@ impl App {
                         ws.rebuild(&mut cx);
                     }
 
+                    // Force re-render when devtools overlays are active
+                    if ws.devtools.any_active() {
+                        ws.needs_render = true;
+                    }
+
                     ws.render(&mut cx);
 
-                    if cx.has_active_animations() {
+                    if cx.has_active_animations() || ws.devtools.any_active() {
                         ws.window.request_redraw();
                     }
                 }
@@ -430,6 +487,31 @@ fn handle_input_event(
         }
         PlatformEvent::KeyDown { key, modifiers, .. } => {
             let mut handled = false;
+
+            // Devtools toggles: Cmd+Shift+O / Cmd+Shift+I / Cmd+Shift+S
+            if modifiers.meta && modifiers.shift {
+                match key {
+                    mozui_events::Key::Character('o') | mozui_events::Key::Character('O') => {
+                        ws.devtools.perf_overlay_active = !ws.devtools.perf_overlay_active;
+                        ws.needs_render = true;
+                        ws.window.request_redraw();
+                        handled = true;
+                    }
+                    mozui_events::Key::Character('i') | mozui_events::Key::Character('I') => {
+                        ws.devtools.inspector_active = !ws.devtools.inspector_active;
+                        ws.needs_render = true;
+                        ws.window.request_redraw();
+                        handled = true;
+                    }
+                    mozui_events::Key::Character('d') | mozui_events::Key::Character('D') => {
+                        ws.devtools.signal_debugger_active = !ws.devtools.signal_debugger_active;
+                        ws.needs_render = true;
+                        ws.window.request_redraw();
+                        handled = true;
+                    }
+                    _ => {}
+                }
+            }
 
             if let Some(action) = keybindings.match_key(key, modifiers, &[]) {
                 if let Some(handler) = action_handler {

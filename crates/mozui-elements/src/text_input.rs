@@ -146,6 +146,14 @@ impl TextInput {
 }
 
 impl Element for TextInput {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "TextInput",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
     fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         self.layout_id = cx.new_leaf(self.taffy_style.clone());
         self.layout_id
