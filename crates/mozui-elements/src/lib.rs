@@ -1,8 +1,10 @@
 mod accordion;
+mod avatar;
 mod badge;
 mod breadcrumb;
 mod button;
 mod checkbox;
+mod color_picker;
 pub(crate) mod collapsible;
 mod description_list;
 mod dialog;
@@ -10,6 +12,7 @@ mod div;
 mod divider;
 mod group_box;
 mod icon;
+mod img;
 mod kbd;
 mod label;
 mod link;
@@ -22,6 +25,9 @@ mod progress;
 mod radio;
 mod rating;
 mod root;
+mod select;
+mod skeleton;
+mod table;
 mod slider;
 mod stepper;
 mod styled;
@@ -34,10 +40,12 @@ mod tooltip;
 mod virtual_list;
 
 pub use accordion::{Accordion, AccordionItem, accordion, accordion_item};
+pub use avatar::{Avatar, AvatarStatus, avatar};
 pub use badge::{Badge, badge};
 pub use breadcrumb::{Breadcrumb, BreadcrumbItem, breadcrumb, breadcrumb_item};
 pub use button::{Button, ButtonGroup, ButtonVariant, button, button_group, icon_button};
 pub use checkbox::{Checkbox, checkbox};
+pub use color_picker::{ColorPicker, color_picker};
 pub use collapsible::{CollapsibleContainer, collapsible};
 pub use description_list::{DescriptionItem, DescriptionList, description_item, description_list};
 pub use dialog::{DIALOG_ANIM_MS, Dialog, dialog, dialog_anim};
@@ -45,18 +53,22 @@ pub use div::{Div, ScrollOffset, div};
 pub use divider::{Divider, DividerDirection, DividerVariant, divider};
 pub use group_box::{GroupBox, group_box};
 pub use icon::{Icon, icon};
+pub use img::{AnimatedImage, ImageSource, Img, decode_gif_frames, decode_image, decode_image_file, decode_svg, decode_svg_file, img, img_animated};
 pub use kbd::{Kbd, kbd};
 pub use label::{Label, LabelHighlight, LabelHighlightMode, label};
 pub use link::{Link, link};
 pub use list::{List, ListItem, list, list_item};
 pub use menu::{Menu, MenuItem, menu, menu_item, menu_separator};
-pub use notification::{NOTIFICATION_ANIM_MS, Notification, NotificationType, STACK_GAP as NOTIFICATION_STACK_GAP, notification, notification_anim};
+pub use notification::{NOTIFICATION_ANIM_MS, Notification, NotificationPlacement, NotificationType, STACK_GAP as NOTIFICATION_STACK_GAP, notification, notification_anim};
 pub use pagination::{Pagination, pagination};
 pub use popover::{FitMode, Popover};
 pub use progress::{Progress, progress};
 pub use radio::{Radio, radio};
 pub use rating::{Rating, rating};
 pub use root::Root;
+pub use select::{Select, SelectOption, select, select_option};
+pub use skeleton::{Skeleton, SkeletonShape, skeleton};
+pub use table::{ColumnWidth, SortDirection, Table, TableColumn, TableRow, table, table_column, table_row};
 pub use slider::{Slider, slider};
 pub use stepper::{Stepper, StepperItem, stepper};
 pub use styled::{Collapsible, ComponentSize, Disableable, Selectable, Sizable};
@@ -100,6 +112,8 @@ type DragHandler = Box<dyn Fn(Point, &mut dyn std::any::Any)>;
 type ScrollHandler = Box<dyn Fn(f32, f32, &mut dyn std::any::Any)>;
 /// Drop handler receives (source_id, mouse position) when an item is dropped.
 type DropHandler = Box<dyn Fn(DragId, Point, &mut dyn std::any::Any)>;
+/// Right-click handler receives the mouse position where the context menu should appear.
+type RightClickHandler = Box<dyn Fn(Point, &mut dyn std::any::Any)>;
 
 /// Unique identifier for a drag source, used to match sources with compatible targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -109,6 +123,12 @@ pub struct DragId(pub usize);
 struct InteractionEntry {
     bounds: Rect,
     on_click: ClickHandler,
+}
+
+/// A right-click region with its handler.
+struct RightClickEntry {
+    bounds: Rect,
+    on_right_click: RightClickHandler,
 }
 
 /// A focusable region with key handler.
@@ -121,6 +141,7 @@ struct FocusableEntry {
 
 /// A draggable region — handler fires on mouse-down and mouse-move while pressed.
 struct DragRegionEntry {
+    id: u64,
     bounds: Rect,
     on_drag: DragHandler,
 }
@@ -165,14 +186,16 @@ struct ActiveDnd {
 /// Collects interactive regions during paint, hit-tests on events.
 pub struct InteractionMap {
     entries: Vec<InteractionEntry>,
+    right_click_entries: Vec<RightClickEntry>,
     key_handlers: Vec<KeyHandler>,
     focusables: Vec<FocusableEntry>,
     focused_id: Option<usize>,
     next_focus_id: usize,
     drag_regions: Vec<Rect>,
     drag_handlers: Vec<DragRegionEntry>,
-    /// The drag handler bounds that was active when mouse-down started.
-    active_drag_bounds: Option<Rect>,
+    next_drag_id: u64,
+    /// The drag handler ID that was active when mouse-down started.
+    active_drag_id: Option<u64>,
     scroll_regions: Vec<ScrollRegion>,
     focus_traps: Vec<FocusTrap>,
     next_trap_id: usize,
@@ -201,13 +224,15 @@ impl InteractionMap {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
+            right_click_entries: Vec::new(),
             key_handlers: Vec::new(),
             focusables: Vec::new(),
             focused_id: None,
             next_focus_id: 0,
             drag_regions: Vec::new(),
             drag_handlers: Vec::new(),
-            active_drag_bounds: None,
+            next_drag_id: 0,
+            active_drag_id: None,
             scroll_regions: Vec::new(),
             focus_traps: Vec::new(),
             next_trap_id: 0,
@@ -226,12 +251,14 @@ impl InteractionMap {
 
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.right_click_entries.clear();
         self.key_handlers.clear();
         self.focusables.clear();
         self.next_focus_id = 0;
         self.drag_regions.clear();
         self.drag_handlers.clear();
-        // Note: active_drag_bounds persists across clears (drag may span rebuilds)
+        self.next_drag_id = 0;
+        // Note: active_drag_id persists across clears (drag may span rebuilds)
         self.scroll_regions.clear();
         self.focus_traps.clear();
         self.next_trap_id = 0;
@@ -336,8 +363,9 @@ impl InteractionMap {
     }
 
     /// Adjust bounds from layout coordinates to screen coordinates using
-    /// the current scroll offset.
-    fn adjust_bounds(&self, bounds: Rect) -> Rect {
+    /// the current scroll offset. Useful for drag handlers that need to
+    /// capture screen-space coordinates for position calculations.
+    pub fn adjust_bounds(&self, bounds: Rect) -> Rect {
         if self.current_scroll_offset_y == 0.0 {
             bounds
         } else {
@@ -357,8 +385,13 @@ impl InteractionMap {
 
     /// Register an element drag handler. The handler fires on mouse-down within
     /// the bounds and on every mouse-move while the button is held.
+    /// Handlers are matched by registration order (stable ID) across rebuilds,
+    /// so bounds can shift without breaking active drags.
     pub fn register_drag_handler(&mut self, bounds: Rect, handler: DragHandler) {
+        let id = self.next_drag_id;
+        self.next_drag_id += 1;
         self.drag_handlers.push(DragRegionEntry {
+            id,
             bounds: self.adjust_bounds(bounds),
             on_drag: handler,
         });
@@ -369,7 +402,7 @@ impl InteractionMap {
     pub fn dispatch_drag_start(&mut self, position: Point, cx: &mut dyn std::any::Any) -> bool {
         for entry in self.drag_handlers.iter().rev() {
             if entry.bounds.contains(position) {
-                self.active_drag_bounds = Some(entry.bounds);
+                self.active_drag_id = Some(entry.id);
                 (entry.on_drag)(position, cx);
                 return true;
             }
@@ -378,10 +411,11 @@ impl InteractionMap {
     }
 
     /// Dispatch a drag-move event (called on MouseMove while pressed). Returns true if handled.
+    /// Matches by registration-order ID so that layout shifts during a drag don't break it.
     pub fn dispatch_drag_move(&self, position: Point, cx: &mut dyn std::any::Any) -> bool {
-        if let Some(active_bounds) = self.active_drag_bounds {
+        if let Some(active_id) = self.active_drag_id {
             for entry in self.drag_handlers.iter().rev() {
-                if entry.bounds == active_bounds {
+                if entry.id == active_id {
                     (entry.on_drag)(position, cx);
                     return true;
                 }
@@ -392,7 +426,12 @@ impl InteractionMap {
 
     /// Clear the active drag state (called on MouseUp).
     pub fn clear_active_drag(&mut self) {
-        self.active_drag_bounds = None;
+        self.active_drag_id = None;
+    }
+
+    /// Returns true if there's an active drag handler.
+    pub fn has_active_drag(&self) -> bool {
+        self.active_drag_id.is_some()
     }
 
     // ── Drag-and-drop (DnD) ──────────────────────────────────────
@@ -568,6 +607,25 @@ impl InteractionMap {
             bounds: self.adjust_bounds(bounds),
             on_click: handler,
         });
+    }
+
+    /// Register a right-click (context menu) handler for a region.
+    pub fn register_right_click(&mut self, bounds: Rect, handler: RightClickHandler) {
+        self.right_click_entries.push(RightClickEntry {
+            bounds: self.adjust_bounds(bounds),
+            on_right_click: handler,
+        });
+    }
+
+    /// Dispatch a right-click event. Returns true if a handler was found and invoked.
+    pub fn dispatch_right_click(&self, position: Point, cx: &mut dyn std::any::Any) -> bool {
+        for entry in self.right_click_entries.iter().rev() {
+            if entry.bounds.contains(position) {
+                (entry.on_right_click)(position, cx);
+                return true;
+            }
+        }
+        false
     }
 
     /// Register a focusable element. Returns its focus ID.

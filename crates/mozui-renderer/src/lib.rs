@@ -2,17 +2,20 @@ mod atlas;
 mod draw;
 mod glyph_pipeline;
 mod gpu;
+mod image_pipeline;
 mod rect_pipeline;
 
-pub use draw::{Border, DrawCommand, DrawList};
+pub use draw::{Border, DrawCommand, DrawList, ImageData, ObjectFit};
 pub use gpu::GpuContext;
 pub use rect_pipeline::{FILL_LINEAR_GRADIENT, FILL_RADIAL_GRADIENT, FILL_SOLID, RectInstance};
 
-use atlas::{GlyphKey, IconKey, TextureAtlas};
+use atlas::{IconKey, TextureAtlas};
 use glyph_pipeline::{GlyphInstance, GlyphPipeline};
+use image_pipeline::{ImageInstance, ImagePipeline};
 use mozui_platform::PlatformWindow;
 use mozui_style::{Color, Size};
 use mozui_text::{FontSystem, TextStyle};
+use std::sync::Arc;
 
 pub struct Renderer {
     gpu: GpuContext,
@@ -20,6 +23,7 @@ pub struct Renderer {
     surface_config: wgpu::SurfaceConfiguration,
     rect_pipeline: rect_pipeline::RectPipeline,
     glyph_pipeline: GlyphPipeline,
+    image_pipeline: ImagePipeline,
     atlas: TextureAtlas,
     font_system: FontSystem,
     atlas_dirty: bool,
@@ -42,7 +46,8 @@ impl Renderer {
 
         let rect_pipeline = rect_pipeline::RectPipeline::new(&gpu.device, surface_config.format);
         let glyph_pipeline = GlyphPipeline::new(&gpu.device, surface_config.format);
-        let atlas = TextureAtlas::new(&gpu.device, 1024);
+        let image_pipeline = ImagePipeline::new(&gpu.device, surface_config.format);
+        let atlas = TextureAtlas::new(&gpu.device, 2048);
         let font_system = FontSystem::new();
 
         Self {
@@ -51,6 +56,7 @@ impl Renderer {
             surface_config,
             rect_pipeline,
             glyph_pipeline,
+            image_pipeline,
             atlas,
             font_system,
             atlas_dirty: true,
@@ -107,13 +113,18 @@ impl Renderer {
                 label: Some("mozui_encoder"),
             });
 
-        // Collect rect and glyph instances, tracking interleaved batches
+        // Collect rect, glyph, and image instances, tracking interleaved batches
         // to preserve paint order (critical for overlays like dialogs).
         let mut rects: Vec<RectInstance> = Vec::new();
         let mut glyph_instances: Vec<GlyphInstance> = Vec::new();
-        // Each batch: (is_glyphs, start_index, count) into the respective vec
-        let mut batches: Vec<(bool, usize, usize)> = Vec::new();
-        let mut current_is_glyphs: Option<bool> = None;
+        // Image batches: each image command is a separate draw call (different texture)
+        let mut image_batches: Vec<(Arc<draw::ImageData>, ImageInstance)> = Vec::new();
+
+        // Batch types: 0=rects, 1=glyphs, 2=image(index into image_batches)
+        #[derive(Clone, Copy, PartialEq)]
+        enum BatchKind { Rects, Glyphs, Image(usize) }
+        let mut batches: Vec<(BatchKind, usize, usize)> = Vec::new();
+        let mut current_kind: Option<BatchKind> = None;
 
         for cmd in draw_list.commands() {
             let rect_start = rects.len();
@@ -131,7 +142,6 @@ impl Renderer {
                     if let Some(shadow) = shadow {
                         let blur_px = shadow.blur * scale;
                         let spread_px = shadow.spread * scale;
-                        // Shadow bounds = original rect + offset, dilated by spread
                         let sx = (bounds.origin.x + shadow.offset_x) * scale - spread_px;
                         let sy = (bounds.origin.y + shadow.offset_y) * scale - spread_px;
                         let sw = bounds.size.width * scale + spread_px * 2.0;
@@ -243,7 +253,6 @@ impl Renderer {
                     if let Some(region) = self.atlas.get_icon(&key) {
                         if region.width > 0 && region.height > 0 {
                             let atlas_size = self.atlas.size as f32;
-                            // Center the icon within the bounds
                             let icon_w = region.width as f32;
                             let icon_h = region.height as f32;
                             let gx = bounds.origin.x * scale
@@ -288,127 +297,77 @@ impl Renderer {
                         ..Default::default()
                     };
 
-                    let run = mozui_text::shaping::shape_text(text, &text_style, &self.font_system);
-                    let font_id = self.font_system.default_font();
-                    let metrics = self.font_system.font_metrics(font_id, *font_size);
-                    // Center the glyph run vertically within the text element's bounds.
-                    // leading = line_height - (ascent - descent); descent is negative
-                    let line_height = bounds.size.height;
-                    let leading = line_height - (metrics.ascent - metrics.descent);
-                    let baseline_y = bounds.origin.y + leading / 2.0 + metrics.ascent;
-                    let size_px = (*font_size * scale) as u16;
+                    let run = mozui_text::shaping::shape_text(
+                        text,
+                        &text_style,
+                        &self.font_system,
+                    );
+
+                    // cosmic-text's render() passes (0, run.line_y) as offset to
+                    // physical(). glyph.y is 0 for the first line, so offset.1
+                    // should be the baseline Y. We compute baseline to vertically
+                    // center text within the bounds box.
+                    let ascent = run.max_ascent;
+                    let descent = run.max_descent;
+                    let text_height = ascent + descent;
+                    let box_height = bounds.size.height;
+                    let baseline_y = bounds.origin.y + (box_height - text_height) / 2.0 + ascent;
                     let atlas_size = self.atlas.size as f32;
+
+                    // physical() adds offset AFTER scaling: (glyph.x * scale + offset.0)
+                    // so offset must be in physical pixels.
+                    let phys_offset = (bounds.origin.x * scale, baseline_y * scale);
 
                     for glyph in &run.glyphs {
                         if glyph.glyph_id == 0 {
                             continue;
                         }
 
-                        let key = GlyphKey {
-                            font_id: glyph.font_id,
-                            glyph_id: glyph.glyph_id,
-                            size_px,
-                        };
+                        // Get sub-pixel-aware cache key at render scale
+                        let physical = glyph.layout_glyph.physical(phys_offset, scale);
+                        let cache_key = physical.cache_key;
 
                         // Rasterize if not cached
-                        if self.atlas.get(&key).is_none() {
-                            let font = self.font_system.get_font(glyph.font_id);
-                            let raster_scale = *font_size * scale;
-
-                            use pathfinder_geometry::transform2d::Transform2F;
-                            use pathfinder_geometry::vector::Vector2F;
-                            let identity = Transform2F::default();
-                            match font.raster_bounds(
-                                glyph.glyph_id,
-                                raster_scale,
-                                identity,
-                                font_kit::hinting::HintingOptions::None,
-                                font_kit::canvas::RasterizationOptions::GrayscaleAa,
+                        if self.atlas.get(&cache_key).is_none() {
+                            if let Some((bitmap, placement)) = rasterize_glyph_swash(
+                                &self.font_system,
+                                cache_key,
                             ) {
-                                Ok(raster_bounds) => {
-                                    let w = raster_bounds.size().x() as u32;
-                                    let h = raster_bounds.size().y() as u32;
+                                let w = placement.width;
+                                let h = placement.height;
+                                let bearing_x = placement.left as f32;
+                                let bearing_y = -placement.top as f32;
 
-                                    if w > 0 && h > 0 {
-                                        let mut canvas = font_kit::canvas::Canvas::new(
-                                            pathfinder_geometry::vector::Vector2I::new(
-                                                w as i32, h as i32,
-                                            ),
-                                            font_kit::canvas::Format::A8,
-                                        );
-
-                                        // Translate so the glyph renders within the canvas
-                                        let raster_transform =
-                                            Transform2F::from_translation(Vector2F::new(
-                                                -raster_bounds.origin().x() as f32,
-                                                -raster_bounds.origin().y() as f32,
-                                            ));
-
-                                        let _ = font.rasterize_glyph(
-                                            &mut canvas,
-                                            glyph.glyph_id,
-                                            raster_scale,
-                                            raster_transform,
-                                            font_kit::hinting::HintingOptions::None,
-                                            font_kit::canvas::RasterizationOptions::GrayscaleAa,
-                                        );
-
-                                        let bearing_x = raster_bounds.origin().x() as f32;
-                                        let bearing_y = raster_bounds.origin().y() as f32;
-
-                                        // font-kit canvas stride may differ from width
-                                        let data = if canvas.stride as u32 != w {
-                                            let mut packed = Vec::with_capacity((w * h) as usize);
-                                            for row in 0..h {
-                                                let start = (row as usize) * canvas.stride;
-                                                packed.extend_from_slice(
-                                                    &canvas.pixels[start..start + w as usize],
-                                                );
-                                            }
-                                            packed
-                                        } else {
-                                            canvas.pixels.clone()
-                                        };
-
-                                        self.atlas.insert(
-                                            &self.gpu.queue,
-                                            key,
-                                            w,
-                                            h,
-                                            bearing_x,
-                                            bearing_y,
-                                            &data,
-                                        );
-                                        self.atlas_dirty = true;
-                                    } else {
-                                        self.atlas.insert(
-                                            &self.gpu.queue,
-                                            key,
-                                            0,
-                                            0,
-                                            0.0,
-                                            0.0,
-                                            &[],
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::error!(
-                                        ?e,
-                                        glyph_id = glyph.glyph_id,
-                                        "raster_bounds failed"
-                                    );
-                                }
+                                self.atlas.insert(
+                                    &self.gpu.queue,
+                                    cache_key,
+                                    w,
+                                    h,
+                                    bearing_x,
+                                    bearing_y,
+                                    &bitmap,
+                                );
+                                self.atlas_dirty = true;
+                            } else {
+                                self.atlas.insert(
+                                    &self.gpu.queue,
+                                    cache_key,
+                                    0,
+                                    0,
+                                    0.0,
+                                    0.0,
+                                    &[],
+                                );
                             }
                         }
 
-                        if let Some(region) = self.atlas.get(&key) {
+                        if let Some(region) = self.atlas.get(&cache_key) {
                             if region.width == 0 || region.height == 0 {
                                 continue;
                             }
 
-                            let gx = (bounds.origin.x + glyph.x_offset) * scale + region.bearing_x;
-                            let gy = baseline_y * scale + region.bearing_y;
+                            let gx = physical.x as f32 + region.bearing_x;
+                            let gy = physical.y as f32 + region.bearing_y;
 
                             glyph_instances.push(GlyphInstance {
                                 bounds: [gx, gy, region.width as f32, region.height as f32],
@@ -423,22 +382,53 @@ impl Renderer {
                         }
                     }
                 }
+                DrawCommand::Image {
+                    bounds,
+                    data,
+                    corner_radii,
+                    opacity,
+                    object_fit,
+                } => {
+                    let (uv, draw_bounds) = compute_image_uv_and_bounds(
+                        bounds, data.width, data.height, *object_fit, scale,
+                    );
+
+                    let img_idx = image_batches.len();
+                    image_batches.push((
+                        data.clone(),
+                        ImageInstance {
+                            bounds: [draw_bounds[0], draw_bounds[1], draw_bounds[2], draw_bounds[3]],
+                            uv,
+                            corner_radii: [
+                                corner_radii.top_left * scale,
+                                corner_radii.top_right * scale,
+                                corner_radii.bottom_right * scale,
+                                corner_radii.bottom_left * scale,
+                            ],
+                            opacity: *opacity,
+                            _padding: [0.0; 3],
+                        },
+                    ));
+
+                    batches.push((BatchKind::Image(img_idx), 0, 1));
+                    current_kind = None;
+                }
             }
 
             // Track interleaved batches for correct z-ordering
             let rect_count = rects.len() - rect_start;
             let glyph_count = glyph_instances.len() - glyph_start;
             if rect_count > 0 {
-                if current_is_glyphs != Some(false) {
-                    batches.push((false, rect_start, 0));
-                    current_is_glyphs = Some(false);
+                if current_kind != Some(BatchKind::Rects) {
+                    batches.push((BatchKind::Rects, rect_start, 0));
+                    current_kind = Some(BatchKind::Rects);
                 }
                 batches.last_mut().unwrap().2 += rect_count;
             }
             if glyph_count > 0 {
-                if current_is_glyphs != Some(true) {
-                    batches.push((true, glyph_start, 0));
-                    current_is_glyphs = Some(true);
+                if current_kind != Some(BatchKind::Glyphs) {
+                    batches.push((BatchKind::Glyphs, glyph_start, 0));
+                    current_kind = Some(BatchKind::Glyphs);
                 }
                 batches.last_mut().unwrap().2 += glyph_count;
             }
@@ -449,6 +439,12 @@ impl Renderer {
             self.glyph_pipeline
                 .update_atlas(&self.gpu.device, &self.atlas.view);
             self.atlas_dirty = false;
+        }
+
+        // Ensure all image textures are uploaded
+        for (data, _) in &image_batches {
+            self.image_pipeline
+                .ensure_uploaded(&self.gpu.device, &self.gpu.queue, data);
         }
 
         {
@@ -475,25 +471,42 @@ impl Renderer {
             // Draw interleaved batches to preserve paint order
             let vw = self.surface_config.width as f32;
             let vh = self.surface_config.height as f32;
-            for &(is_glyphs, start, count) in &batches {
-                if is_glyphs {
-                    self.glyph_pipeline.draw(
-                        &self.gpu.device,
-                        &self.gpu.queue,
-                        &mut pass,
-                        &glyph_instances[start..start + count],
-                        vw,
-                        vh,
-                    );
-                } else {
-                    self.rect_pipeline.draw(
-                        &self.gpu.device,
-                        &self.gpu.queue,
-                        &mut pass,
-                        &rects[start..start + count],
-                        vw,
-                        vh,
-                    );
+            for &(kind, start, count) in &batches {
+                match kind {
+                    BatchKind::Rects => {
+                        self.rect_pipeline.draw(
+                            &self.gpu.device,
+                            &self.gpu.queue,
+                            &mut pass,
+                            &rects[start..start + count],
+                            vw,
+                            vh,
+                        );
+                    }
+                    BatchKind::Glyphs => {
+                        self.glyph_pipeline.draw(
+                            &self.gpu.device,
+                            &self.gpu.queue,
+                            &mut pass,
+                            &glyph_instances[start..start + count],
+                            vw,
+                            vh,
+                        );
+                    }
+                    BatchKind::Image(idx) => {
+                        let (ref data, ref instance) = image_batches[idx];
+                        if let Some(bind_group) = self.image_pipeline.get_bind_group(data.id) {
+                            self.image_pipeline.draw(
+                                &self.gpu.device,
+                                &self.gpu.queue,
+                                &mut pass,
+                                std::slice::from_ref(instance),
+                                bind_group,
+                                vw,
+                                vh,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -503,32 +516,106 @@ impl Renderer {
     }
 }
 
+/// Rasterize a glyph using swash, returning (alpha_bitmap, placement).
+fn rasterize_glyph_swash(
+    font_system: &FontSystem,
+    cache_key: cosmic_text::CacheKey,
+) -> Option<(Vec<u8>, swash::zeno::Placement)> {
+    use swash::scale::{Render, ScaleContext, Source, StrikeWith};
+    use swash::zeno::Format;
+
+    let mut fs = font_system.borrow_mut();
+
+    // Look up the font in cosmic-text's database
+    let font = fs.get_font(cache_key.font_id, cache_key.font_weight)?;
+    let font_ref = font.as_swash();
+    let font_size = f32::from_bits(cache_key.font_size_bits);
+
+    let mut context = ScaleContext::new();
+    let mut scaler = context
+        .builder(font_ref)
+        .size(font_size)
+        .hint(true)
+        .build();
+
+    let image = Render::new(&[
+        Source::ColorOutline(0),
+        Source::ColorBitmap(StrikeWith::BestFit),
+        Source::Outline,
+    ])
+    .format(Format::Alpha)
+    .offset(swash::zeno::Vector {
+        x: cache_key.x_bin.as_float(),
+        y: cache_key.y_bin.as_float(),
+    })
+    .render(&mut scaler, cache_key.glyph_id)?;
+
+    Some((image.data, image.placement))
+}
+
+/// Compute UV coordinates and draw bounds for an image based on object-fit mode.
+fn compute_image_uv_and_bounds(
+    bounds: &mozui_style::Rect,
+    img_w: u32,
+    img_h: u32,
+    fit: draw::ObjectFit,
+    scale: f32,
+) -> ([f32; 4], [f32; 4]) {
+    let bx = bounds.origin.x * scale;
+    let by = bounds.origin.y * scale;
+    let bw = bounds.size.width * scale;
+    let bh = bounds.size.height * scale;
+
+    match fit {
+        draw::ObjectFit::Fill => {
+            ([0.0, 0.0, 1.0, 1.0], [bx, by, bw, bh])
+        }
+        draw::ObjectFit::Contain => {
+            let img_aspect = img_w as f32 / img_h as f32;
+            let box_aspect = bw / bh;
+            let (dw, dh) = if img_aspect > box_aspect {
+                (bw, bw / img_aspect)
+            } else {
+                (bh * img_aspect, bh)
+            };
+            let dx = bx + (bw - dw) / 2.0;
+            let dy = by + (bh - dh) / 2.0;
+            ([0.0, 0.0, 1.0, 1.0], [dx, dy, dw, dh])
+        }
+        draw::ObjectFit::Cover => {
+            let img_aspect = img_w as f32 / img_h as f32;
+            let box_aspect = bw / bh;
+            let uv = if img_aspect > box_aspect {
+                let visible_frac = box_aspect / img_aspect;
+                let offset = (1.0 - visible_frac) / 2.0;
+                [offset, 0.0, offset + visible_frac, 1.0]
+            } else {
+                let visible_frac = img_aspect / box_aspect;
+                let offset = (1.0 - visible_frac) / 2.0;
+                [0.0, offset, 1.0, offset + visible_frac]
+            };
+            (uv, [bx, by, bw, bh])
+        }
+    }
+}
+
 /// Rasterize an SVG string to an alpha bitmap at the given pixel size.
-/// Returns a Vec<u8> of R8 alpha values, or None on failure.
 fn rasterize_icon_svg(svg_data: &str, size_px: u32) -> Option<Vec<u8>> {
-    // Phosphor icons use currentColor — replace with white so we get full alpha
     let svg_white = svg_data.replace("currentColor", "white");
-
     let tree = resvg::usvg::Tree::from_str(&svg_white, &resvg::usvg::Options::default()).ok()?;
-
     let mut pixmap = tiny_skia::Pixmap::new(size_px, size_px)?;
-
     let svg_size = tree.size();
     let scale_x = size_px as f32 / svg_size.width();
     let scale_y = size_px as f32 / svg_size.height();
-
     resvg::render(
         &tree,
         tiny_skia::Transform::from_scale(scale_x, scale_y),
         &mut pixmap.as_mut(),
     );
-
-    // Convert RGBA pixmap to R8 alpha channel only
     let rgba = pixmap.data();
     let mut alpha = Vec::with_capacity((size_px * size_px) as usize);
     for pixel in rgba.chunks_exact(4) {
-        alpha.push(pixel[3]); // alpha channel
+        alpha.push(pixel[3]);
     }
-
     Some(alpha)
 }

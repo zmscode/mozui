@@ -1,7 +1,7 @@
 mod font_system;
 pub mod shaping;
 
-pub use font_system::{FontId, FontSystem};
+pub use font_system::FontSystem;
 pub use shaping::{FontSlant, FontWeight, ShapedGlyph, ShapedRun, TextStyle};
 
 use mozui_style::Size;

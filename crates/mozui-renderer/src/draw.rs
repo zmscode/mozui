@@ -1,10 +1,46 @@
 use mozui_icons::{IconName, IconWeight};
 use mozui_style::{Color, Corners, Fill, Rect, Shadow};
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct Border {
     pub width: f32,
     pub color: Color,
+}
+
+/// Decoded RGBA image data ready for GPU upload.
+#[derive(Debug, Clone)]
+pub struct ImageData {
+    pub pixels: Vec<u8>, // RGBA, len = width * height * 4
+    pub width: u32,
+    pub height: u32,
+    /// Unique ID for caching. Automatically assigned on creation.
+    pub id: u64,
+}
+
+static NEXT_IMAGE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+impl ImageData {
+    pub fn new(pixels: Vec<u8>, width: u32, height: u32) -> Self {
+        Self {
+            pixels,
+            width,
+            height,
+            id: NEXT_IMAGE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+}
+
+/// How an image should fit within its bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ObjectFit {
+    /// Scale to fill bounds, preserving aspect ratio, cropping if needed.
+    #[default]
+    Cover,
+    /// Scale to fit within bounds, preserving aspect ratio (letterboxed).
+    Contain,
+    /// Stretch to fill bounds exactly (may distort).
+    Fill,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +66,13 @@ pub enum DrawCommand {
         bounds: Rect,
         color: Color,
         size_px: f32,
+    },
+    Image {
+        bounds: Rect,
+        data: Arc<ImageData>,
+        corner_radii: Corners,
+        opacity: f32,
+        object_fit: ObjectFit,
     },
 }
 
@@ -59,7 +102,8 @@ impl DrawList {
             match &mut command {
                 DrawCommand::Rect { bounds, .. }
                 | DrawCommand::Text { bounds, .. }
-                | DrawCommand::Icon { bounds, .. } => {
+                | DrawCommand::Icon { bounds, .. }
+                | DrawCommand::Image { bounds, .. } => {
                     bounds.origin.y += self.current_offset_y;
                 }
             }
@@ -70,7 +114,8 @@ impl DrawList {
             let cmd_bounds = match &command {
                 DrawCommand::Rect { bounds, .. }
                 | DrawCommand::Text { bounds, .. }
-                | DrawCommand::Icon { bounds, .. } => bounds,
+                | DrawCommand::Icon { bounds, .. }
+                | DrawCommand::Image { bounds, .. } => bounds,
             };
             let clip_bottom = clip.origin.y + clip.size.height;
             let clip_right = clip.origin.x + clip.size.width;

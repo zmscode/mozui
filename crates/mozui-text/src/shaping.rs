@@ -1,5 +1,9 @@
-use crate::font_system::{FontId, FontSystem};
+use crate::font_system::FontSystem;
+use cosmic_text as ct;
 use mozui_style::Color;
+
+// Re-export for renderer access
+pub use ct::{CacheKey, PhysicalGlyph};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FontWeight {
@@ -36,58 +40,75 @@ impl Default for TextStyle {
     }
 }
 
+/// A positioned glyph from cosmic-text shaping.
 #[derive(Debug, Clone)]
 pub struct ShapedGlyph {
     pub glyph_id: u32,
+    /// Logical x offset (pre-scale)
     pub x_offset: f32,
     pub y_offset: f32,
     pub advance: f32,
-    pub font_id: FontId,
+    /// The underlying cosmic-text layout glyph data (for physical() calls).
+    pub layout_glyph: ct::LayoutGlyph,
 }
 
 #[derive(Debug, Clone)]
 pub struct ShapedRun {
     pub glyphs: Vec<ShapedGlyph>,
     pub width: f32,
+    /// Maximum ascent from the layout run (positive, above baseline).
+    pub max_ascent: f32,
+    /// Maximum descent from the layout run (positive, below baseline).
+    pub max_descent: f32,
 }
 
-/// Simple left-to-right shaping using font-kit glyph advances.
+/// Shape text using cosmic-text's shaper (harfrust / HarfBuzz-compatible).
+/// Returns positioned glyphs with proper complex script, BiDi, and ligature support.
 pub fn shape_text(text: &str, style: &TextStyle, font_system: &FontSystem) -> ShapedRun {
-    let _weight_val = match style.weight {
-        FontWeight::Regular => 400,
-        FontWeight::Bold => 700,
+    let ct_weight = match style.weight {
+        FontWeight::Regular => ct::Weight::NORMAL,
+        FontWeight::Bold => ct::Weight::BOLD,
     };
-    let _italic = style.slant == FontSlant::Italic;
+    let ct_style = match style.slant {
+        FontSlant::Normal => ct::Style::Normal,
+        FontSlant::Italic => ct::Style::Italic,
+    };
 
-    // For now, always use the default font (we'll resolve by family later)
-    let font_id = font_system.default_font();
-    let font = font_system.get_font(font_id);
-    let metrics = font.metrics();
-    let scale = style.font_size / metrics.units_per_em as f32;
+    let line_height = style.font_size * style.line_height;
+    let metrics = ct::Metrics::new(style.font_size, line_height);
+    let attrs = ct::Attrs::new()
+        .weight(ct_weight)
+        .style(ct_style);
 
-    let mut glyphs = Vec::with_capacity(text.len());
-    let mut x_offset = 0.0f32;
+    let mut fs = font_system.borrow_mut();
+    let mut buffer = ct::Buffer::new(&mut fs, metrics);
+    buffer.set_text(&mut fs, text, &attrs, ct::Shaping::Advanced, None);
 
-    for ch in text.chars() {
-        let glyph_id = font.glyph_for_char(ch).unwrap_or(0);
-        let advance = font
-            .advance(glyph_id)
-            .map(|a| a.x() * scale)
-            .unwrap_or(style.font_size * 0.5);
+    let mut glyphs = Vec::new();
+    let mut max_ascent: f32 = 0.0;
+    let mut max_descent: f32 = 0.0;
 
-        glyphs.push(ShapedGlyph {
-            glyph_id,
-            x_offset,
-            y_offset: 0.0,
-            advance,
-            font_id,
-        });
-
-        x_offset += advance + style.letter_spacing;
+    for run in buffer.layout_runs() {
+        // Derive ascent/descent from LayoutRun's line geometry:
+        // line_y = baseline offset from buffer top
+        // line_top = top of line from buffer top
+        // line_height = total height of the line
+        let run_ascent = run.line_y - run.line_top;
+        let run_descent = run.line_top + run.line_height - run.line_y;
+        max_ascent = max_ascent.max(run_ascent);
+        max_descent = max_descent.max(run_descent);
+        for glyph in run.glyphs.iter() {
+            glyphs.push(ShapedGlyph {
+                glyph_id: glyph.glyph_id as u32,
+                x_offset: glyph.x,
+                y_offset: glyph.y,
+                advance: glyph.w,
+                layout_glyph: glyph.clone(),
+            });
+        }
     }
 
-    ShapedRun {
-        width: x_offset,
-        glyphs,
-    }
+    let width = glyphs.last().map(|g| g.x_offset + g.advance).unwrap_or(0.0)
+        + style.letter_spacing * glyphs.len().saturating_sub(1) as f32;
+    ShapedRun { glyphs, width, max_ascent, max_descent }
 }

@@ -27,5 +27,7 @@ objc2-app-kit = { version = "0.3", features = [
     "NSCursor",
     "NSTrackingArea",
     "NSMenu",
+    "NSSavePanel",
+    "NSOpenPanel",
 ] }
 block2 = "0.6"

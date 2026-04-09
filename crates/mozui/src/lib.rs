@@ -12,10 +12,12 @@ pub use mozui_app::actions;
 // ── Elements ───────────────────────────────────────────────────
 pub use mozui_elements::Root;
 pub use mozui_elements::{Accordion, AccordionItem, accordion, accordion_item};
+pub use mozui_elements::{Avatar, AvatarStatus, avatar};
 pub use mozui_elements::{Badge, badge};
 pub use mozui_elements::{Breadcrumb, BreadcrumbItem, breadcrumb, breadcrumb_item};
 pub use mozui_elements::{Button, ButtonGroup, ButtonVariant, button, button_group, icon_button};
 pub use mozui_elements::{Checkbox, checkbox};
+pub use mozui_elements::{ColorPicker, color_picker};
 pub use mozui_elements::{Collapsible, ComponentSize, Disableable, Selectable, Sizable};
 pub use mozui_elements::{CollapsibleContainer, collapsible};
 pub use mozui_elements::{DescriptionItem, DescriptionList, description_item, description_list};
@@ -28,16 +30,21 @@ pub use mozui_elements::{Divider, DividerDirection, DividerVariant, divider};
 pub use mozui_elements::{FitMode, Popover};
 pub use mozui_elements::{GroupBox, group_box};
 pub use mozui_elements::{Icon, icon};
+pub use mozui_elements::{AnimatedImage, ImageSource, Img, decode_gif_frames, decode_image, decode_image_file, decode_svg, decode_svg_file, img, img_animated};
+pub use mozui_renderer::{ImageData, ObjectFit};
 pub use mozui_elements::{Kbd, kbd};
 pub use mozui_elements::{Label, LabelHighlight, LabelHighlightMode, label};
 pub use mozui_elements::{Link, link};
 pub use mozui_elements::{List, ListItem, list, list_item};
 pub use mozui_elements::{Menu, MenuItem, menu, menu_item, menu_separator};
-pub use mozui_elements::{NOTIFICATION_ANIM_MS, Notification, NotificationType, NOTIFICATION_STACK_GAP, notification, notification_anim};
+pub use mozui_elements::{NOTIFICATION_ANIM_MS, Notification, NotificationPlacement, NotificationType, NOTIFICATION_STACK_GAP, notification, notification_anim};
 pub use mozui_elements::{Pagination, pagination};
 pub use mozui_elements::{Progress, progress};
 pub use mozui_elements::{Radio, radio};
 pub use mozui_elements::{Rating, rating};
+pub use mozui_elements::{Select, SelectOption, select, select_option};
+pub use mozui_elements::{Skeleton, SkeletonShape, skeleton};
+pub use mozui_elements::{ColumnWidth, SortDirection, Table, TableColumn, TableRow, table, table_column, table_row};
 pub use mozui_elements::{Slider, slider};
 pub use mozui_elements::{Stepper, StepperItem, stepper};
 pub use mozui_elements::{Switch, switch};
@@ -53,7 +60,7 @@ pub use mozui_icons::{IconName, IconWeight};
 pub use mozui_events::{Key, Modifiers, WindowId};
 
 // ── Platform ───────────────────────────────────────────────────
-pub use mozui_platform::{TitlebarStyle, WindowOptions, open_url};
+pub use mozui_platform::{FileDialogOptions, TitlebarStyle, WindowOptions, open_file_dialog, open_url, save_file_dialog};
 
 // ── Reactivity ─────────────────────────────────────────────────
 pub use mozui_reactive::{SetSignal, Signal};

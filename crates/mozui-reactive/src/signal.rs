@@ -99,4 +99,24 @@ impl SignalStore {
     pub fn clear_dirty(&mut self) {
         self.dirty = false;
     }
+
+    /// Number of allocated slots.
+    pub fn slot_count(&self) -> usize {
+        self.slots.len()
+    }
+
+    /// Get signal handles for an existing slot (panics if slot doesn't exist).
+    pub fn get_existing<T: 'static>(&self, index: usize) -> (Signal<T>, SetSignal<T>) {
+        assert!(index < self.slots.len(), "slot does not exist");
+        (
+            Signal {
+                id: index,
+                _marker: PhantomData,
+            },
+            SetSignal {
+                id: index,
+                _marker: PhantomData,
+            },
+        )
+    }
 }

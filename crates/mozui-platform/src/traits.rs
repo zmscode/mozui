@@ -137,6 +137,94 @@ pub fn open_url(url: &str) {
     }
 }
 
+/// Options for a file dialog.
+#[derive(Debug, Clone, Default)]
+pub struct FileDialogOptions {
+    /// Dialog title.
+    pub title: Option<String>,
+    /// Allowed file type extensions (e.g. ["png", "jpg"]).
+    pub allowed_types: Vec<String>,
+    /// Whether to allow selecting multiple files (open dialog only).
+    pub multiple: bool,
+    /// Whether to allow selecting directories instead of files.
+    pub directories: bool,
+    /// Default filename for save dialogs.
+    pub default_name: Option<String>,
+}
+
+/// Show a native open file dialog. Returns selected file path(s), or empty if cancelled.
+pub fn open_file_dialog(options: FileDialogOptions) -> Vec<std::path::PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSOpenPanel, NSModalResponseOK};
+        use objc2_foundation::NSString;
+
+        let mtm = objc2::MainThreadMarker::new()
+            .expect("File dialogs must be called from the main thread");
+        let panel = NSOpenPanel::openPanel(mtm);
+        panel.setCanChooseFiles(!options.directories);
+        panel.setCanChooseDirectories(options.directories);
+        panel.setAllowsMultipleSelection(options.multiple);
+
+        if let Some(title) = &options.title {
+            panel.setTitle(Some(&NSString::from_str(title)));
+        }
+
+        let response = panel.runModal();
+        if response == NSModalResponseOK {
+            let urls = panel.URLs();
+            let mut paths = Vec::new();
+            for i in 0..urls.len() {
+                if let Some(path) = urls.objectAtIndex(i).path() {
+                    paths.push(std::path::PathBuf::from(path.to_string()));
+                }
+            }
+            return paths;
+        }
+        Vec::new()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = options;
+        Vec::new()
+    }
+}
+
+/// Show a native save file dialog. Returns the selected path, or None if cancelled.
+pub fn save_file_dialog(options: FileDialogOptions) -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSSavePanel, NSModalResponseOK};
+        use objc2_foundation::NSString;
+
+        let mtm = objc2::MainThreadMarker::new()
+            .expect("File dialogs must be called from the main thread");
+        let panel = NSSavePanel::savePanel(mtm);
+
+        if let Some(title) = &options.title {
+            panel.setTitle(Some(&NSString::from_str(title)));
+        }
+        if let Some(name) = &options.default_name {
+            panel.setNameFieldStringValue(&NSString::from_str(name));
+        }
+
+        let response = panel.runModal();
+        if response == NSModalResponseOK {
+            if let Some(url) = panel.URL() {
+                if let Some(path) = url.path() {
+                    return Some(std::path::PathBuf::from(path.to_string()));
+                }
+            }
+        }
+        None
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = options;
+        None
+    }
+}
+
 /// Create a new platform window (can be called from the event loop).
 pub fn create_window(options: WindowOptions) -> Box<dyn PlatformWindow> {
     #[cfg(target_os = "macos")]

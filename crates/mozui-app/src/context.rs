@@ -6,6 +6,7 @@ use mozui_reactive::{SetSignal, Signal, SignalStore};
 use mozui_style::Theme;
 use mozui_style::animation::{Animated, Lerp, SpringHandle, Transition};
 use std::cell::Cell;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -182,6 +183,67 @@ impl Context {
         self.get(signal).clone()
     }
 
+    /// Cache a computed value that only recomputes when dependencies change.
+    ///
+    /// ```rust,ignore
+    /// let sorted_items = cx.use_memo(&(items.len(), sort_key), || {
+    ///     let mut sorted = items.clone();
+    ///     sorted.sort_by_key(|i| i.name.clone());
+    ///     sorted
+    /// });
+    /// ```
+    pub fn use_memo<D: Hash, T: 'static>(
+        &mut self,
+        deps: &D,
+        compute: impl FnOnce() -> T,
+    ) -> &T {
+        let deps_hash = hash_deps(deps);
+        let idx = self.hook_index;
+        self.hook_index += 1;
+
+        if idx >= self.signals.slot_count() {
+            // First render — compute and store
+            let value = compute();
+            let (signal, _) =
+                self.signals.get_or_create::<(u64, T)>(idx, (deps_hash, value));
+            return &self.signals.get(signal).1;
+        }
+
+        // Subsequent render — check if deps changed
+        let (signal, set_signal) = self.signals.get_existing::<(u64, T)>(idx);
+        let existing_hash = self.signals.get(signal).0;
+        if existing_hash != deps_hash {
+            let new_value = compute();
+            self.signals.set(set_signal, (deps_hash, new_value));
+        }
+        &self.signals.get(signal).1
+    }
+
+    /// Run a side-effect when dependencies change. The effect runs synchronously
+    /// during the render call when deps differ from the previous render.
+    ///
+    /// ```rust,ignore
+    /// cx.use_effect(&selected_id, || {
+    ///     tracing::info!("Selection changed to: {}", selected_id);
+    /// });
+    /// ```
+    pub fn use_effect<D: Hash>(
+        &mut self,
+        deps: &D,
+        effect: impl FnOnce(),
+    ) {
+        let deps_hash = hash_deps(deps);
+        let (signal, set_signal) =
+            self.signals.get_or_create::<u64>(self.hook_index, deps_hash);
+        self.hook_index += 1;
+
+        let existing = *self.signals.get(signal);
+        if existing != deps_hash {
+            self.signals.set(set_signal, deps_hash);
+            effect();
+        }
+    }
+
     /// Open a new window with the given options and root builder.
     /// The window is created on the next frame.
     pub fn open_window(
@@ -216,4 +278,11 @@ impl Context {
     pub fn clear_animation_flag(&mut self) {
         self.animations_active.set(false);
     }
+}
+
+/// Hash a dependency value to a u64 for memo/effect comparisons.
+fn hash_deps<D: Hash>(deps: &D) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    deps.hash(&mut hasher);
+    hasher.finish()
 }

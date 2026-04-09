@@ -1,14 +1,6 @@
+use cosmic_text::CacheKey;
 use mozui_icons::IconName;
-use mozui_text::FontId;
 use rustc_hash::FxHashMap;
-
-/// Key for looking up a cached glyph in the atlas.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct GlyphKey {
-    pub font_id: FontId,
-    pub glyph_id: u32,
-    pub size_px: u16, // Quantized font size in pixels
-}
 
 /// Key for looking up a cached icon in the atlas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,7 +26,7 @@ pub struct TextureAtlas {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub size: u32,
-    entries: FxHashMap<GlyphKey, AtlasRegion>,
+    entries: FxHashMap<CacheKey, AtlasRegion>,
     icon_entries: FxHashMap<IconKey, AtlasRegion>,
     // Shelf allocator state
     shelf_y: u32,
@@ -76,7 +68,7 @@ impl TextureAtlas {
     }
 
     /// Get a cached glyph region, or return None if not cached.
-    pub fn get(&self, key: &GlyphKey) -> Option<&AtlasRegion> {
+    pub fn get(&self, key: &CacheKey) -> Option<&AtlasRegion> {
         self.entries.get(key)
     }
 
@@ -89,7 +81,7 @@ impl TextureAtlas {
     pub fn insert(
         &mut self,
         queue: &wgpu::Queue,
-        key: GlyphKey,
+        key: CacheKey,
         width: u32,
         height: u32,
         bearing_x: f32,

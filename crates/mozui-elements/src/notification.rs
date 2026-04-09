@@ -32,6 +32,18 @@ const MARGIN: f32 = 16.0;
 /// gpui-component: gap_3 between stacked notifications = 12px
 pub const STACK_GAP: f32 = 12.0;
 
+/// Placement of notification toasts on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum NotificationPlacement {
+    #[default]
+    TopRight,
+    TopLeft,
+    TopCenter,
+    BottomRight,
+    BottomLeft,
+    BottomCenter,
+}
+
 /// Notification type/severity, each with a default icon and color.
 ///
 /// Matches gpui-component's `NotificationType` enum with the same icon mapping.
@@ -112,6 +124,8 @@ pub struct Notification {
     anim: Animated<f32>,
     /// Whether animation is disabled (always fully visible).
     no_anim: bool,
+    /// Screen placement (default: TopRight).
+    placement: NotificationPlacement,
 }
 
 /// Create a new entrance animation for a notification.
@@ -168,6 +182,7 @@ pub fn notification(
         titlebar_height: 38.0,
         anim,
         no_anim: true,
+        placement: NotificationPlacement::TopRight,
     }
 }
 
@@ -214,6 +229,12 @@ impl Notification {
     pub fn anim(mut self, anim: Animated<f32>) -> Self {
         self.anim = anim;
         self.no_anim = false;
+        self
+    }
+
+    /// Set the screen placement (default: TopRight).
+    pub fn placement(mut self, placement: NotificationPlacement) -> Self {
+        self.placement = placement;
         self
     }
 
@@ -330,23 +351,65 @@ impl Element for Notification {
             &[text_col],
         );
 
-        // Absolute-positioned wrapper (top-right, with titlebar offset)
-        // gpui-component: margins.top = TITLE_BAR_HEIGHT + 16px, margins.right = 16px
-        let top = self.titlebar_height + MARGIN + self.top_offset;
-        engine.new_with_children(
-            Style {
-                display: Display::Flex,
-                position: Position::Absolute,
-                inset: taffy::Rect {
-                    top: length(top),
-                    right: length(MARGIN),
-                    left: auto(),
-                    bottom: auto(),
-                },
-                ..Default::default()
+        // Absolute-positioned wrapper based on placement
+        let top_edge = self.titlebar_height + MARGIN + self.top_offset;
+        let bottom_edge = MARGIN + self.top_offset;
+        let inset = match self.placement {
+            NotificationPlacement::TopRight => taffy::Rect {
+                top: length(top_edge),
+                right: length(MARGIN),
+                left: auto(),
+                bottom: auto(),
             },
-            &[content],
-        )
+            NotificationPlacement::TopLeft => taffy::Rect {
+                top: length(top_edge),
+                left: length(MARGIN),
+                right: auto(),
+                bottom: auto(),
+            },
+            NotificationPlacement::TopCenter => taffy::Rect {
+                top: length(top_edge),
+                left: auto(),
+                right: auto(),
+                bottom: auto(),
+            },
+            NotificationPlacement::BottomRight => taffy::Rect {
+                bottom: length(bottom_edge),
+                right: length(MARGIN),
+                left: auto(),
+                top: auto(),
+            },
+            NotificationPlacement::BottomLeft => taffy::Rect {
+                bottom: length(bottom_edge),
+                left: length(MARGIN),
+                right: auto(),
+                top: auto(),
+            },
+            NotificationPlacement::BottomCenter => taffy::Rect {
+                bottom: length(bottom_edge),
+                left: auto(),
+                right: auto(),
+                top: auto(),
+            },
+        };
+
+        let mut wrapper_style = Style {
+            display: Display::Flex,
+            position: Position::Absolute,
+            inset,
+            ..Default::default()
+        };
+
+        // Center horizontally for center placements
+        match self.placement {
+            NotificationPlacement::TopCenter | NotificationPlacement::BottomCenter => {
+                wrapper_style.align_self = Some(AlignSelf::Center);
+                wrapper_style.justify_self = Some(JustifySelf::Center);
+            }
+            _ => {}
+        }
+
+        engine.new_with_children(wrapper_style, &[content])
     }
 
     fn paint(
@@ -359,7 +422,12 @@ impl Element for Notification {
     ) {
         let progress = if self.no_anim { 1.0 } else { self.anim.get() };
         let opacity = progress;
-        let dy = -SLIDE_DISTANCE * (1.0 - progress); // slides down from -45px to 0
+        let dy = match self.placement {
+            NotificationPlacement::BottomRight
+            | NotificationPlacement::BottomLeft
+            | NotificationPlacement::BottomCenter => SLIDE_DISTANCE * (1.0 - progress), // slides up from +45px to 0
+            _ => -SLIDE_DISTANCE * (1.0 - progress), // slides down from -45px to 0
+        };
 
         // Helper: offset a rect by the slide_y animation offset
         let offset_rect = |r: mozui_style::Rect| -> mozui_style::Rect {

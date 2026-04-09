@@ -115,6 +115,7 @@ pub struct Div {
     on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
     on_key_down:
         Option<Box<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any)>>,
+    on_right_click: Option<Box<dyn Fn(StylePoint, &mut dyn std::any::Any)>>,
 
     // Window drag region
     is_drag_region: bool,
@@ -141,6 +142,7 @@ pub fn div() -> Div {
         children: Vec::new(),
         on_click: None,
         on_key_down: None,
+        on_right_click: None,
         is_drag_region: false,
         scroll_y: None,
         content_height: Cell::new(0.0),
@@ -465,6 +467,16 @@ impl Div {
         self
     }
 
+    /// Register a right-click (context menu) handler.
+    /// The handler receives the mouse position where the right-click occurred.
+    pub fn on_right_click(
+        mut self,
+        handler: impl Fn(StylePoint, &mut dyn std::any::Any) + 'static,
+    ) -> Self {
+        self.on_right_click = Some(Box::new(handler));
+        self
+    }
+
     // --- Drag-and-drop ---
 
     /// Make this div a drag source. When the user drags from this element,
@@ -551,6 +563,16 @@ impl Element for Div {
         if let Some(ref handler) = self.on_click {
             let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
             interactions.register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+        }
+
+        // Register right-click handler if present
+        if let Some(ref handler) = self.on_right_click {
+            let handler_ptr =
+                handler.as_ref() as *const dyn Fn(StylePoint, &mut dyn std::any::Any);
+            interactions.register_right_click(
+                bounds,
+                Box::new(move |pos, cx| unsafe { (*handler_ptr)(pos, cx) }),
+            );
         }
 
         // Register drag region if marked

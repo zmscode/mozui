@@ -13,3 +13,7 @@ mozui-platform = { workspace = true }
 mozui-icons = { workspace = true }
 taffy = { workspace = true }
 tracing = { workspace = true }
+image = { workspace = true }
+resvg = { workspace = true }
+usvg = { workspace = true }
+tiny-skia = "0.12"

@@ -12,9 +12,9 @@ tracing = { workspace = true }
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"
 mozui-text = { workspace = true }
-font-kit = { workspace = true }
+cosmic-text = { workspace = true }
+swash = { workspace = true }
 rustc-hash = { workspace = true }
-pathfinder_geometry = "0.5"
 resvg = "0.47.0"
 tiny-skia = "0.12.0"
 mozui-icons = { version = "0.1.0", path = "../mozui-icons" }

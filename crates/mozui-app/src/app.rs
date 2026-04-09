@@ -317,6 +317,19 @@ fn handle_input_event(
             ws.needs_render = true;
             ws.window.request_redraw();
         }
+        PlatformEvent::MouseDown {
+            button: mozui_events::MouseButton::Right,
+            position,
+            ..
+        } => {
+            if ws.interactions.dispatch_right_click(position, cx) {
+                cx.clear_dirty();
+                ws.rebuild(cx);
+                ws.rebuild_interactions();
+            }
+            ws.needs_render = true;
+            ws.window.request_redraw();
+        }
         PlatformEvent::MouseUp {
             button: mozui_events::MouseButton::Left,
             position,
