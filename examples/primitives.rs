@@ -117,11 +117,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .child(label("Masked: password123").masked().color(text_color)),
                     )
                     // ── Labeled Divider ────────────────────────────────
-                    .child(
-                        divider()
-                            .label("Keyboard Shortcuts")
-                            .color(theme.border),
-                    )
+                    .child(divider().label("Keyboard Shortcuts").color(theme.border))
                     // ── Kbd Section ────────────────────────────────────
                     .child(
                         div()

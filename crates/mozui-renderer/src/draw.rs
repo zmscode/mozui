@@ -82,6 +82,10 @@ pub struct DrawList {
     offset_stack: Vec<f32>,
     /// Current cumulative Y offset.
     current_offset_y: f32,
+    /// Stack of (x, y) offset pairs for 2D repositioning (e.g. popovers, hover cards).
+    offset_xy_stack: Vec<(f32, f32)>,
+    /// Current cumulative X offset from push_offset.
+    current_offset_x: f32,
     /// Stack of clip rects. Commands outside the top clip rect are discarded.
     clip_stack: Vec<Rect>,
     /// Stack of opacity multipliers. The effective opacity is the product of all values.
@@ -96,6 +100,8 @@ impl DrawList {
             commands: Vec::new(),
             offset_stack: Vec::new(),
             current_offset_y: 0.0,
+            offset_xy_stack: Vec::new(),
+            current_offset_x: 0.0,
             clip_stack: Vec::new(),
             opacity_stack: Vec::new(),
             current_opacity: 1.0,
@@ -103,13 +109,16 @@ impl DrawList {
     }
 
     pub fn push(&mut self, mut command: DrawCommand) {
-        // Apply current scroll offset to the command's bounds
-        if self.current_offset_y != 0.0 {
+        // Apply current offsets to the command's bounds
+        let has_y = self.current_offset_y != 0.0;
+        let has_x = self.current_offset_x != 0.0;
+        if has_x || has_y {
             match &mut command {
                 DrawCommand::Rect { bounds, .. }
                 | DrawCommand::Text { bounds, .. }
                 | DrawCommand::Icon { bounds, .. }
                 | DrawCommand::Image { bounds, .. } => {
+                    bounds.origin.x += self.current_offset_x;
                     bounds.origin.y += self.current_offset_y;
                 }
             }
@@ -142,7 +151,12 @@ impl DrawList {
         if self.current_opacity < 1.0 {
             let opacity = self.current_opacity;
             match &mut command {
-                DrawCommand::Rect { background, border, shadow, .. } => {
+                DrawCommand::Rect {
+                    background,
+                    border,
+                    shadow,
+                    ..
+                } => {
                     match background {
                         Fill::Solid(c) => c.a *= opacity,
                         Fill::LinearGradient { stops, .. } => {
@@ -165,7 +179,10 @@ impl DrawList {
                 }
                 DrawCommand::Text { color, .. } => color.a *= opacity,
                 DrawCommand::Icon { color, .. } => color.a *= opacity,
-                DrawCommand::Image { opacity: img_opacity, .. } => *img_opacity *= opacity,
+                DrawCommand::Image {
+                    opacity: img_opacity,
+                    ..
+                } => *img_opacity *= opacity,
             }
         }
 
@@ -222,6 +239,25 @@ impl DrawList {
         }
     }
 
+    /// Push a 2D offset. All subsequent `push` calls will have their
+    /// X and Y coordinates shifted by this amount (cumulative with parent offsets).
+    /// Used by hover cards, popovers, and other floating elements that
+    /// need to reposition child content from layout coords to screen coords.
+    pub fn push_offset(&mut self, dx: f32, dy: f32) {
+        self.offset_xy_stack
+            .push((self.current_offset_x, self.current_offset_y));
+        self.current_offset_x += dx;
+        self.current_offset_y += dy;
+    }
+
+    /// Pop the most recent 2D offset, restoring the previous one.
+    pub fn pop_offset(&mut self) {
+        if let Some((prev_x, prev_y)) = self.offset_xy_stack.pop() {
+            self.current_offset_x = prev_x;
+            self.current_offset_y = prev_y;
+        }
+    }
+
     pub fn commands(&self) -> impl Iterator<Item = &DrawCommand> {
         self.commands.iter()
     }
@@ -230,6 +266,8 @@ impl DrawList {
         self.commands.clear();
         self.offset_stack.clear();
         self.current_offset_y = 0.0;
+        self.offset_xy_stack.clear();
+        self.current_offset_x = 0.0;
         self.clip_stack.clear();
         self.opacity_stack.clear();
         self.current_opacity = 1.0;
@@ -237,6 +275,11 @@ impl DrawList {
 
     pub fn is_empty(&self) -> bool {
         self.commands.is_empty()
+    }
+
+    /// Number of draw commands in the list.
+    pub fn len(&self) -> usize {
+        self.commands.len()
     }
 }
 

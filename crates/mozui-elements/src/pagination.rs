@@ -1,13 +1,16 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct Pagination {
+    layout_id: LayoutId,
+    /// Layout IDs for: prev_btn, [page items...], next_btn
+    button_ids: Vec<LayoutId>,
+
     current_page: usize,
     total_pages: usize,
     visible_pages: usize,
@@ -24,6 +27,8 @@ pub struct Pagination {
 
 pub fn pagination(theme: &Theme) -> Pagination {
     Pagination {
+        layout_id: LayoutId::NONE,
+        button_ids: Vec::new(),
         current_page: 1,
         total_pages: 1,
         visible_pages: 5,
@@ -144,18 +149,21 @@ impl Disableable for Pagination {
 }
 
 impl Element for Pagination {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let btn_sz = self.button_size();
+        self.button_ids.clear();
         let mut children = Vec::new();
 
         // Prev button
-        children.push(engine.new_leaf(Style {
+        let prev_id = cx.new_leaf(Style {
             size: Size {
                 width: length(btn_sz),
                 height: length(btn_sz),
             },
             ..Default::default()
-        }));
+        });
+        self.button_ids.push(prev_id);
+        children.push(prev_id);
 
         if self.compact {
             // "Page X of Y" text
@@ -165,14 +173,16 @@ impl Element for Pagination {
                 color: self.fg,
                 ..Default::default()
             };
-            let measured = mozui_text::measure_text(&label, &text_style, None, font_system);
-            children.push(engine.new_leaf(Style {
+            let measured = mozui_text::measure_text(&label, &text_style, None, cx.font_system);
+            let label_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(measured.width),
                     height: length(measured.height),
                 },
                 ..Default::default()
-            }));
+            });
+            self.button_ids.push(label_id);
+            children.push(label_id);
         } else {
             // Page number buttons + ellipsis
             for item in self.page_items() {
@@ -183,36 +193,42 @@ impl Element for Pagination {
                         color: self.fg,
                         ..Default::default()
                     };
-                    let measured = mozui_text::measure_text("…", &text_style, None, font_system);
-                    children.push(engine.new_leaf(Style {
+                    let measured = mozui_text::measure_text("...", &text_style, None, cx.font_system);
+                    let ell_id = cx.new_leaf(Style {
                         size: Size {
                             width: length(measured.width.max(btn_sz * 0.5)),
                             height: length(btn_sz),
                         },
                         ..Default::default()
-                    }));
+                    });
+                    self.button_ids.push(ell_id);
+                    children.push(ell_id);
                 } else {
-                    children.push(engine.new_leaf(Style {
+                    let page_id = cx.new_leaf(Style {
                         size: Size {
                             width: length(btn_sz),
                             height: length(btn_sz),
                         },
                         ..Default::default()
-                    }));
+                    });
+                    self.button_ids.push(page_id);
+                    children.push(page_id);
                 }
             }
         }
 
         // Next button
-        children.push(engine.new_leaf(Style {
+        let next_id = cx.new_leaf(Style {
             size: Size {
                 width: length(btn_sz),
                 height: length(btn_sz),
             },
             ..Default::default()
-        }));
+        });
+        self.button_ids.push(next_id);
+        children.push(next_id);
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -224,55 +240,53 @@ impl Element for Pagination {
                 ..Default::default()
             },
             &children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        let _outer = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         let alpha = if self.disabled { 0.5 } else { 1.0 };
-        let _btn_sz = self.button_size();
         let radius = 6.0;
         let current = self.current_page;
+        let mut id_idx = 0;
 
-        // Helper: paint a page button
-        let paint_button = |index: &mut usize,
-                            draw_list: &mut DrawList,
-                            interactions: &mut InteractionMap,
+        // Helper closure-like approach: paint a page button
+        let paint_button = |id_idx: &mut usize,
+                            cx: &mut PaintContext,
                             page: Option<usize>,
                             icon: Option<IconName>,
                             label: Option<&str>,
                             is_active: bool,
-                            enabled: bool| {
-            let lay = layouts[*index];
-            *index += 1;
-            let bounds = mozui_style::Rect::new(lay.x, lay.y, lay.width, lay.height);
+                            enabled: bool,
+                            button_ids: &[LayoutId],
+                            on_click: &Option<Box<dyn Fn(usize, &mut dyn std::any::Any)>>,
+                            fg: Color,
+                            active_bg: Color,
+                            active_fg: Color,
+                            hover_bg: Color,
+                            border_color: Color,
+                            icon_size: f32,
+                            text_size: f32| {
+            let bounds = cx.bounds(button_ids[*id_idx]);
+            *id_idx += 1;
 
-            let hovered = enabled && interactions.is_hovered(bounds);
+            let hovered = enabled && cx.interactions.is_hovered(bounds);
             let bg = if is_active {
-                self.active_bg.with_alpha(alpha)
+                active_bg.with_alpha(alpha)
             } else if hovered {
-                self.hover_bg.with_alpha(alpha)
+                hover_bg.with_alpha(alpha)
             } else {
                 Color::TRANSPARENT
             };
-            let fg = if is_active {
-                self.active_fg.with_alpha(alpha)
+            let fg_color = if is_active {
+                active_fg.with_alpha(alpha)
             } else {
-                self.fg.with_alpha(alpha)
+                fg.with_alpha(alpha)
             };
 
             // Border
             if bg.a > 0.0 {
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds,
                     background: Fill::Solid(bg),
                     corner_radii: Corners::uniform(radius),
@@ -280,46 +294,44 @@ impl Element for Pagination {
                     shadow: None,
                 });
             } else {
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds,
                     background: Fill::Solid(Color::TRANSPARENT),
                     corner_radii: Corners::uniform(radius),
                     border: Some(Border {
                         width: 1.0,
-                        color: self.border_color.with_alpha(alpha * 0.5),
+                        color: border_color.with_alpha(alpha * 0.5),
                     }),
                     shadow: None,
                 });
             }
 
             if let Some(icon_name) = icon {
-                let icon_sz = self.icon_size();
-                let ix = bounds.origin.x + (bounds.size.width - icon_sz) / 2.0;
-                let iy = bounds.origin.y + (bounds.size.height - icon_sz) / 2.0;
-                draw_list.push(DrawCommand::Icon {
+                let ix = bounds.origin.x + (bounds.size.width - icon_size) / 2.0;
+                let iy = bounds.origin.y + (bounds.size.height - icon_size) / 2.0;
+                cx.draw_list.push(DrawCommand::Icon {
                     name: icon_name,
                     weight: IconWeight::Regular,
-                    bounds: mozui_style::Rect::new(ix, iy, icon_sz, icon_sz),
-                    color: fg,
-                    size_px: icon_sz,
+                    bounds: Rect::new(ix, iy, icon_size, icon_size),
+                    color: fg_color,
+                    size_px: icon_size,
                 });
             }
 
             if let Some(text) = label {
-                let font_size = self.text_size();
-                let text_style = mozui_text::TextStyle {
-                    font_size,
-                    color: fg,
+                let ts = mozui_text::TextStyle {
+                    font_size: text_size,
+                    color: fg_color,
                     ..Default::default()
                 };
-                let measured = mozui_text::measure_text(text, &text_style, None, font_system);
+                let measured = mozui_text::measure_text(text, &ts, None, cx.font_system);
                 let text_x = bounds.origin.x + (bounds.size.width - measured.width) / 2.0;
                 let text_y = bounds.origin.y + (bounds.size.height - measured.height) / 2.0;
-                draw_list.push(DrawCommand::Text {
+                cx.draw_list.push(DrawCommand::Text {
                     text: text.to_string(),
-                    bounds: mozui_style::Rect::new(text_x, text_y, measured.width, measured.height),
-                    font_size,
-                    color: fg,
+                    bounds: Rect::new(text_x, text_y, measured.width, measured.height),
+                    font_size: text_size,
+                    color: fg_color,
                     weight: if is_active { 600 } else { 400 },
                     italic: false,
                 });
@@ -327,10 +339,10 @@ impl Element for Pagination {
 
             // Click handler
             if enabled {
-                if let (Some(page), Some(handler)) = (page, &self.on_click) {
+                if let (Some(page), Some(handler)) = (page, on_click) {
                     let handler_ptr =
                         handler.as_ref() as *const dyn Fn(usize, &mut dyn std::any::Any);
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         bounds,
                         Box::new(move |cx| unsafe { (*handler_ptr)(page, cx) }),
                     );
@@ -339,28 +351,37 @@ impl Element for Pagination {
         };
 
         let prev_enabled = !self.disabled && current > 1;
+        let fg = self.fg;
+        let active_bg = self.active_bg;
+        let active_fg = self.active_fg;
+        let hover_bg = self.hover_bg;
+        let border_color = self.border_color;
+        let icon_size = self.icon_size();
+        let text_size = self.text_size();
+
         paint_button(
-            index,
-            draw_list,
-            interactions,
+            &mut id_idx,
+            cx,
             Some(current.saturating_sub(1).max(1)),
             Some(IconName::CaretLeft),
             None,
             false,
             prev_enabled,
+            &self.button_ids,
+            &self.on_click,
+            fg, active_bg, active_fg, hover_bg, border_color, icon_size, text_size,
         );
 
         if self.compact {
             // Compact label
-            let lay = layouts[*index];
-            *index += 1;
-            let bounds = mozui_style::Rect::new(lay.x, lay.y, lay.width, lay.height);
+            let bounds = cx.bounds(self.button_ids[id_idx]);
+            id_idx += 1;
             let label = format!("Page {} of {}", current, self.total_pages);
-            draw_list.push(DrawCommand::Text {
+            cx.draw_list.push(DrawCommand::Text {
                 text: label,
                 bounds,
-                font_size: self.text_size(),
-                color: self.fg.with_alpha(alpha),
+                font_size: text_size,
+                color: fg.with_alpha(alpha),
                 weight: 500,
                 italic: false,
             });
@@ -368,36 +389,38 @@ impl Element for Pagination {
             for item in self.page_items() {
                 if item == 0 {
                     // Ellipsis
-                    let lay = layouts[*index];
-                    *index += 1;
-                    let bounds = mozui_style::Rect::new(lay.x, lay.y, lay.width, lay.height);
+                    let bounds = cx.bounds(self.button_ids[id_idx]);
+                    id_idx += 1;
                     let ellipsis_style = mozui_text::TextStyle {
-                        font_size: self.text_size(),
-                        color: self.fg.with_alpha(alpha * 0.6),
+                        font_size: text_size,
+                        color: fg.with_alpha(alpha * 0.6),
                         ..Default::default()
                     };
-                    let measured = mozui_text::measure_text("…", &ellipsis_style, None, font_system);
+                    let measured =
+                        mozui_text::measure_text("...", &ellipsis_style, None, cx.font_system);
                     let ex = bounds.origin.x + (bounds.size.width - measured.width) / 2.0;
                     let ey = bounds.origin.y + (bounds.size.height - measured.height) / 2.0;
-                    draw_list.push(DrawCommand::Text {
-                        text: "…".to_string(),
-                        bounds: mozui_style::Rect::new(ex, ey, measured.width, measured.height),
-                        font_size: self.text_size(),
-                        color: self.fg.with_alpha(alpha * 0.6),
+                    cx.draw_list.push(DrawCommand::Text {
+                        text: "...".to_string(),
+                        bounds: Rect::new(ex, ey, measured.width, measured.height),
+                        font_size: text_size,
+                        color: fg.with_alpha(alpha * 0.6),
                         weight: 400,
                         italic: false,
                     });
                 } else {
                     let is_current = item == current;
                     paint_button(
-                        index,
-                        draw_list,
-                        interactions,
+                        &mut id_idx,
+                        cx,
                         Some(item),
                         None,
                         Some(&item.to_string()),
                         is_current,
                         !self.disabled && !is_current,
+                        &self.button_ids,
+                        &self.on_click,
+                        fg, active_bg, active_fg, hover_bg, border_color, icon_size, text_size,
                     );
                 }
             }
@@ -405,14 +428,16 @@ impl Element for Pagination {
 
         let next_enabled = !self.disabled && current < self.total_pages;
         paint_button(
-            index,
-            draw_list,
-            interactions,
+            &mut id_idx,
+            cx,
             Some((current + 1).min(self.total_pages)),
             Some(IconName::CaretRight),
             None,
             false,
             next_enabled,
+            &self.button_ids,
+            &self.on_click,
+            fg, active_bg, active_fg, hover_bg, border_color, icon_size, text_size,
         );
     }
 }

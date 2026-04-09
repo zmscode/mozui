@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Shadow, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
 use taffy::prelude::*;
 
 /// A single item in a menu — either a clickable entry or a separator.
@@ -34,7 +33,10 @@ pub fn menu_separator() -> MenuItem {
 
 impl MenuItem {
     pub fn icon(mut self, icon: IconName) -> Self {
-        if let MenuItem::Item { icon: ref mut i, .. } = self {
+        if let MenuItem::Item {
+            icon: ref mut i, ..
+        } = self
+        {
             *i = Some(icon);
         }
         self
@@ -85,6 +87,10 @@ impl MenuItem {
 ///     .on_dismiss(|cx| { /* close menu */ })
 /// ```
 pub struct Menu {
+    layout_id: LayoutId,
+    /// Per-item layout IDs: for Item -> [row, icon, label, (shortcut)], for Separator -> [sep]
+    item_ids: Vec<LayoutId>,
+
     items: Vec<MenuItem>,
     on_dismiss: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
     bg: Color,
@@ -103,6 +109,8 @@ pub struct Menu {
 
 pub fn menu(theme: &Theme) -> Menu {
     Menu {
+        layout_id: LayoutId::NONE,
+        item_ids: Vec::new(),
         items: Vec::new(),
         on_dismiss: None,
         bg: theme.popover,
@@ -144,26 +152,26 @@ impl Menu {
 }
 
 impl Element for Menu {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.item_ids.clear();
         let mut item_nodes = Vec::new();
 
         for item in &self.items {
             match item {
                 MenuItem::Item {
-                    label,
-                    shortcut,
-                    ..
+                    label, shortcut, ..
                 } => {
                     let mut row_children = Vec::new();
 
                     // Icon space (always reserve for alignment)
-                    row_children.push(engine.new_leaf(Style {
+                    let icon_id = cx.new_leaf(Style {
                         size: taffy::Size {
                             width: length(self.icon_size),
                             height: length(self.icon_size),
                         },
                         ..Default::default()
-                    }));
+                    });
+                    row_children.push(icon_id);
 
                     // Label
                     let style = mozui_text::TextStyle {
@@ -171,25 +179,26 @@ impl Element for Menu {
                         color: self.fg,
                         ..Default::default()
                     };
-                    let m = mozui_text::measure_text(label, &style, None, font_system);
-                    row_children.push(engine.new_leaf(Style {
+                    let m = mozui_text::measure_text(label, &style, None, cx.font_system);
+                    let label_id = cx.new_leaf(Style {
                         size: taffy::Size {
                             width: length(m.width),
                             height: length(m.height),
                         },
                         flex_grow: 1.0,
                         ..Default::default()
-                    }));
+                    });
+                    row_children.push(label_id);
 
                     // Shortcut
-                    if let Some(sc) = shortcut {
+                    let shortcut_id = if let Some(sc) = shortcut {
                         let sc_style = mozui_text::TextStyle {
                             font_size: self.font_size - 1.0,
                             color: self.muted_fg,
                             ..Default::default()
                         };
-                        let sc_m = mozui_text::measure_text(sc, &sc_style, None, font_system);
-                        row_children.push(engine.new_leaf(Style {
+                        let sc_m = mozui_text::measure_text(sc, &sc_style, None, cx.font_system);
+                        let sc_id = cx.new_leaf(Style {
                             size: taffy::Size {
                                 width: length(sc_m.width),
                                 height: length(sc_m.height),
@@ -201,10 +210,14 @@ impl Element for Menu {
                                 bottom: zero(),
                             },
                             ..Default::default()
-                        }));
-                    }
+                        });
+                        row_children.push(sc_id);
+                        Some(sc_id)
+                    } else {
+                        None
+                    };
 
-                    let row = engine.new_with_children(
+                    let row_id = cx.new_with_children(
                         Style {
                             display: Display::Flex,
                             flex_direction: FlexDirection::Row,
@@ -223,10 +236,17 @@ impl Element for Menu {
                         },
                         &row_children,
                     );
-                    item_nodes.push(row);
+                    // Store: row, icon, label, [shortcut]
+                    self.item_ids.push(row_id);
+                    self.item_ids.push(icon_id);
+                    self.item_ids.push(label_id);
+                    if let Some(sc_id) = shortcut_id {
+                        self.item_ids.push(sc_id);
+                    }
+                    item_nodes.push(row_id);
                 }
                 MenuItem::Separator => {
-                    item_nodes.push(engine.new_leaf(Style {
+                    let sep_id = cx.new_leaf(Style {
                         size: taffy::Size {
                             width: percent(1.0),
                             height: length(1.0),
@@ -238,12 +258,14 @@ impl Element for Menu {
                             right: zero(),
                         },
                         ..Default::default()
-                    }));
+                    });
+                    self.item_ids.push(sep_id);
+                    item_nodes.push(sep_id);
                 }
             }
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -260,26 +282,14 @@ impl Element for Menu {
                 ..Default::default()
             },
             &item_nodes,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        // Outer container
-        let outer = layouts[*index];
-        *index += 1;
-        let outer_bounds =
-            mozui_style::Rect::new(outer.x, outer.y, outer.width, outer.height);
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Draw menu background with shadow
-        draw_list.push(DrawCommand::Rect {
-            bounds: outer_bounds,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds,
             background: Fill::Solid(self.bg),
             corner_radii: Corners::uniform(self.corner_radius),
             border: Some(Border {
@@ -292,13 +302,14 @@ impl Element for Menu {
         // Register escape key handler
         if let Some(ref handler) = self.on_dismiss {
             let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            interactions.register_key_handler(Box::new(move |key, _mods, cx| {
+            cx.interactions.register_key_handler(Box::new(move |key, _mods, cx| {
                 if key == mozui_events::Key::Escape {
                     unsafe { (*handler_ptr)(cx) };
                 }
             }));
         }
 
+        let mut id_idx = 0;
         for item in &self.items {
             match item {
                 MenuItem::Item {
@@ -308,21 +319,26 @@ impl Element for Menu {
                     disabled,
                     on_select,
                 } => {
-                    let row_layout = layouts[*index];
-                    *index += 1;
-                    let row_bounds = mozui_style::Rect::new(
-                        row_layout.x,
-                        row_layout.y,
-                        row_layout.width,
-                        row_layout.height,
-                    );
+                    let row_id = self.item_ids[id_idx];
+                    let icon_id = self.item_ids[id_idx + 1];
+                    let label_id = self.item_ids[id_idx + 2];
+                    id_idx += 3;
 
+                    let shortcut_id = if shortcut.is_some() {
+                        let sc_id = self.item_ids[id_idx];
+                        id_idx += 1;
+                        Some(sc_id)
+                    } else {
+                        None
+                    };
+
+                    let row_bounds = cx.bounds(row_id);
                     let alpha = if *disabled { 0.5 } else { 1.0 };
-                    let hovered = !*disabled && interactions.is_hovered(row_bounds);
+                    let hovered = !*disabled && cx.interactions.is_hovered(row_bounds);
 
                     // Hover highlight
                     if hovered {
-                        draw_list.push(DrawCommand::Rect {
+                        cx.draw_list.push(DrawCommand::Rect {
                             bounds: row_bounds,
                             background: Fill::Solid(self.hover_bg),
                             corner_radii: Corners::uniform(4.0),
@@ -332,34 +348,22 @@ impl Element for Menu {
                     }
 
                     // Icon
-                    let icon_layout = layouts[*index];
-                    *index += 1;
+                    let icon_bounds = cx.bounds(icon_id);
                     if let Some(icon_name) = icon {
-                        draw_list.push(DrawCommand::Icon {
+                        cx.draw_list.push(DrawCommand::Icon {
                             name: *icon_name,
                             weight: IconWeight::Regular,
-                            bounds: mozui_style::Rect::new(
-                                icon_layout.x,
-                                icon_layout.y,
-                                icon_layout.width,
-                                icon_layout.height,
-                            ),
+                            bounds: icon_bounds,
                             color: self.fg.with_alpha(alpha),
                             size_px: self.icon_size,
                         });
                     }
 
                     // Label
-                    let label_layout = layouts[*index];
-                    *index += 1;
-                    draw_list.push(DrawCommand::Text {
+                    let label_bounds = cx.bounds(label_id);
+                    cx.draw_list.push(DrawCommand::Text {
                         text: label.clone(),
-                        bounds: mozui_style::Rect::new(
-                            label_layout.x,
-                            label_layout.y,
-                            label_layout.width,
-                            label_layout.height,
-                        ),
+                        bounds: label_bounds,
                         font_size: self.font_size,
                         color: self.fg.with_alpha(alpha),
                         weight: 400,
@@ -368,16 +372,10 @@ impl Element for Menu {
 
                     // Shortcut
                     if let Some(sc) = shortcut {
-                        let sc_layout = layouts[*index];
-                        *index += 1;
-                        draw_list.push(DrawCommand::Text {
+                        let sc_bounds = cx.bounds(shortcut_id.unwrap());
+                        cx.draw_list.push(DrawCommand::Text {
                             text: sc.clone(),
-                            bounds: mozui_style::Rect::new(
-                                sc_layout.x,
-                                sc_layout.y,
-                                sc_layout.width,
-                                sc_layout.height,
-                            ),
+                            bounds: sc_bounds,
                             font_size: self.font_size - 1.0,
                             color: self.muted_fg.with_alpha(alpha),
                             weight: 400,
@@ -394,7 +392,7 @@ impl Element for Menu {
                             if let Some(ref dismiss) = self.on_dismiss {
                                 let dismiss_ptr =
                                     dismiss.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                                interactions.register_click(
+                                cx.interactions.register_click(
                                     row_bounds,
                                     Box::new(move |cx| unsafe {
                                         (*handler_ptr)(cx);
@@ -402,7 +400,7 @@ impl Element for Menu {
                                     }),
                                 );
                             } else {
-                                interactions.register_click(
+                                cx.interactions.register_click(
                                     row_bounds,
                                     Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
                                 );
@@ -411,14 +409,15 @@ impl Element for Menu {
                     }
                 }
                 MenuItem::Separator => {
-                    let sep_layout = layouts[*index];
-                    *index += 1;
-                    draw_list.push(DrawCommand::Rect {
-                        bounds: mozui_style::Rect::new(
-                            sep_layout.x + 4.0,
-                            sep_layout.y,
-                            sep_layout.width - 8.0,
-                            sep_layout.height,
+                    let sep_id = self.item_ids[id_idx];
+                    id_idx += 1;
+                    let sep_bounds = cx.bounds(sep_id);
+                    cx.draw_list.push(DrawCommand::Rect {
+                        bounds: Rect::new(
+                            sep_bounds.origin.x + 4.0,
+                            sep_bounds.origin.y,
+                            sep_bounds.size.width - 8.0,
+                            sep_bounds.size.height,
                         ),
                         background: Fill::Solid(self.border_color),
                         corner_radii: Corners::ZERO,

@@ -1,14 +1,14 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Placement, Shadow, Theme};
-use mozui_text::FontSystem;
+use crate::{DeferredPosition, Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Placement, Rect, Shadow, Theme};
 use taffy::prelude::*;
 
 /// A tooltip that appears when hovering over the anchor element.
 ///
-/// The tooltip renders the anchor (trigger) element normally, and when the
-/// mouse is over the anchor, renders the tooltip content nearby.
+/// The tooltip renders the anchor (trigger) element normally. When the
+/// mouse is over the anchor, a floating bubble is rendered nearby via
+/// the deferred element system (painted on top of the main tree).
 ///
 /// ```rust,ignore
 /// tooltip(&theme, "Copy to clipboard")
@@ -27,6 +27,8 @@ pub struct Tooltip {
     font_size: f32,
     /// The trigger/anchor element
     anchor: Option<Box<dyn Element>>,
+    // Layout IDs
+    anchor_id: LayoutId,
 }
 
 /// Create a tooltip with text content, wrapping an anchor element.
@@ -42,6 +44,7 @@ pub fn tooltip(theme: &Theme, text: impl Into<String>) -> Tooltip {
         corner_radius: theme.radius_sm,
         font_size: theme.font_size_xs,
         anchor: None,
+        anchor_id: LayoutId::NONE,
     }
 }
 
@@ -70,39 +73,95 @@ impl Tooltip {
 }
 
 impl Element for Tooltip {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
-        let mut children = Vec::new();
-
-        // Anchor element
-        if let Some(ref anchor) = self.anchor {
-            children.push(anchor.layout(engine, font_system));
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        // Layout anchor in the main tree
+        if let Some(ref mut anchor) = self.anchor {
+            self.anchor_id = anchor.layout(cx);
         }
 
-        // Tooltip content (always laid out for stable node count)
+        // Defer the tooltip bubble content for independent layout + paint-on-top
+        cx.defer(
+            Box::new(TooltipBubble {
+                text: self.text.clone(),
+                shortcut: self.shortcut.clone(),
+                visible: self.visible,
+                bg: self.bg,
+                fg: self.fg,
+                shadow: self.shadow,
+                corner_radius: self.corner_radius,
+                font_size: self.font_size,
+                layout_id: LayoutId::NONE,
+                text_id: LayoutId::NONE,
+                shortcut_id: LayoutId::NONE,
+            }),
+            DeferredPosition::Anchored {
+                anchor_id: self.anchor_id,
+                placement: self.placement,
+                gap: 6.0,
+            },
+        );
+
+        // Tooltip is layout-transparent — returns only the anchor
+        self.anchor_id
+    }
+
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        // Paint the anchor element
+        if let Some(ref mut anchor) = self.anchor {
+            anchor.paint(bounds, cx);
+            // Register hover region so the app re-renders on hover
+            cx.interactions.register_hover_region(bounds);
+        }
+    }
+}
+
+// ── Deferred tooltip bubble ───────────────────────────────────────
+
+/// The floating tooltip bubble, laid out and painted by the deferred system.
+struct TooltipBubble {
+    text: String,
+    shortcut: Option<String>,
+    visible: bool,
+    bg: Color,
+    fg: Color,
+    shadow: Shadow,
+    corner_radius: f32,
+    font_size: f32,
+    // Layout IDs (in the sub-engine)
+    layout_id: LayoutId,
+    text_id: LayoutId,
+    shortcut_id: LayoutId,
+}
+
+impl Element for TooltipBubble {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut tip_children = Vec::new();
 
+        // Text leaf
         let style = mozui_text::TextStyle {
             font_size: self.font_size,
             color: self.fg,
             ..Default::default()
         };
-        let m = mozui_text::measure_text(&self.text, &style, None, font_system);
-        tip_children.push(engine.new_leaf(Style {
+        let m = mozui_text::measure_text(&self.text, &style, None, cx.font_system);
+        self.text_id = cx.new_leaf(Style {
             size: taffy::Size {
                 width: length(m.width),
                 height: length(m.height),
             },
             ..Default::default()
-        }));
+        });
+        tip_children.push(self.text_id);
 
+        // Optional shortcut leaf
         if let Some(ref sc) = self.shortcut {
             let sc_style = mozui_text::TextStyle {
                 font_size: self.font_size,
                 color: self.fg.with_alpha(0.7),
                 ..Default::default()
             };
-            let sc_m = mozui_text::measure_text(sc, &sc_style, None, font_system);
-            tip_children.push(engine.new_leaf(Style {
+            let sc_m = mozui_text::measure_text(sc, &sc_style, None, cx.font_system);
+            self.shortcut_id = cx.new_leaf(Style {
                 size: taffy::Size {
                     width: length(sc_m.width),
                     height: length(sc_m.height),
@@ -114,10 +173,11 @@ impl Element for Tooltip {
                     bottom: zero(),
                 },
                 ..Default::default()
-            }));
+            });
+            tip_children.push(self.shortcut_id);
         }
 
-        let tip_node = engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -136,118 +196,33 @@ impl Element for Tooltip {
             },
             &tip_children,
         );
-        children.push(tip_node);
-
-        // Wrapper
-        engine.new_with_children(
-            Style {
-                display: Display::Flex,
-                flex_direction: FlexDirection::Column,
-                ..Default::default()
-            },
-            &children,
-        )
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        // Wrapper
-        let _wrapper = layouts[*index];
-        *index += 1;
-
-        // Paint anchor element
-        let anchor_start_index = *index;
-        if let Some(ref anchor) = self.anchor {
-            anchor.paint(layouts, index, draw_list, interactions, font_system);
-        }
-
-        // Get anchor bounds for hover detection and tooltip positioning
-        let anchor_layout = layouts[anchor_start_index];
-        let anchor_bounds = mozui_style::Rect::new(
-            anchor_layout.x,
-            anchor_layout.y,
-            anchor_layout.width,
-            anchor_layout.height,
-        );
-
-        // Tooltip bubble
-        let tip_layout = layouts[*index];
-        *index += 1;
-
-        // Tooltip text
-        let text_layout = layouts[*index];
-        *index += 1;
-
-        // Shortcut (if present)
-        let shortcut_layout = if self.shortcut.is_some() {
-            let sl = layouts[*index];
-            *index += 1;
-            Some(sl)
-        } else {
-            None
-        };
-
-        // Register anchor as hover region so app loop re-renders on hover
-        interactions.register_hover_region(anchor_bounds);
-
-        // Only show tooltip on hover or when explicitly visible
-        let show = self.visible || interactions.is_hovered(anchor_bounds);
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        // Check visibility: show if explicitly visible OR anchor is hovered
+        let show = self.visible
+            || cx
+                .anchor_bounds
+                .map_or(false, |ab| cx.interactions.is_hovered(ab));
         if !show {
             return;
         }
 
-        // Calculate tooltip position relative to anchor
-        let gap = 6.0;
-        let tip_w = tip_layout.width;
-        let tip_h = tip_layout.height;
-
-        let (tip_x, tip_y) = match self.placement {
-            Placement::Top => (
-                anchor_bounds.origin.x + (anchor_bounds.size.width - tip_w) / 2.0,
-                anchor_bounds.origin.y - tip_h - gap,
-            ),
-            Placement::Bottom => (
-                anchor_bounds.origin.x + (anchor_bounds.size.width - tip_w) / 2.0,
-                anchor_bounds.origin.y + anchor_bounds.size.height + gap,
-            ),
-            Placement::Left => (
-                anchor_bounds.origin.x - tip_w - gap,
-                anchor_bounds.origin.y + (anchor_bounds.size.height - tip_h) / 2.0,
-            ),
-            Placement::Right => (
-                anchor_bounds.origin.x + anchor_bounds.size.width + gap,
-                anchor_bounds.origin.y + (anchor_bounds.size.height - tip_h) / 2.0,
-            ),
-        };
-
-        let tip_bounds = mozui_style::Rect::new(tip_x, tip_y, tip_w, tip_h);
-
         // Draw tooltip background
-        draw_list.push(DrawCommand::Rect {
-            bounds: tip_bounds,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds,
             background: Fill::Solid(self.bg),
             corner_radii: Corners::uniform(self.corner_radius),
             border: None,
             shadow: Some(self.shadow),
         });
 
-        // Draw tooltip text at computed position
-        let text_offset_x = tip_x + (text_layout.x - tip_layout.x);
-        let text_offset_y = tip_y + (text_layout.y - tip_layout.y);
-        draw_list.push(DrawCommand::Text {
+        // Draw text
+        let text_bounds = cx.bounds(self.text_id);
+        cx.draw_list.push(DrawCommand::Text {
             text: self.text.clone(),
-            bounds: mozui_style::Rect::new(
-                text_offset_x,
-                text_offset_y,
-                text_layout.width,
-                text_layout.height,
-            ),
+            bounds: text_bounds,
             font_size: self.font_size,
             color: self.fg,
             weight: 400,
@@ -255,17 +230,11 @@ impl Element for Tooltip {
         });
 
         // Draw shortcut if present
-        if let (Some(sc), Some(sc_l)) = (&self.shortcut, shortcut_layout) {
-            let sc_offset_x = tip_x + (sc_l.x - tip_layout.x);
-            let sc_offset_y = tip_y + (sc_l.y - tip_layout.y);
-            draw_list.push(DrawCommand::Text {
+        if let Some(ref sc) = self.shortcut {
+            let sc_bounds = cx.bounds(self.shortcut_id);
+            cx.draw_list.push(DrawCommand::Text {
                 text: sc.clone(),
-                bounds: mozui_style::Rect::new(
-                    sc_offset_x,
-                    sc_offset_y,
-                    sc_l.width,
-                    sc_l.height,
-                ),
+                bounds: sc_bounds,
                 font_size: self.font_size,
                 color: self.fg.with_alpha(0.7),
                 weight: 400,

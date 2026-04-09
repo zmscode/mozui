@@ -1,9 +1,8 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Point, Rect, Theme};
-use mozui_text::FontSystem;
 use taffy::prelude::*;
 
 pub struct Slider {
@@ -17,6 +16,7 @@ pub struct Slider {
     fill_color: Color,
     thumb_color: Color,
     on_change: Option<Box<dyn Fn(f32, &mut dyn std::any::Any)>>,
+    layout_id: LayoutId,
 }
 
 pub fn slider(theme: &Theme) -> Slider {
@@ -31,6 +31,7 @@ pub fn slider(theme: &Theme) -> Slider {
         fill_color: theme.primary,
         thumb_color: theme.slider_thumb,
         on_change: None,
+        layout_id: LayoutId::NONE,
     }
 }
 
@@ -112,9 +113,9 @@ impl Disableable for Slider {
 }
 
 impl Element for Slider {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Single node — we handle all drawing ourselves
-        engine.new_leaf(Style {
+        self.layout_id = cx.new_leaf(Style {
             size: Size {
                 width: Dimension::Auto,
                 height: length(self.total_height()),
@@ -125,21 +126,11 @@ impl Element for Slider {
             },
             flex_grow: 1.0,
             ..Default::default()
-        })
+        });
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = Rect::new(layout.x, layout.y, layout.width, layout.height);
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let alpha = if self.disabled { 0.5 } else { 1.0 };
 
         let track_h = self.track_height();
@@ -162,23 +153,23 @@ impl Element for Slider {
         let fill_w = track_w * ratio;
 
         // Background track
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: Rect::new(track_x, track_y, track_w, track_h),
             background: Fill::Solid(self.track_color.with_alpha(alpha)),
             corner_radii: Corners::uniform(track_radius),
             border: None,
-                    shadow: None,
-                });
+            shadow: None,
+        });
 
         // Filled portion
         if fill_w > 0.5 {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: Rect::new(track_x, track_y, fill_w, track_h),
                 background: Fill::Solid(self.fill_color.with_alpha(alpha)),
                 corner_radii: Corners::uniform(track_radius),
                 border: None,
-                    shadow: None,
-                });
+                shadow: None,
+            });
         }
 
         // Thumb
@@ -186,8 +177,8 @@ impl Element for Slider {
         let thumb_y = bounds.origin.y + (bounds.size.height - thumb_sz) / 2.0;
         let thumb_bounds = Rect::new(thumb_x, thumb_y, thumb_sz, thumb_sz);
 
-        let hovered = !self.disabled && interactions.is_hovered(bounds);
-        let active = !self.disabled && interactions.is_active(bounds);
+        let hovered = !self.disabled && cx.interactions.is_hovered(bounds);
+        let active = !self.disabled && cx.interactions.is_active(bounds);
 
         let thumb_color = if active {
             self.thumb_color.with_alpha(alpha * 0.8)
@@ -197,13 +188,13 @@ impl Element for Slider {
             self.thumb_color.with_alpha(alpha)
         };
 
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: thumb_bounds,
             background: Fill::Solid(thumb_color),
             corner_radii: Corners::uniform(thumb_sz / 2.0),
             border: None,
-                    shadow: None,
-                });
+            shadow: None,
+        });
 
         // Register drag handler for value changes
         if !self.disabled {
@@ -212,7 +203,7 @@ impl Element for Slider {
                 let min = self.min;
                 let max = self.max;
                 let step = self.step;
-                interactions.register_drag_handler(
+                cx.interactions.register_drag_handler(
                     bounds,
                     Box::new(move |pos: Point, cx| {
                         let val = Slider::value_from_x(pos.x, track_x, track_w, min, max, step);

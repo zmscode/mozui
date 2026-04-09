@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_events;
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Rect};
-use mozui_text::FontSystem;
 use taffy::prelude::*;
 
 /// Persistent state for a text input, stored in a signal.
@@ -56,6 +55,7 @@ pub struct TextInput {
 
     // Layout
     taffy_style: Style,
+    layout_id: LayoutId,
 }
 
 pub fn text_input(current: TextInputState) -> TextInput {
@@ -84,6 +84,7 @@ pub fn text_input(current: TextInputState) -> TextInput {
             },
             ..Default::default()
         },
+        layout_id: LayoutId::NONE,
     }
 }
 
@@ -145,23 +146,12 @@ impl TextInput {
 }
 
 impl Element for TextInput {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
-        engine.new_leaf(self.taffy_style.clone())
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.layout_id = cx.new_leaf(self.taffy_style.clone());
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = Rect::new(layout.x, layout.y, layout.width, layout.height);
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Paint background with focus-aware border
         let border_color = if self.current.focused {
             self.focus_border_color
@@ -169,7 +159,7 @@ impl Element for TextInput {
             self.border_color
         };
 
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds,
             background: self.background.clone(),
             corner_radii: self.corner_radii,
@@ -177,8 +167,8 @@ impl Element for TextInput {
                 width: self.border_width,
                 color: border_color,
             }),
-                    shadow: None,
-                });
+            shadow: None,
+        });
 
         // Text area (inset by padding)
         let pad_left = 10.0f32;
@@ -203,7 +193,7 @@ impl Element for TextInput {
         };
 
         if !display_text.is_empty() {
-            draw_list.push(DrawCommand::Text {
+            cx.draw_list.push(DrawCommand::Text {
                 text: display_text.clone(),
                 bounds: text_bounds,
                 font_size: self.font_size,
@@ -225,20 +215,20 @@ impl Element for TextInput {
                     font_size: self.font_size,
                     ..Default::default()
                 };
-                let measured = mozui_text::measure_text(&cursor_text, &style, None, font_system);
+                let measured = mozui_text::measure_text(&cursor_text, &style, None, cx.font_system);
                 text_bounds.origin.x + measured.width
             };
 
             let caret_height = self.font_size + 4.0;
             let caret_y = bounds.origin.y + (bounds.size.height - caret_height) / 2.0;
 
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: Rect::new(cursor_x, caret_y, 1.5, caret_height),
                 background: Fill::Solid(self.text_color),
                 corner_radii: Corners::ZERO,
                 border: None,
-                    shadow: None,
-                });
+                shadow: None,
+            });
         }
 
         // Register as focusable for click-to-focus and key input
@@ -272,7 +262,8 @@ impl Element for TextInput {
                 );
             });
 
-            interactions.register_focusable(bounds, focus_handler, key_handler);
+            cx.interactions
+                .register_focusable(bounds, focus_handler, key_handler);
         }
     }
 }

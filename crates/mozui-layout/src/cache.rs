@@ -1,0 +1,103 @@
+use crate::LayoutId;
+use std::collections::HashMap;
+
+/// Cache key for a layout subtree. Composed of a style hash
+/// (from the taffy Style bytes) and a children hash (from child LayoutIds).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LayoutCacheKey {
+    pub style_hash: u64,
+    pub children_hash: u64,
+}
+
+struct CacheEntry {
+    layout_id: LayoutId,
+    generation: u64,
+}
+
+/// Frame-persistent layout cache. Skips taffy node creation for
+/// subtrees whose style and children haven't changed since last frame.
+///
+/// Works with `LayoutEngine::begin_frame()` which preserves taffy nodes
+/// across frames so cached LayoutIds remain valid.
+pub struct LayoutCache {
+    entries: HashMap<LayoutCacheKey, CacheEntry>,
+    generation: u64,
+}
+
+impl LayoutCache {
+    pub fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            generation: 0,
+        }
+    }
+
+    /// Start a new frame. Increments generation counter.
+    /// Periodically evicts stale entries (every 120 frames).
+    pub fn begin_frame(&mut self) {
+        self.generation += 1;
+        if self.generation % 120 == 0 {
+            let cutoff = self.generation.saturating_sub(120);
+            self.entries.retain(|_, e| e.generation >= cutoff);
+        }
+    }
+
+    /// Look up a cached LayoutId for the given key.
+    /// Marks the entry as used this frame if found.
+    pub fn get(&mut self, key: LayoutCacheKey) -> Option<LayoutId> {
+        if let Some(entry) = self.entries.get_mut(&key) {
+            entry.generation = self.generation;
+            Some(entry.layout_id)
+        } else {
+            None
+        }
+    }
+
+    /// Store a LayoutId in the cache for future frames.
+    pub fn insert(&mut self, key: LayoutCacheKey, layout_id: LayoutId) {
+        self.entries.insert(
+            key,
+            CacheEntry {
+                layout_id,
+                generation: self.generation,
+            },
+        );
+    }
+
+    /// Clear all cached entries. Called during periodic full GC.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
+/// Hash a taffy Style by treating it as raw bytes (FNV-1a).
+/// Padding bytes may cause false misses but never false hits.
+pub fn hash_style(style: &taffy::Style) -> u64 {
+    let bytes = unsafe {
+        std::slice::from_raw_parts(
+            style as *const taffy::Style as *const u8,
+            std::mem::size_of::<taffy::Style>(),
+        )
+    };
+    fnv1a(bytes)
+}
+
+/// Hash a slice of child LayoutIds into a children_hash.
+pub fn hash_children(children: &[LayoutId]) -> u64 {
+    let bytes = unsafe {
+        std::slice::from_raw_parts(
+            children.as_ptr() as *const u8,
+            children.len() * std::mem::size_of::<LayoutId>(),
+        )
+    };
+    fnv1a(bytes)
+}
+
+fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for &b in bytes {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}

@@ -1,10 +1,9 @@
 use crate::styled::{ComponentSize, Disableable, Selectable, Sizable};
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 /// Visual variant of a button.
@@ -95,6 +94,8 @@ impl ButtonColors {
 }
 
 pub struct Button {
+    layout_id: LayoutId,
+    child_ids: Vec<LayoutId>,
     label: Option<String>,
     icon: Option<IconName>,
     icon_right: Option<IconName>,
@@ -111,6 +112,8 @@ pub struct Button {
 pub fn button(label: impl Into<String>, theme: &Theme) -> Button {
     let variant = ButtonVariant::Default;
     Button {
+        layout_id: LayoutId::NONE,
+        child_ids: Vec::new(),
         label: Some(label.into()),
         icon: None,
         icon_right: None,
@@ -129,6 +132,8 @@ pub fn button(label: impl Into<String>, theme: &Theme) -> Button {
 pub fn icon_button(icon: IconName, theme: &Theme) -> Button {
     let variant = ButtonVariant::Ghost;
     Button {
+        layout_id: LayoutId::NONE,
+        child_ids: Vec::new(),
         label: None,
         icon: Some(icon),
         icon_right: None,
@@ -265,24 +270,24 @@ impl Selectable for Button {
 }
 
 impl Element for Button {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let px = self.px();
         let py = self.py();
         let gap = 6.0_f32;
 
-        let mut children = Vec::new();
+        self.child_ids.clear();
 
         // Left icon
         if self.icon.is_some() {
             let icon_sz = self.icon_size();
-            let node = engine.new_leaf(Style {
+            let node = cx.new_leaf(Style {
                 size: Size {
                     width: length(icon_sz),
                     height: length(icon_sz),
                 },
                 ..Default::default()
             });
-            children.push(node);
+            self.child_ids.push(node);
         }
 
         // Label
@@ -292,31 +297,31 @@ impl Element for Button {
                 color: self.effective_fg(),
                 ..Default::default()
             };
-            let measured = mozui_text::measure_text(label_text, &text_style, None, font_system);
-            let node = engine.new_leaf(Style {
+            let measured = mozui_text::measure_text(label_text, &text_style, None, cx.font_system);
+            let node = cx.new_leaf(Style {
                 size: Size {
                     width: length(measured.width),
                     height: length(measured.height),
                 },
                 ..Default::default()
             });
-            children.push(node);
+            self.child_ids.push(node);
         }
 
         // Right icon
         if self.icon_right.is_some() {
             let icon_sz = self.icon_size();
-            let node = engine.new_leaf(Style {
+            let node = cx.new_leaf(Style {
                 size: Size {
                     width: length(icon_sz),
                     height: length(icon_sz),
                 },
                 ..Default::default()
             });
-            children.push(node);
+            self.child_ids.push(node);
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -334,29 +339,18 @@ impl Element for Button {
                 },
                 ..Default::default()
             },
-            &children,
-        )
+            &self.child_ids,
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Determine background color based on hover/active state
         let bg = if self.disabled {
             self.colors.bg.with_alpha(0.5)
-        } else if interactions.is_active(bounds) {
+        } else if cx.interactions.is_active(bounds) {
             self.colors.active_bg
-        } else if interactions.is_hovered(bounds) {
+        } else if cx.interactions.is_hovered(bounds) {
             self.colors.hover_bg
         } else {
             self.colors.bg
@@ -368,7 +362,7 @@ impl Element for Button {
                 width: 1.0,
                 color: if self.disabled { c.with_alpha(0.5) } else { c },
             });
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds,
                 background: Fill::Solid(bg),
                 corner_radii: Corners::uniform(self.corner_radius),
@@ -377,7 +371,7 @@ impl Element for Button {
             });
         } else if let Some(border_color) = self.colors.border {
             // Outline-only: transparent bg but visible border
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds,
                 background: Fill::Solid(Color::TRANSPARENT),
                 corner_radii: Corners::uniform(self.corner_radius),
@@ -397,24 +391,23 @@ impl Element for Button {
         if !self.disabled {
             if let Some(ref handler) = self.on_click {
                 let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions
+                cx.interactions
                     .register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
             }
         }
 
+        // Iterate child_ids in the same order they were pushed in layout:
+        // icon, label, icon_right (only those that are Some)
+        let mut idx = 0;
+
         // Left icon
         if let Some(icon_name) = self.icon {
-            let icon_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Icon {
+            let child_bounds = cx.bounds(self.child_ids[idx]);
+            idx += 1;
+            cx.draw_list.push(DrawCommand::Icon {
                 name: icon_name,
                 weight: IconWeight::Regular,
-                bounds: mozui_style::Rect::new(
-                    icon_layout.x,
-                    icon_layout.y,
-                    icon_layout.width,
-                    icon_layout.height,
-                ),
+                bounds: child_bounds,
                 color: fg,
                 size_px: self.icon_size(),
             });
@@ -422,16 +415,11 @@ impl Element for Button {
 
         // Label
         if let Some(ref label_text) = self.label {
-            let text_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
+            let child_bounds = cx.bounds(self.child_ids[idx]);
+            idx += 1;
+            cx.draw_list.push(DrawCommand::Text {
                 text: label_text.clone(),
-                bounds: mozui_style::Rect::new(
-                    text_layout.x,
-                    text_layout.y,
-                    text_layout.width,
-                    text_layout.height,
-                ),
+                bounds: child_bounds,
                 font_size: self.text_size(),
                 color: fg,
                 weight: 500,
@@ -441,17 +429,12 @@ impl Element for Button {
 
         // Right icon
         if let Some(icon_name) = self.icon_right {
-            let icon_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Icon {
+            let child_bounds = cx.bounds(self.child_ids[idx]);
+            let _ = idx;
+            cx.draw_list.push(DrawCommand::Icon {
                 name: icon_name,
                 weight: IconWeight::Regular,
-                bounds: mozui_style::Rect::new(
-                    icon_layout.x,
-                    icon_layout.y,
-                    icon_layout.width,
-                    icon_layout.height,
-                ),
+                bounds: child_bounds,
                 color: fg,
                 size_px: self.icon_size(),
             });
@@ -462,11 +445,15 @@ impl Element for Button {
 // ── ButtonGroup ───────────────────────────────────────────────────
 
 pub struct ButtonGroup {
+    layout_id: LayoutId,
+    child_ids: Vec<LayoutId>,
     buttons: Vec<Button>,
 }
 
 pub fn button_group() -> ButtonGroup {
     ButtonGroup {
+        layout_id: LayoutId::NONE,
+        child_ids: Vec::new(),
         buttons: Vec::new(),
     }
 }
@@ -484,36 +471,28 @@ impl ButtonGroup {
 }
 
 impl Element for ButtonGroup {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
-        let child_nodes: Vec<taffy::NodeId> = self
-            .buttons
-            .iter()
-            .map(|b| b.layout(engine, font_system))
-            .collect();
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.child_ids.clear();
+        for button in &mut self.buttons {
+            let id = button.layout(cx);
+            self.child_ids.push(id);
+        }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
                 ..Default::default()
             },
-            &child_nodes,
-        )
+            &self.child_ids,
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        let _layout = layouts[*index];
-        *index += 1;
-
-        for button in &self.buttons {
-            button.paint(layouts, index, draw_list, interactions, font_system);
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
+        for (i, button) in self.buttons.iter_mut().enumerate() {
+            let child_bounds = cx.bounds(self.child_ids[i]);
+            button.paint(child_bounds, cx);
         }
     }
 }

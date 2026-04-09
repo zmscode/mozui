@@ -1,12 +1,17 @@
 use crate::context::Context;
 use crate::keybindings::KeybindingRegistry;
-use mozui_elements::{Element, InteractionMap};
+use mozui_devtools::DevtoolsState;
+use mozui_elements::{
+    DeferredEntry, DeferredPosition, Element, InteractionMap, LayoutCache, LayoutContext,
+    PaintContext, ResolvedDeferred, compute_anchored_position,
+};
 use mozui_events::{PlatformEvent, WindowId};
 use mozui_layout::LayoutEngine;
 use mozui_platform::{WindowOptions, create_platform};
 use mozui_renderer::{DrawList, Renderer};
-use mozui_style::Theme;
+use mozui_style::{Size, Theme};
 use std::collections::HashMap;
+use std::time::Instant;
 use taffy::prelude::*;
 
 pub type ActionHandler = Box<dyn Fn(&dyn crate::Action, &mut Context)>;
@@ -17,9 +22,9 @@ struct WindowState {
     window: Box<dyn mozui_platform::PlatformWindow>,
     renderer: Renderer,
     layout_engine: LayoutEngine,
+    layout_cache: LayoutCache,
     interactions: InteractionMap,
     draw_list: DrawList,
-    cached_layouts: Vec<mozui_layout::ComputedLayout>,
     element_tree: Option<Box<dyn Element>>,
     root_builder: RootBuilder,
     needs_render: bool,
@@ -27,6 +32,8 @@ struct WindowState {
     last_size: mozui_style::Size,
     last_scale: f32,
     bg_color: mozui_style::Color,
+    frame_count: u64,
+    devtools: DevtoolsState,
 }
 
 impl WindowState {
@@ -42,9 +49,9 @@ impl WindowState {
             window,
             renderer,
             layout_engine: LayoutEngine::new(),
+            layout_cache: LayoutCache::new(),
             interactions: InteractionMap::new(),
             draw_list: DrawList::new(),
-            cached_layouts: Vec::new(),
             element_tree: None,
             root_builder,
             needs_render: true,
@@ -52,72 +59,138 @@ impl WindowState {
             last_size,
             last_scale,
             bg_color,
+            frame_count: 0,
+            devtools: DevtoolsState::new(),
         }
     }
 
-    fn rebuild(&mut self, cx: &mut Context) {
-        cx.reset_hooks();
-        self.element_tree = Some((self.root_builder)(cx));
+    fn rebuild(&mut self, _cx: &mut Context) {
+        // Mark for re-render. The actual tree rebuild happens in render()
+        // so deferred elements always get fresh children.
         self.needs_layout = true;
         self.needs_render = true;
     }
 
+    /// Run the three-phase layout → prepaint → paint pipeline.
     fn rebuild_interactions(&mut self) {
-        let element_tree = self.element_tree.as_ref().unwrap();
+        let frame_start = Instant::now();
         let size = self.window.content_size();
-        self.layout_engine.clear();
-        let root_node = element_tree.layout(&mut self.layout_engine, self.renderer.font_system());
+        let window_size = Size::new(size.width, size.height);
+
+        // Take the element tree out so we can mutably borrow it
+        // alongside the layout engine / draw list / interactions.
+        let mut tree = self.element_tree.take().unwrap();
+
+        // Phase 1: Layout (collects deferred entries)
+        // Periodic full GC every 120 frames to prevent unbounded node growth
+        let layout_start = Instant::now();
+        self.frame_count += 1;
+        if self.frame_count % 120 == 0 {
+            self.layout_engine.clear();
+            self.layout_cache.clear();
+        } else {
+            self.layout_engine.begin_frame();
+        }
+        self.layout_cache.begin_frame();
+        let mut deferred = Vec::new();
+        let root_id = {
+            let mut lcx = LayoutContext::new(
+                &mut self.layout_engine,
+                self.renderer.font_system(),
+                &mut deferred,
+                &mut self.layout_cache,
+            );
+            tree.layout(&mut lcx)
+        };
+
         self.layout_engine.compute_layout(
-            root_node,
+            root_id,
             taffy::prelude::Size {
                 width: AvailableSpace::Definite(size.width),
                 height: AvailableSpace::Definite(size.height),
             },
+            self.renderer.font_system(),
         );
-        self.cached_layouts = self.layout_engine.collect_layouts(root_node);
+
+        // Resolve deferred elements (independent layout trees)
+        let mut resolved_deferred = resolve_deferred(
+            deferred,
+            &self.layout_engine,
+            window_size,
+            self.renderer.font_system(),
+        );
+        let layout_us = layout_start.elapsed().as_micros() as u64;
+
+        // Phase 2 & 3: Prepaint + Paint (main tree)
+        let paint_start = Instant::now();
         self.draw_list.clear();
         self.interactions.clear();
-        let mut index = 0;
-        element_tree.paint(
-            &self.cached_layouts,
-            &mut index,
+        let root_bounds = {
+            let cl = self.layout_engine.bounds(root_id);
+            mozui_style::Rect::new(cl.x, cl.y, cl.width, cl.height)
+        };
+        {
+            let mut pcx = PaintContext::new(
+                &self.layout_engine,
+                &mut self.draw_list,
+                &mut self.interactions,
+                self.renderer.font_system(),
+                window_size,
+            );
+            tree.prepaint(root_bounds, &mut pcx);
+            tree.paint(root_bounds, &mut pcx);
+        }
+
+        // Paint deferred elements on top of the main tree
+        paint_deferred(
+            &mut resolved_deferred,
             &mut self.draw_list,
             &mut self.interactions,
             self.renderer.font_system(),
+            window_size,
         );
+        let paint_us = paint_start.elapsed().as_micros() as u64;
+
+        // Collect frame stats (render_us filled in after GPU render)
+        let draw_call_count = self.draw_list.len() as u32;
+        let element_count = self.interactions.entry_count() as u32;
+        let node_count = self.layout_engine.node_count() as u32;
+        let total_us = frame_start.elapsed().as_micros() as u64;
+
+        self.devtools.timings.push(mozui_devtools::FrameTiming {
+            layout_us,
+            paint_us,
+            render_us: 0, // filled in after renderer.render()
+            total_us,
+            draw_call_count,
+            element_count,
+            node_count,
+        });
+
+        // Put the tree back
+        self.element_tree = Some(tree);
     }
 
-    fn repaint_only(&mut self) {
-        let element_tree = self.element_tree.as_ref().unwrap();
-        self.draw_list.clear();
-        self.interactions.clear();
-        let mut index = 0;
-        element_tree.paint(
-            &self.cached_layouts,
-            &mut index,
-            &mut self.draw_list,
-            &mut self.interactions,
-            self.renderer.font_system(),
-        );
-    }
-
-    fn render(&mut self) {
+    fn render(&mut self, cx: &mut Context) {
         if !self.needs_render {
             return;
         }
+
+        // Always rebuild the element tree so deferred elements (Sheet, Dialog,
+        // Notification) get fresh children. They use std::mem::take to move
+        // children into their overlay, so the tree can't be reused across frames.
+        cx.reset_hooks();
+        self.element_tree = Some((self.root_builder)(cx));
+
         let size = self.window.content_size();
         let scale = self.window.scale_factor();
 
-        if self.needs_layout {
-            self.rebuild_interactions();
-            self.needs_layout = false;
-        } else {
-            self.repaint_only();
-        }
+        self.rebuild_interactions();
 
         self.renderer
             .render(self.bg_color, &self.draw_list, size, scale);
         self.needs_render = false;
+        self.needs_layout = false;
     }
 }
 
@@ -271,7 +344,7 @@ impl App {
                         ws.rebuild(&mut cx);
                     }
 
-                    ws.render();
+                    ws.render(&mut cx);
 
                     if cx.has_active_animations() {
                         ws.window.request_redraw();
@@ -446,5 +519,110 @@ fn handle_input_event(
         _ => {
             tracing::trace!(?event, "platform event");
         }
+    }
+}
+
+// ── Deferred element resolution ───────────────────────────────────
+
+/// Lay out and solve each deferred element in its own independent layout tree.
+fn resolve_deferred(
+    deferred: Vec<DeferredEntry>,
+    main_engine: &LayoutEngine,
+    window_size: Size,
+    font_system: &mozui_text::FontSystem,
+) -> Vec<ResolvedDeferred> {
+    let available = taffy::prelude::Size {
+        width: AvailableSpace::Definite(window_size.width),
+        height: AvailableSpace::Definite(window_size.height),
+    };
+
+    let mut resolved = Vec::with_capacity(deferred.len());
+
+    for entry in deferred {
+        let mut sub_engine = LayoutEngine::new();
+        let mut element = entry.element;
+
+        // Layout the deferred element in its own engine
+        let root_id = {
+            let mut sub_deferred = Vec::new();
+            let mut sub_cache = LayoutCache::new();
+            let mut sub_lcx = LayoutContext::new(&mut sub_engine, font_system, &mut sub_deferred, &mut sub_cache);
+            element.layout(&mut sub_lcx)
+            // TODO: support nested deferred (sub_deferred)
+        };
+
+        // Solve layout
+        sub_engine.compute_layout(root_id, available, font_system);
+
+        let anchor_bounds = match &entry.position {
+            DeferredPosition::Anchored {
+                anchor_id,
+                placement,
+                gap,
+            } => {
+                // Get anchor bounds from the main tree
+                let ab = main_engine.bounds(*anchor_id);
+                let anchor_rect =
+                    mozui_style::Rect::new(ab.x, ab.y, ab.width, ab.height);
+
+                // Get content size from the sub-engine solve
+                let content = sub_engine.bounds(root_id);
+                let content_size = Size::new(content.width, content.height);
+
+                // Compute position relative to anchor
+                let pos = compute_anchored_position(
+                    anchor_rect,
+                    content_size,
+                    *placement,
+                    *gap,
+                    window_size,
+                );
+
+                // Re-resolve bounds with the computed offset
+                sub_engine.resolve_with_offset(root_id, pos.x, pos.y);
+
+                Some(anchor_rect)
+            }
+            DeferredPosition::Overlay => {
+                // Overlays position themselves via their own layout.
+                // No offset needed — the sub-engine root fills the window.
+                None
+            }
+        };
+
+        resolved.push(ResolvedDeferred {
+            element,
+            engine: sub_engine,
+            root_id,
+            anchor_bounds,
+        });
+    }
+
+    resolved
+}
+
+/// Paint all resolved deferred elements on top of the main tree.
+fn paint_deferred(
+    resolved: &mut Vec<ResolvedDeferred>,
+    draw_list: &mut DrawList,
+    interactions: &mut InteractionMap,
+    font_system: &mozui_text::FontSystem,
+    window_size: Size,
+) {
+    for entry in resolved.iter_mut() {
+        let root_bounds = {
+            let cl = entry.engine.bounds(entry.root_id);
+            mozui_style::Rect::new(cl.x, cl.y, cl.width, cl.height)
+        };
+        let mut pcx = PaintContext::new(
+            &entry.engine,
+            draw_list,
+            interactions,
+            font_system,
+            window_size,
+        );
+        pcx.anchor_bounds = entry.anchor_bounds;
+        entry.element.prepaint(root_bounds, &mut pcx);
+        entry.element.paint(root_bounds, &mut pcx);
     }
 }

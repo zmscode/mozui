@@ -1,10 +1,9 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
 use mozui_style::animation::{Animated, Transition};
-use mozui_style::{Color, Corners, Fill, Shadow, Theme};
-use mozui_text::FontSystem;
+use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -78,6 +77,14 @@ pub struct CommandPalette {
     shadow: Shadow,
     width: f32,
     anim: Option<Animated<f32>>,
+    // Layout IDs
+    layout_id: LayoutId,
+    search_row_id: LayoutId,
+    mag_id: LayoutId,
+    search_text_id: LayoutId,
+    divider_id: LayoutId,
+    list_id: LayoutId,
+    item_ids: Vec<LayoutId>,
 }
 
 /// Create an entrance animation handle for a command palette.
@@ -107,6 +114,13 @@ pub fn command_palette(theme: &Theme) -> CommandPalette {
         shadow: theme.shadow_lg,
         width: 480.0,
         anim: None,
+        layout_id: LayoutId::NONE,
+        search_row_id: LayoutId::NONE,
+        mag_id: LayoutId::NONE,
+        search_text_id: LayoutId::NONE,
+        divider_id: LayoutId::NONE,
+        list_id: LayoutId::NONE,
+        item_ids: Vec::new(),
     }
 }
 
@@ -162,7 +176,8 @@ impl CommandPalette {
 }
 
 impl Element for CommandPalette {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.item_ids.clear();
         let mut children = Vec::new();
 
         // Search input area
@@ -171,20 +186,20 @@ impl Element for CommandPalette {
             ..Default::default()
         };
         let search_text = if self.query.is_empty() {
-            "Type a command…"
+            "Type a command\u{2026}"
         } else {
             &self.query
         };
-        let search_m = mozui_text::measure_text(search_text, &search_style, None, font_system);
+        let search_m = mozui_text::measure_text(search_text, &search_style, None, cx.font_system);
 
-        let mag_icon = engine.new_leaf(Style {
+        self.mag_id = cx.new_leaf(Style {
             size: Size {
                 width: length(ICON_SIZE),
                 height: length(ICON_SIZE),
             },
             ..Default::default()
         });
-        let search_text_node = engine.new_leaf(Style {
+        self.search_text_id = cx.new_leaf(Style {
             flex_grow: 1.0,
             size: Size {
                 width: auto(),
@@ -192,7 +207,7 @@ impl Element for CommandPalette {
             },
             ..Default::default()
         });
-        let search_row = engine.new_with_children(
+        self.search_row_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -213,45 +228,47 @@ impl Element for CommandPalette {
                 },
                 ..Default::default()
             },
-            &[mag_icon, search_text_node],
+            &[self.mag_id, self.search_text_id],
         );
-        children.push(search_row);
+        children.push(self.search_row_id);
 
         // Divider
-        children.push(engine.new_leaf(Style {
+        self.divider_id = cx.new_leaf(Style {
             size: Size {
                 width: percent(1.0),
                 height: length(1.0),
             },
             ..Default::default()
-        }));
+        });
+        children.push(self.divider_id);
 
         // Item list
-        let filtered = self.filtered_items();
-        let visible = filtered.len().min(MAX_VISIBLE);
-        let mut item_nodes = Vec::new();
+        let filtered_count = self.filtered_items().len();
+        let visible = filtered_count.min(MAX_VISIBLE);
         for _ in 0..visible {
-            item_nodes.push(engine.new_leaf(Style {
+            let id = cx.new_leaf(Style {
                 size: Size {
                     width: percent(1.0),
                     height: length(ITEM_HEIGHT),
                 },
                 ..Default::default()
-            }));
+            });
+            self.item_ids.push(id);
         }
 
         // Empty state
-        if filtered.is_empty() {
-            item_nodes.push(engine.new_leaf(Style {
+        if filtered_count == 0 {
+            let id = cx.new_leaf(Style {
                 size: Size {
                     width: percent(1.0),
                     height: length(ITEM_HEIGHT),
                 },
                 ..Default::default()
-            }));
+            });
+            self.item_ids.push(id);
         }
 
-        let list = engine.new_with_children(
+        self.list_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -263,11 +280,11 @@ impl Element for CommandPalette {
                 },
                 ..Default::default()
             },
-            &item_nodes,
+            &self.item_ids,
         );
-        children.push(list);
+        children.push(self.list_id);
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -278,39 +295,32 @@ impl Element for CommandPalette {
                 ..Default::default()
             },
             &children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         let filtered = self.filtered_items();
         let progress = self.anim.as_ref().map(|a| a.get()).unwrap_or(1.0);
         let fade = |c: Color| -> Color { c.with_alpha(c.a * progress) };
 
         // Container
-        let container = layouts[*index];
-        *index += 1;
+        let container = cx.engine.bounds(self.layout_id);
 
-        // Scale from 0.97 → 1.0 during entrance
+        // Scale from 0.97 -> 1.0 during entrance
         let scale = 0.97 + 0.03 * progress;
-        let cx = container.x + container.width / 2.0;
-        let cy = container.y + container.height / 2.0;
+        let ccx = container.x + container.width / 2.0;
+        let ccy = container.y + container.height / 2.0;
         let sw = container.width * scale;
         let sh = container.height * scale;
-        let bounds = mozui_style::Rect::new(cx - sw / 2.0, cy - sh / 2.0, sw, sh);
+        let bounds = Rect::new(ccx - sw / 2.0, ccy - sh / 2.0, sw, sh);
 
         let shadow = if progress < 0.5 {
             None
         } else {
             Some(self.shadow)
         };
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds,
             background: Fill::Solid(fade(self.bg)),
             corner_radii: Corners::uniform(self.corner_radius),
@@ -322,25 +332,22 @@ impl Element for CommandPalette {
         });
 
         // Search row
-        let search_row = layouts[*index];
-        *index += 1;
+        let search_row = cx.engine.bounds(self.search_row_id);
 
         // Magnifying glass
-        let mag = layouts[*index];
-        *index += 1;
-        draw_list.push(DrawCommand::Icon {
+        let mag = cx.bounds(self.mag_id);
+        cx.draw_list.push(DrawCommand::Icon {
             name: IconName::MagnifyingGlass,
             weight: IconWeight::Regular,
-            bounds: mozui_style::Rect::new(mag.x, mag.y, mag.width, mag.height),
+            bounds: mag,
             color: fade(self.muted_fg),
             size_px: ICON_SIZE,
         });
 
         // Search text
-        let search_l = layouts[*index];
-        *index += 1;
+        let search_l = cx.bounds(self.search_text_id);
         let search_text = if self.query.is_empty() {
-            "Type a command…"
+            "Type a command\u{2026}"
         } else {
             &self.query
         };
@@ -349,9 +356,9 @@ impl Element for CommandPalette {
         } else {
             self.fg
         };
-        draw_list.push(DrawCommand::Text {
+        cx.draw_list.push(DrawCommand::Text {
             text: search_text.to_string(),
-            bounds: mozui_style::Rect::new(search_l.x, search_row.y, search_l.width, INPUT_HEIGHT),
+            bounds: Rect::new(search_l.origin.x, search_row.y, search_l.size.width, INPUT_HEIGHT),
             font_size: FONT_SIZE,
             color: fade(search_color),
             weight: 400,
@@ -359,30 +366,24 @@ impl Element for CommandPalette {
         });
 
         // Divider
-        let divider = layouts[*index];
-        *index += 1;
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(divider.x, divider.y, divider.width, 1.0),
+        let divider = cx.bounds(self.divider_id);
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: Rect::new(divider.origin.x, divider.origin.y, divider.size.width, 1.0),
             background: Fill::Solid(fade(self.border_color)),
             corner_radii: Corners::uniform(0.0),
             border: None,
             shadow: None,
         });
 
-        // Item list container
-        let _list = layouts[*index];
-        *index += 1;
-
         if filtered.is_empty() {
             // Empty state
-            let empty_l = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
+            let empty_l = cx.bounds(self.item_ids[0]);
+            cx.draw_list.push(DrawCommand::Text {
                 text: "No results found".to_string(),
-                bounds: mozui_style::Rect::new(
-                    empty_l.x + PX,
-                    empty_l.y,
-                    empty_l.width - PX * 2.0,
+                bounds: Rect::new(
+                    empty_l.origin.x + PX,
+                    empty_l.origin.y,
+                    empty_l.size.width - PX * 2.0,
                     ITEM_HEIGHT,
                 ),
                 font_size: FONT_SIZE,
@@ -395,19 +396,16 @@ impl Element for CommandPalette {
 
         let visible = filtered.len().min(MAX_VISIBLE);
         for (vi, (_orig_idx, item)) in filtered.iter().take(visible).enumerate() {
-            let item_l = layouts[*index];
-            *index += 1;
-            let item_bounds =
-                mozui_style::Rect::new(item_l.x, item_l.y, item_l.width, item_l.height);
+            let item_bounds = cx.bounds(self.item_ids[vi]);
 
             let is_selected = vi == self.selected_index;
-            let hovered = !item.disabled && interactions.is_hovered(item_bounds);
+            let hovered = !item.disabled && cx.interactions.is_hovered(item_bounds);
             let alpha = if item.disabled { 0.4 } else { 1.0 };
             let a = alpha * progress;
 
             // Background
             if is_selected {
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: item_bounds,
                     background: Fill::Solid(fade(self.selected_bg)),
                     corner_radii: Corners::uniform(6.0),
@@ -415,7 +413,7 @@ impl Element for CommandPalette {
                     shadow: None,
                 });
             } else if hovered {
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: item_bounds,
                     background: Fill::Solid(fade(self.hover_bg)),
                     corner_radii: Corners::uniform(6.0),
@@ -424,15 +422,15 @@ impl Element for CommandPalette {
                 });
             }
 
-            let mut x = item_l.x + PX;
-            let iy = item_l.y + (ITEM_HEIGHT - ICON_SIZE) / 2.0;
+            let mut x = item_bounds.origin.x + PX;
+            let iy = item_bounds.origin.y + (ITEM_HEIGHT - ICON_SIZE) / 2.0;
 
             // Icon
             if let Some(icon) = item.icon {
-                draw_list.push(DrawCommand::Icon {
+                cx.draw_list.push(DrawCommand::Icon {
                     name: icon,
                     weight: IconWeight::Regular,
-                    bounds: mozui_style::Rect::new(x, iy, ICON_SIZE, ICON_SIZE),
+                    bounds: Rect::new(x, iy, ICON_SIZE, ICON_SIZE),
                     color: self.muted_fg.with_alpha(a),
                     size_px: ICON_SIZE,
                 });
@@ -440,9 +438,9 @@ impl Element for CommandPalette {
             }
 
             // Label
-            draw_list.push(DrawCommand::Text {
+            cx.draw_list.push(DrawCommand::Text {
                 text: item.label.clone(),
-                bounds: mozui_style::Rect::new(x, item_l.y, item_l.width * 0.6, ITEM_HEIGHT),
+                bounds: Rect::new(x, item_bounds.origin.y, item_bounds.size.width * 0.6, ITEM_HEIGHT),
                 font_size: FONT_SIZE,
                 color: self.fg.with_alpha(a),
                 weight: 400,
@@ -451,11 +449,11 @@ impl Element for CommandPalette {
 
             // Shortcut (right-aligned)
             if let Some(ref shortcut) = item.shortcut {
-                draw_list.push(DrawCommand::Text {
+                cx.draw_list.push(DrawCommand::Text {
                     text: shortcut.clone(),
-                    bounds: mozui_style::Rect::new(
-                        item_l.x + item_l.width - PX - 80.0,
-                        item_l.y,
+                    bounds: Rect::new(
+                        item_bounds.origin.x + item_bounds.size.width - PX - 80.0,
+                        item_bounds.origin.y,
                         80.0,
                         ITEM_HEIGHT,
                     ),
@@ -471,12 +469,12 @@ impl Element for CommandPalette {
                 if let Some(ref on_select) = self.on_select {
                     let id = item.id.clone();
                     let ptr = on_select.as_ref() as *const dyn Fn(&str, &mut dyn std::any::Any);
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         item_bounds,
                         Box::new(move |cx| unsafe { (*ptr)(&id, cx) }),
                     );
                 }
-                interactions.register_hover_region(item_bounds);
+                cx.interactions.register_hover_region(item_bounds);
             }
         }
     }

@@ -1,8 +1,7 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -12,6 +11,9 @@ enum BadgeContent {
 }
 
 pub struct Badge {
+    layout_id: LayoutId,
+    child_id: LayoutId,
+    indicator_id: LayoutId,
     content: BadgeContent,
     max: u32,
     color: Color,
@@ -21,6 +23,9 @@ pub struct Badge {
 
 pub fn badge(theme: &Theme) -> Badge {
     Badge {
+        layout_id: LayoutId::NONE,
+        child_id: LayoutId::NONE,
+        indicator_id: LayoutId::NONE,
         content: BadgeContent::Dot,
         max: 99,
         color: theme.danger,
@@ -72,12 +77,13 @@ impl Badge {
 }
 
 impl Element for Badge {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut children = Vec::new();
 
         // Child element
-        if let Some(ref child) = self.child {
-            children.push(child.layout(engine, font_system));
+        if let Some(ref mut child) = self.child {
+            self.child_id = child.layout(cx);
+            children.push(self.child_id);
         }
 
         // Badge indicator (placeholder leaf for size tracking — we draw it manually)
@@ -93,14 +99,15 @@ impl Element for Badge {
                         color: self.text_color,
                         ..Default::default()
                     };
-                    let measured = mozui_text::measure_text(&text, &text_style, None, font_system);
+                    let measured =
+                        mozui_text::measure_text(&text, &text_style, None, cx.font_system);
                     let w = (measured.width + 8.0).max(16.0);
                     (w, 16.0)
                 }
             }
         };
 
-        let indicator = engine.new_leaf(Style {
+        self.indicator_id = cx.new_leaf(Style {
             size: Size {
                 width: length(badge_w),
                 height: length(badge_h),
@@ -114,49 +121,39 @@ impl Element for Badge {
             },
             ..Default::default()
         });
-        children.push(indicator);
+        children.push(self.indicator_id);
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 position: Position::Relative,
                 ..Default::default()
             },
             &children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        // Outer container
-        let _layout = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         // Paint child
-        if let Some(ref child) = self.child {
-            child.paint(layouts, index, draw_list, interactions, font_system);
+        if let Some(ref mut child) = self.child {
+            let child_bounds = cx.bounds(self.child_id);
+            child.paint(child_bounds, cx);
         }
 
         // Badge indicator
-        let indicator_layout = layouts[*index];
-        *index += 1;
+        let indicator_bounds = cx.bounds(self.indicator_id);
 
         match &self.content {
             BadgeContent::Dot => {
                 let dot_size = 8.0;
-                let dot_bounds = mozui_style::Rect::new(
-                    indicator_layout.x,
-                    indicator_layout.y,
+                let dot_bounds = Rect::new(
+                    indicator_bounds.origin.x,
+                    indicator_bounds.origin.y,
                     dot_size,
                     dot_size,
                 );
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: dot_bounds,
                     background: Fill::Solid(self.color),
                     corner_radii: Corners::uniform(dot_size / 2.0),
@@ -167,21 +164,15 @@ impl Element for Badge {
             BadgeContent::Count(n) => {
                 if *n > 0 {
                     let text = self.display_text().unwrap_or_default();
-                    let bounds = mozui_style::Rect::new(
-                        indicator_layout.x,
-                        indicator_layout.y,
-                        indicator_layout.width,
-                        indicator_layout.height,
-                    );
 
                     // Pill background
-                    draw_list.push(DrawCommand::Rect {
-                        bounds,
+                    cx.draw_list.push(DrawCommand::Rect {
+                        bounds: indicator_bounds,
                         background: Fill::Solid(self.color),
-                        corner_radii: Corners::uniform(bounds.size.height / 2.0),
+                        corner_radii: Corners::uniform(indicator_bounds.size.height / 2.0),
                         border: None,
-                    shadow: None,
-                });
+                        shadow: None,
+                    });
 
                     // Centered text
                     let text_style = mozui_text::TextStyle {
@@ -189,17 +180,15 @@ impl Element for Badge {
                         color: self.text_color,
                         ..Default::default()
                     };
-                    let measured = mozui_text::measure_text(&text, &text_style, None, font_system);
-                    let text_x = bounds.origin.x + (bounds.size.width - measured.width) / 2.0;
-                    let text_y = bounds.origin.y + (bounds.size.height - measured.height) / 2.0;
-                    draw_list.push(DrawCommand::Text {
+                    let measured =
+                        mozui_text::measure_text(&text, &text_style, None, cx.font_system);
+                    let text_x = indicator_bounds.origin.x
+                        + (indicator_bounds.size.width - measured.width) / 2.0;
+                    let text_y = indicator_bounds.origin.y
+                        + (indicator_bounds.size.height - measured.height) / 2.0;
+                    cx.draw_list.push(DrawCommand::Text {
                         text,
-                        bounds: mozui_style::Rect::new(
-                            text_x,
-                            text_y,
-                            measured.width,
-                            measured.height,
-                        ),
+                        bounds: Rect::new(text_x, text_y, measured.width, measured.height),
                         font_size: 10.0,
                         color: self.text_color,
                         weight: 600,

@@ -1,10 +1,9 @@
-use crate::{Element, InteractionMap};
-use mozui_icons::IconName;
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
+use crate::{DeferredPosition, Element, LayoutContext, PaintContext};
+use mozui_icons::{IconName, IconWeight};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
 use mozui_style::animation::{Animated, Transition};
-use mozui_style::{Color, Corners, Fill, Shadow, Theme};
-use mozui_text::FontSystem;
+use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -59,7 +58,7 @@ pub enum NotificationType {
 
 impl NotificationType {
     /// Default icon for each type. Matches gpui-component:
-    /// Info → Info, Success → CheckCircle, Warning → Warning, Error → XCircle
+    /// Info -> Info, Success -> CheckCircle, Warning -> Warning, Error -> XCircle
     /// Default has no icon.
     pub fn icon(&self) -> Option<IconName> {
         match self {
@@ -86,10 +85,7 @@ impl NotificationType {
 
 /// A toast notification matching gpui-component's `Notification` styling.
 ///
-/// - 448px wide, 1px border, `shadow_md`, `radius_lg`
-/// - Icon absolutely positioned at top-left inside padding
-/// - Close button absolutely positioned top-right, visible on hover
-/// - Stacks from top-right with 12px gap
+/// Uses the deferred element system so notifications always paint on top.
 ///
 /// ```rust,ignore
 /// notification(&theme, NotificationType::Success, "File saved")
@@ -117,10 +113,9 @@ pub struct Notification {
     corner_radius: f32,
     /// Vertical offset from top (for stacking multiple notifications).
     top_offset: f32,
-    /// Titlebar height — notifications start below this.
+    /// Titlebar height -- notifications start below this.
     titlebar_height: f32,
     /// Baked-in animation: 0.0 = hidden, 1.0 = fully visible.
-    /// Automatically starts entrance animation on construction.
     anim: Animated<f32>,
     /// Whether animation is disabled (always fully visible).
     no_anim: bool,
@@ -143,7 +138,7 @@ pub fn notification_anim(animation_flag: Rc<Cell<bool>>) -> Animated<f32> {
 ///
 /// Pass an `Animated<f32>` from `notification_anim()` to animate entrance/exit.
 /// The notification reads the animation progress and computes opacity + slide
-/// automatically — no manual wiring needed.
+/// automatically -- no manual wiring needed.
 ///
 /// ```rust,ignore
 /// // On spawn:
@@ -193,7 +188,7 @@ impl Notification {
         self
     }
 
-    /// Alias for the message field — set the description/body text.
+    /// Alias for the message field -- set the description/body text.
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.message = desc.into();
         self
@@ -247,22 +242,82 @@ impl Notification {
 }
 
 impl Element for Notification {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
-        // gpui-component layout:
-        // h_flex (relative) [w=448, border, bg, rounded, shadow, py=14, px=16, gap=12]
-        //   div (absolute) [py=14, left=16] → icon
-        //   v_flex (flex_1, overflow_hidden, pl=24 when icon)
-        //     div [text_sm, font_semibold] → title (optional)
-        //     div [text_sm] → message
-        //   div (absolute) [top=4, right=4] → close button
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        // Defer the notification overlay for paint-on-top z-ordering
+        cx.defer(
+            Box::new(NotificationOverlay {
+                notification_type: self.notification_type,
+                title: self.title.clone(),
+                message: self.message.clone(),
+                icon_override: self.icon_override,
+                on_dismiss: self.on_dismiss.take(),
+                bg: self.bg,
+                fg: self.fg,
+                accent_color: self.accent_color,
+                border_color: self.border_color,
+                shadow: self.shadow,
+                corner_radius: self.corner_radius,
+                top_offset: self.top_offset,
+                titlebar_height: self.titlebar_height,
+                anim: self.anim.clone(),
+                no_anim: self.no_anim,
+                placement: self.placement,
+                layout_id: LayoutId::NONE,
+                content_id: LayoutId::NONE,
+                text_col_id: LayoutId::NONE,
+                title_id: LayoutId::NONE,
+                message_id: LayoutId::NONE,
+            }),
+            DeferredPosition::Overlay,
+        );
 
+        // Return a zero-size placeholder
+        cx.new_leaf(taffy::Style::default())
+    }
+
+    fn paint(&mut self, _bounds: Rect, _cx: &mut PaintContext) {
+        // Nothing — painted by the deferred system
+    }
+}
+
+// ── Deferred notification overlay ─────────────────────────────────
+
+struct NotificationOverlay {
+    notification_type: NotificationType,
+    title: Option<String>,
+    message: String,
+    icon_override: Option<IconName>,
+    on_dismiss: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    bg: Color,
+    fg: Color,
+    accent_color: Color,
+    border_color: Color,
+    shadow: Shadow,
+    corner_radius: f32,
+    top_offset: f32,
+    titlebar_height: f32,
+    anim: Animated<f32>,
+    no_anim: bool,
+    placement: NotificationPlacement,
+    // Layout IDs
+    layout_id: LayoutId,
+    content_id: LayoutId,
+    text_col_id: LayoutId,
+    title_id: LayoutId,
+    message_id: LayoutId,
+}
+
+impl Element for NotificationOverlay {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let has_icon = self.icon_override.is_some() || self.notification_type.icon().is_some();
 
         // Text column children
         let mut text_children = Vec::new();
-        let text_max_width = NOTIFICATION_WIDTH - PADDING_X * 2.0
+        let text_max_width = NOTIFICATION_WIDTH
+            - PADDING_X * 2.0
             - if has_icon { ICON_TEXT_INDENT } else { 0.0 }
-            - CLOSE_SIZE - CLOSE_OFFSET; // leave room for close button
+            - CLOSE_SIZE
+            - CLOSE_OFFSET;
 
         // Title (optional, bold)
         if let Some(ref title) = self.title {
@@ -272,14 +327,15 @@ impl Element for Notification {
                 weight: mozui_text::FontWeight::Bold,
                 ..Default::default()
             };
-            let m = mozui_text::measure_text(title, &style, Some(text_max_width), font_system);
-            text_children.push(engine.new_leaf(Style {
+            let m = mozui_text::measure_text(title, &style, Some(text_max_width), cx.font_system);
+            self.title_id = cx.new_leaf(Style {
                 size: taffy::Size {
                     width: length(m.width),
                     height: length(m.height),
                 },
                 ..Default::default()
-            }));
+            });
+            text_children.push(self.title_id);
         }
 
         // Message
@@ -289,17 +345,18 @@ impl Element for Notification {
             ..Default::default()
         };
         let msg_m =
-            mozui_text::measure_text(&self.message, &msg_style, Some(text_max_width), font_system);
-        text_children.push(engine.new_leaf(Style {
+            mozui_text::measure_text(&self.message, &msg_style, Some(text_max_width), cx.font_system);
+        self.message_id = cx.new_leaf(Style {
             size: taffy::Size {
                 width: length(msg_m.width),
                 height: length(msg_m.height),
             },
             ..Default::default()
-        }));
+        });
+        text_children.push(self.message_id);
 
-        // Text column — flex_1, with pl=24 when icon present
-        let text_col = engine.new_with_children(
+        // Text column
+        self.text_col_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -323,10 +380,8 @@ impl Element for Notification {
             &text_children,
         );
 
-        // Main content container — h_flex with padding
-        // Icon and close button are absolutely positioned, so not flex children.
-        // The only flex child is the text column.
-        let content = engine.new_with_children(
+        // Main content container
+        self.content_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -348,130 +403,105 @@ impl Element for Notification {
                 },
                 ..Default::default()
             },
-            &[text_col],
+            &[self.text_col_id],
         );
 
-        // Absolute-positioned wrapper based on placement
+        // Full-window flex container that aligns the notification to the
+        // correct corner. Uses percent(1.0) to fill the sub-engine's available
+        // space (Position::Absolute + inset doesn't work at sub-engine root).
         let top_edge = self.titlebar_height + MARGIN + self.top_offset;
         let bottom_edge = MARGIN + self.top_offset;
-        let inset = match self.placement {
-            NotificationPlacement::TopRight => taffy::Rect {
-                top: length(top_edge),
-                right: length(MARGIN),
-                left: auto(),
-                bottom: auto(),
-            },
-            NotificationPlacement::TopLeft => taffy::Rect {
-                top: length(top_edge),
-                left: length(MARGIN),
-                right: auto(),
-                bottom: auto(),
-            },
-            NotificationPlacement::TopCenter => taffy::Rect {
-                top: length(top_edge),
-                left: auto(),
-                right: auto(),
-                bottom: auto(),
-            },
-            NotificationPlacement::BottomRight => taffy::Rect {
-                bottom: length(bottom_edge),
-                right: length(MARGIN),
-                left: auto(),
-                top: auto(),
-            },
-            NotificationPlacement::BottomLeft => taffy::Rect {
-                bottom: length(bottom_edge),
-                left: length(MARGIN),
-                right: auto(),
-                top: auto(),
-            },
-            NotificationPlacement::BottomCenter => taffy::Rect {
-                bottom: length(bottom_edge),
-                left: auto(),
-                right: auto(),
-                top: auto(),
-            },
+
+        // Flex direction Column: justify = vertical axis, align = horizontal axis
+        let (justify, align_items, content_margin) = match self.placement {
+            NotificationPlacement::TopRight => (
+                JustifyContent::FlexStart,
+                AlignItems::FlexEnd,
+                taffy::Rect { top: length(top_edge), right: length(MARGIN), left: auto(), bottom: auto() },
+            ),
+            NotificationPlacement::TopLeft => (
+                JustifyContent::FlexStart,
+                AlignItems::FlexStart,
+                taffy::Rect { top: length(top_edge), left: length(MARGIN), right: auto(), bottom: auto() },
+            ),
+            NotificationPlacement::TopCenter => (
+                JustifyContent::FlexStart,
+                AlignItems::Center,
+                taffy::Rect { top: length(top_edge), left: auto(), right: auto(), bottom: auto() },
+            ),
+            NotificationPlacement::BottomRight => (
+                JustifyContent::FlexEnd,
+                AlignItems::FlexEnd,
+                taffy::Rect { bottom: length(bottom_edge), right: length(MARGIN), left: auto(), top: auto() },
+            ),
+            NotificationPlacement::BottomLeft => (
+                JustifyContent::FlexEnd,
+                AlignItems::FlexStart,
+                taffy::Rect { bottom: length(bottom_edge), left: length(MARGIN), right: auto(), top: auto() },
+            ),
+            NotificationPlacement::BottomCenter => (
+                JustifyContent::FlexEnd,
+                AlignItems::Center,
+                taffy::Rect { bottom: length(bottom_edge), left: auto(), right: auto(), top: auto() },
+            ),
         };
 
-        let mut wrapper_style = Style {
-            display: Display::Flex,
-            position: Position::Absolute,
-            inset,
-            ..Default::default()
-        };
+        // Apply margin to the content to offset from the edge
+        let content_wrapper = cx.new_with_children(
+            Style {
+                display: Display::Flex,
+                margin: content_margin,
+                ..Default::default()
+            },
+            &[self.content_id],
+        );
 
-        // Center horizontally for center placements
-        match self.placement {
-            NotificationPlacement::TopCenter | NotificationPlacement::BottomCenter => {
-                wrapper_style.align_self = Some(AlignSelf::Center);
-                wrapper_style.justify_self = Some(JustifySelf::Center);
-            }
-            _ => {}
-        }
-
-        engine.new_with_children(wrapper_style, &[content])
+        self.layout_id = cx.new_with_children(
+            Style {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                size: Size {
+                    width: percent(1.0),
+                    height: percent(1.0),
+                },
+                justify_content: Some(justify),
+                align_items: Some(align_items),
+                ..Default::default()
+            },
+            &[content_wrapper],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         let progress = if self.no_anim { 1.0 } else { self.anim.get() };
         let opacity = progress;
         let dy = match self.placement {
             NotificationPlacement::BottomRight
             | NotificationPlacement::BottomLeft
-            | NotificationPlacement::BottomCenter => SLIDE_DISTANCE * (1.0 - progress), // slides up from +45px to 0
-            _ => -SLIDE_DISTANCE * (1.0 - progress), // slides down from -45px to 0
+            | NotificationPlacement::BottomCenter => SLIDE_DISTANCE * (1.0 - progress),
+            _ => -SLIDE_DISTANCE * (1.0 - progress),
         };
 
-        // Helper: offset a rect by the slide_y animation offset
-        let offset_rect = |r: mozui_style::Rect| -> mozui_style::Rect {
-            mozui_style::Rect::new(r.origin.x, r.origin.y + dy, r.size.width, r.size.height)
+        let offset_rect = |r: Rect| -> Rect {
+            Rect::new(r.origin.x, r.origin.y + dy, r.size.width, r.size.height)
         };
-
-        // Helper: apply opacity to a color
         let fade = |c: Color| -> Color { c.with_alpha(c.a * opacity) };
 
-        // Don't paint at all if fully transparent
         if opacity < 0.001 {
-            // Still consume layout indices
-            *index += 1; // wrapper
-            *index += 1; // content
-            *index += 1; // text_col
-            if self.title.is_some() {
-                *index += 1; // title
-            }
-            *index += 1; // message
             return;
         }
 
-        // Absolute wrapper
-        let _wrapper = layouts[*index];
-        *index += 1;
-
         // Content container
-        let content_layout = layouts[*index];
-        *index += 1;
-        let content_bounds = offset_rect(mozui_style::Rect::new(
-            content_layout.x,
-            content_layout.y,
-            content_layout.width,
-            content_layout.height,
-        ));
+        let content_bounds = offset_rect(cx.bounds(self.content_id));
 
-        // Draw notification background with border and shadow
-        // gpui-component: shadow_none when opacity < 0.85
+        // Draw notification background
         let shadow = if opacity < 0.85 {
             None
         } else {
             Some(self.shadow)
         };
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: content_bounds,
             background: Fill::Solid(fade(self.bg)),
             corner_radii: Corners::uniform(self.corner_radius),
@@ -482,42 +512,31 @@ impl Element for Notification {
             shadow,
         });
 
-        // Register hover region on entire notification for close button visibility
-        interactions.register_hover_region(content_bounds);
-        let notification_hovered = interactions.is_hovered(content_bounds);
+        // Register hover region
+        cx.interactions.register_hover_region(content_bounds);
+        let notification_hovered = cx.interactions.is_hovered(content_bounds);
 
-        // Draw icon — absolutely positioned, vertically centered with the first line of text.
+        // Draw icon
         let resolved_icon = self.icon_override.or_else(|| self.notification_type.icon());
         if let Some(icon_name) = resolved_icon {
-            let first_line_height = TEXT_SM * 1.4; // approximate line-height
+            let first_line_height = TEXT_SM * 1.4;
             let icon_x = content_bounds.origin.x + PADDING_X;
             let icon_y =
                 content_bounds.origin.y + PADDING_Y + (first_line_height - ICON_SIZE) / 2.0;
-            let icon_bounds = mozui_style::Rect::new(icon_x, icon_y, ICON_SIZE, ICON_SIZE);
-            draw_list.push(DrawCommand::Icon {
+            let icon_bounds = Rect::new(icon_x, icon_y, ICON_SIZE, ICON_SIZE);
+            cx.draw_list.push(DrawCommand::Icon {
                 name: icon_name,
-                weight: mozui_icons::IconWeight::Regular,
+                weight: IconWeight::Regular,
                 bounds: icon_bounds,
                 color: fade(self.accent_color),
                 size_px: ICON_SIZE,
             });
         }
 
-        // Text column
-        let _text_col = layouts[*index];
-        *index += 1;
-
         // Title (optional)
         if self.title.is_some() {
-            let title_layout = layouts[*index];
-            *index += 1;
-            let title_bounds = offset_rect(mozui_style::Rect::new(
-                title_layout.x,
-                title_layout.y,
-                title_layout.width,
-                title_layout.height,
-            ));
-            draw_list.push(DrawCommand::Text {
+            let title_bounds = offset_rect(cx.bounds(self.title_id));
+            cx.draw_list.push(DrawCommand::Text {
                 text: self.title.as_ref().unwrap().clone(),
                 bounds: title_bounds,
                 font_size: TEXT_SM,
@@ -528,15 +547,8 @@ impl Element for Notification {
         }
 
         // Message
-        let msg_layout = layouts[*index];
-        *index += 1;
-        let msg_bounds = offset_rect(mozui_style::Rect::new(
-            msg_layout.x,
-            msg_layout.y,
-            msg_layout.width,
-            msg_layout.height,
-        ));
-        draw_list.push(DrawCommand::Text {
+        let msg_bounds = offset_rect(cx.bounds(self.message_id));
+        cx.draw_list.push(DrawCommand::Text {
             text: self.message.clone(),
             bounds: msg_bounds,
             font_size: TEXT_SM,
@@ -545,35 +557,33 @@ impl Element for Notification {
             italic: false,
         });
 
-        // Close button — absolutely positioned top-right
+        // Close button
         let close_x =
             content_bounds.origin.x + content_bounds.size.width - CLOSE_OFFSET - CLOSE_SIZE;
         let close_y = content_bounds.origin.y + CLOSE_OFFSET;
-        let close_bounds = mozui_style::Rect::new(close_x, close_y, CLOSE_SIZE, CLOSE_SIZE);
+        let close_bounds = Rect::new(close_x, close_y, CLOSE_SIZE, CLOSE_SIZE);
 
-        // Only render close button when notification is hovered (gpui-component: group_hover)
         if notification_hovered {
-            let close_icon_hovered = interactions.is_hovered(close_bounds);
+            let close_icon_hovered = cx.interactions.is_hovered(close_bounds);
             let close_color = if close_icon_hovered {
                 fade(self.fg)
             } else {
                 fade(self.fg.with_alpha(0.5))
             };
-            draw_list.push(DrawCommand::Icon {
+            cx.draw_list.push(DrawCommand::Icon {
                 name: IconName::X,
-                weight: mozui_icons::IconWeight::Regular,
+                weight: IconWeight::Regular,
                 bounds: close_bounds,
                 color: close_color,
                 size_px: CLOSE_SIZE,
             });
 
-            interactions.register_hover_region(close_bounds);
+            cx.interactions.register_hover_region(close_bounds);
         }
 
-        // Register click handler for close button (always, even when hidden)
         if let Some(ref handler) = self.on_dismiss {
             let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            interactions.register_click(
+            cx.interactions.register_click(
                 close_bounds,
                 Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
             );

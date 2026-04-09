@@ -1,9 +1,9 @@
-use crate::{DragId, Element, InteractionMap};
+use crate::{DragId, Element, LayoutContext, PaintContext};
 use mozui_events;
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Point as StylePoint, Shadow};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_layout::cache::{LayoutCacheKey, hash_children, hash_style};
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Point as StylePoint, Rect, Shadow};
 use std::cell::Cell;
 use std::rc::Rc;
 use taffy::prelude::*;
@@ -97,6 +97,10 @@ impl ScrollOffset {
 }
 
 pub struct Div {
+    // Layout IDs (populated during layout phase)
+    layout_id: LayoutId,
+    child_ids: Vec<LayoutId>,
+
     // Visual style
     background: Option<Fill>,
     corner_radii: Corners,
@@ -127,11 +131,16 @@ pub struct Div {
 
     // Drag-and-drop
     dnd_source: Option<DragId>,
-    dnd_target: Option<(DragId, Box<dyn Fn(DragId, StylePoint, &mut dyn std::any::Any)>)>,
+    dnd_target: Option<(
+        DragId,
+        Box<dyn Fn(DragId, StylePoint, &mut dyn std::any::Any)>,
+    )>,
 }
 
 pub fn div() -> Div {
     Div {
+        layout_id: LayoutId::NONE,
+        child_ids: Vec::new(),
         background: None,
         corner_radii: Corners::ZERO,
         border_width: 0.0,
@@ -259,7 +268,7 @@ impl Div {
     // --- Padding ---
     pub fn p(mut self, v: f32) -> Self {
         let l = length(v);
-        self.taffy_style.padding = Rect {
+        self.taffy_style.padding = taffy::Rect {
             left: l,
             right: l,
             top: l,
@@ -305,7 +314,7 @@ impl Div {
     // --- Margin ---
     pub fn m(mut self, v: f32) -> Self {
         let l = length(v);
-        self.taffy_style.margin = Rect {
+        self.taffy_style.margin = taffy::Rect {
             left: l,
             right: l,
             top: l,
@@ -516,29 +525,30 @@ impl Div {
 }
 
 impl Element for Div {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
-        let child_nodes: Vec<taffy::NodeId> = self
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        // Always recurse into children (they may have animations/state)
+        self.child_ids = self
             .children
-            .iter()
-            .map(|c| c.layout(engine, font_system))
+            .iter_mut()
+            .map(|c| c.layout(cx))
             .collect();
 
-        engine.new_with_children(self.taffy_style.clone(), &child_nodes)
+        // Check layout cache — skip taffy node creation if style + children unchanged
+        let key = LayoutCacheKey {
+            style_hash: hash_style(&self.taffy_style),
+            children_hash: hash_children(&self.child_ids),
+        };
+        if let Some(cached_id) = cx.cached(key) {
+            self.layout_id = cached_id;
+            return cached_id;
+        }
+
+        self.layout_id = cx.new_with_children(self.taffy_style.clone(), &self.child_ids);
+        cx.cache(key, self.layout_id);
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &mozui_text::FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Paint self
         if let Some(ref bg) = self.background {
             let border = if self.border_width > 0.0 {
@@ -550,7 +560,7 @@ impl Element for Div {
                 None
             };
 
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds,
                 background: bg.clone(),
                 corner_radii: self.corner_radii,
@@ -562,14 +572,15 @@ impl Element for Div {
         // Register click handler if present
         if let Some(ref handler) = self.on_click {
             let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            interactions.register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+            cx.interactions
+                .register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
         }
 
         // Register right-click handler if present
         if let Some(ref handler) = self.on_right_click {
             let handler_ptr =
                 handler.as_ref() as *const dyn Fn(StylePoint, &mut dyn std::any::Any);
-            interactions.register_right_click(
+            cx.interactions.register_right_click(
                 bounds,
                 Box::new(move |pos, cx| unsafe { (*handler_ptr)(pos, cx) }),
             );
@@ -577,7 +588,7 @@ impl Element for Div {
 
         // Register drag region if marked
         if self.is_drag_region {
-            interactions.register_drag_region(bounds);
+            cx.interactions.register_drag_region(bounds);
         }
 
         // Register key handler if present
@@ -588,23 +599,25 @@ impl Element for Div {
                     mozui_events::Modifiers,
                     &mut dyn std::any::Any,
                 );
-            interactions.register_key_handler(Box::new(move |key, mods, cx| unsafe {
-                (*handler_ptr)(key, mods, cx)
-            }));
+            cx.interactions
+                .register_key_handler(Box::new(move |key, mods, cx| unsafe {
+                    (*handler_ptr)(key, mods, cx)
+                }));
         }
 
         // Register DnD source
         if let Some(id) = self.dnd_source {
-            interactions.register_dnd_source(id, bounds);
+            cx.interactions.register_dnd_source(id, bounds);
         }
 
         // Register DnD target
         if let Some((id, ref handler)) = self.dnd_target {
-            let handler_ptr = handler.as_ref()
-                as *const dyn Fn(DragId, StylePoint, &mut dyn std::any::Any);
-            interactions.register_drop_target(id, bounds, move |source_id, pos, cx| unsafe {
-                (*handler_ptr)(source_id, pos, cx)
-            });
+            let handler_ptr =
+                handler.as_ref() as *const dyn Fn(DragId, StylePoint, &mut dyn std::any::Any);
+            cx.interactions
+                .register_drop_target(id, bounds, move |source_id, pos, cx| unsafe {
+                    (*handler_ptr)(source_id, pos, cx)
+                });
         }
 
         // Scroll handling
@@ -612,20 +625,19 @@ impl Element for Div {
         let is_scrollable = self.scroll_y.is_some();
 
         if is_scrollable {
-            draw_list.push_scroll_offset(-scroll_offset_y);
-            interactions.push_scroll_offset(-scroll_offset_y);
+            cx.draw_list.push_scroll_offset(-scroll_offset_y);
+            cx.interactions.push_scroll_offset(-scroll_offset_y);
         }
 
-        // Paint children — track index range to compute content bounds
-        let children_start = *index;
-        for child in &self.children {
-            child.paint(layouts, index, draw_list, interactions, font_system);
+        // Paint children
+        for i in 0..self.children.len() {
+            let child_bounds = cx.bounds(self.child_ids[i]);
+            self.children[i].paint(child_bounds, cx);
         }
-        let children_end = *index;
 
         if is_scrollable {
-            draw_list.pop_scroll_offset();
-            interactions.pop_scroll_offset();
+            cx.draw_list.pop_scroll_offset();
+            cx.interactions.pop_scroll_offset();
         }
 
         // Register scroll region after painting children (so we know content height)
@@ -634,8 +646,8 @@ impl Element for Div {
 
             // Find the bottom of the deepest child to determine content height
             let mut content_bottom = 0.0_f32;
-            for i in children_start..children_end {
-                let cl = layouts[i];
+            for &child_id in &self.child_ids {
+                let cl = cx.engine.bounds(child_id);
                 let bot = cl.y + cl.height - bounds.origin.y;
                 content_bottom = content_bottom.max(bot);
             }
@@ -653,7 +665,7 @@ impl Element for Div {
             scroll.tick_momentum(max_scroll);
 
             let scroll_clone = scroll.clone();
-            interactions.register_scroll_region(
+            cx.interactions.register_scroll_region(
                 bounds,
                 Box::new(move |_dx, dy, _cx| {
                     scroll_clone.scroll_by(dy, max_scroll);
@@ -661,4 +673,16 @@ impl Element for Div {
             );
         }
     }
+}
+
+/// Zero-size placeholder element used when an element's child has been
+/// moved into a deferred entry (e.g. Popover transfers its child to
+/// the deferred system during layout).
+pub(crate) struct EmptyPlaceholder;
+
+impl Element for EmptyPlaceholder {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        cx.new_leaf(taffy::Style::default())
+    }
+    fn paint(&mut self, _bounds: Rect, _cx: &mut PaintContext) {}
 }

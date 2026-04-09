@@ -30,16 +30,13 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
     // Color animation
     let (color_idx, set_color_idx) = cx.use_signal(0usize);
     let ci = *cx.get(color_idx);
-    let color_anim = cx.use_animated(
-        theme.accent,
-        Transition::new(Duration::from_millis(500)),
-    );
+    let color_anim = cx.use_animated(theme.accent, Transition::new(Duration::from_millis(500)));
     let colors = [
-        theme.accent,   // magenta
-        theme.primary,  // cyan
-        theme.success,  // green
-        theme.warning,  // orange
-        theme.danger,   // red
+        theme.accent,  // magenta
+        theme.primary, // cyan
+        theme.success, // green
+        theme.warning, // orange
+        theme.danger,  // red
     ];
     color_anim.set(colors[ci % colors.len()]);
 

@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 const INDENT: f32 = 20.0;
@@ -90,6 +89,10 @@ impl TreeNode {
 
 /// A tree view component displaying hierarchical data.
 pub struct TreeView {
+    layout_id: LayoutId,
+    /// Flat list of row LayoutIds in visible order
+    row_ids: Vec<LayoutId>,
+
     roots: Vec<TreeNode>,
     width: f32,
     fg: Color,
@@ -102,6 +105,8 @@ pub struct TreeView {
 
 pub fn tree_view(theme: &Theme) -> TreeView {
     TreeView {
+        layout_id: LayoutId::NONE,
+        row_ids: Vec::new(),
         roots: Vec::new(),
         width: 240.0,
         fg: theme.foreground,
@@ -134,54 +139,14 @@ impl TreeView {
     }
 }
 
-impl Element for TreeView {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
-        let row_count = self.total_visible();
-        let mut rows = Vec::with_capacity(row_count);
-        for root in &self.roots {
-            layout_node(root, 0, engine, &mut rows);
-        }
-
-        engine.new_with_children(
-            Style {
-                display: Display::Flex,
-                flex_direction: FlexDirection::Column,
-                size: Size {
-                    width: length(self.width),
-                    height: auto(),
-                },
-                ..Default::default()
-            },
-            &rows,
-        )
-    }
-
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        // Container
-        let _container = layouts[*index];
-        *index += 1;
-
-        for root in &self.roots {
-            self.paint_node(root, 0, layouts, index, draw_list, interactions);
-        }
-    }
-}
-
 fn layout_node(
     node: &TreeNode,
     depth: usize,
-    engine: &mut LayoutEngine,
-    rows: &mut Vec<taffy::NodeId>,
+    cx: &mut LayoutContext,
+    rows: &mut Vec<LayoutId>,
 ) {
     let left_pad = depth as f32 * INDENT;
-    rows.push(engine.new_leaf(Style {
+    let row_id = cx.new_leaf(Style {
         size: Size {
             width: percent(1.0),
             height: length(ROW_HEIGHT),
@@ -193,11 +158,45 @@ fn layout_node(
             bottom: zero(),
         },
         ..Default::default()
-    }));
+    });
+    rows.push(row_id);
 
     if node.expanded {
         for child in &node.children {
-            layout_node(child, depth + 1, engine, rows);
+            layout_node(child, depth + 1, cx, rows);
+        }
+    }
+}
+
+impl Element for TreeView {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.row_ids.clear();
+        let row_count = self.total_visible();
+        self.row_ids.reserve(row_count);
+
+        for root in &self.roots {
+            layout_node(root, 0, cx, &mut self.row_ids);
+        }
+
+        self.layout_id = cx.new_with_children(
+            Style {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                size: Size {
+                    width: length(self.width),
+                    height: auto(),
+                },
+                ..Default::default()
+            },
+            &self.row_ids,
+        );
+        self.layout_id
+    }
+
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
+        let mut row_idx = 0;
+        for root in &self.roots {
+            self.paint_node(root, 0, &mut row_idx, cx);
         }
     }
 }
@@ -207,25 +206,22 @@ impl TreeView {
         &self,
         node: &TreeNode,
         depth: usize,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
+        row_idx: &mut usize,
+        cx: &mut PaintContext,
     ) {
-        let layout = layouts[*index];
-        *index += 1;
+        let row_bounds = cx.bounds(self.row_ids[*row_idx]);
+        *row_idx += 1;
 
         let left_pad = depth as f32 * INDENT;
         // Content area starts after indent padding
-        let content_x = layout.x + left_pad;
-        let content_w = layout.width - left_pad;
-        let content_bounds =
-            mozui_style::Rect::new(content_x, layout.y, content_w, layout.height);
-        let hovered = interactions.is_hovered(content_bounds);
+        let content_x = row_bounds.origin.x + left_pad;
+        let content_w = row_bounds.size.width - left_pad;
+        let content_bounds = Rect::new(content_x, row_bounds.origin.y, content_w, row_bounds.size.height);
+        let hovered = cx.interactions.is_hovered(content_bounds);
 
         // Row background (selected or hover) — drawn over content area only
         if node.selected {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: content_bounds,
                 background: Fill::Solid(self.selected_bg),
                 corner_radii: Corners::uniform(self.corner_radius),
@@ -233,7 +229,7 @@ impl TreeView {
                 shadow: None,
             });
         } else if hovered {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: content_bounds,
                 background: Fill::Solid(self.hover_bg),
                 corner_radii: Corners::uniform(self.corner_radius),
@@ -248,7 +244,7 @@ impl TreeView {
             self.fg
         };
         let mut x = content_x + 4.0;
-        let cy = layout.y + (ROW_HEIGHT - ICON_SIZE) / 2.0;
+        let cy = row_bounds.origin.y + (ROW_HEIGHT - ICON_SIZE) / 2.0;
 
         // Chevron for branches
         if node.is_branch() {
@@ -257,10 +253,10 @@ impl TreeView {
             } else {
                 IconName::CaretRight
             };
-            draw_list.push(DrawCommand::Icon {
+            cx.draw_list.push(DrawCommand::Icon {
                 name: chevron_icon,
                 weight: IconWeight::Bold,
-                bounds: mozui_style::Rect::new(x, cy, CHEVRON_SIZE, CHEVRON_SIZE),
+                bounds: Rect::new(x, cy, CHEVRON_SIZE, CHEVRON_SIZE),
                 color: if node.selected { fg } else { self.muted_fg },
                 size_px: CHEVRON_SIZE,
             });
@@ -269,10 +265,10 @@ impl TreeView {
 
         // Optional icon
         if let Some(icon) = node.icon {
-            draw_list.push(DrawCommand::Icon {
+            cx.draw_list.push(DrawCommand::Icon {
                 name: icon,
                 weight: IconWeight::Regular,
-                bounds: mozui_style::Rect::new(x, cy, ICON_SIZE, ICON_SIZE),
+                bounds: Rect::new(x, cy, ICON_SIZE, ICON_SIZE),
                 color: if node.selected { fg } else { self.muted_fg },
                 size_px: ICON_SIZE,
             });
@@ -280,14 +276,9 @@ impl TreeView {
         }
 
         // Label
-        draw_list.push(DrawCommand::Text {
+        cx.draw_list.push(DrawCommand::Text {
             text: node.label.clone(),
-            bounds: mozui_style::Rect::new(
-                x,
-                layout.y,
-                content_w - (x - content_x),
-                ROW_HEIGHT,
-            ),
+            bounds: Rect::new(x, row_bounds.origin.y, content_w - (x - content_x), ROW_HEIGHT),
             font_size: FONT_SIZE,
             color: fg,
             weight: if node.selected { 600 } else { 400 },
@@ -298,21 +289,20 @@ impl TreeView {
         if node.is_branch() {
             if let Some(ref on_toggle) = node.on_toggle {
                 let ptr = on_toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions
+                cx.interactions
                     .register_click(content_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
             }
         } else if let Some(ref on_click) = node.on_click {
             let ptr = on_click.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            interactions
-                .register_click(content_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
+            cx.interactions.register_click(content_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
         }
 
-        interactions.register_hover_region(content_bounds);
+        cx.interactions.register_hover_region(content_bounds);
 
         // Recurse into expanded children
         if node.expanded {
             for child in &node.children {
-                self.paint_node(child, depth + 1, layouts, index, draw_list, interactions);
+                self.paint_node(child, depth + 1, row_idx, cx);
             }
         }
     }

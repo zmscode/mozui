@@ -1,9 +1,6 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::DrawList;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
 use mozui_style::{Corners, Fill, Rect, Size};
-use mozui_text::FontSystem;
-use taffy::NodeId;
 
 /// Direction of a virtual list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +14,10 @@ pub enum VirtualListDirection {
 /// Instead of creating Element nodes for every item, it calculates which
 /// items are visible based on the scroll offset and only renders those.
 pub struct VirtualList {
+    layout_id: LayoutId,
+    child_ids: Vec<LayoutId>,
+    visible_items: Vec<Box<dyn Element>>,
+
     direction: VirtualListDirection,
     item_count: usize,
     item_height: f32, // uniform item height (for now)
@@ -36,6 +37,9 @@ impl VirtualList {
         render_item: impl Fn(usize) -> Box<dyn Element> + 'static,
     ) -> Self {
         Self {
+            layout_id: LayoutId::NONE,
+            child_ids: Vec::new(),
+            visible_items: Vec::new(),
             direction: VirtualListDirection::Vertical,
             item_count,
             item_height,
@@ -55,6 +59,9 @@ impl VirtualList {
         render_item: impl Fn(usize) -> Box<dyn Element> + 'static,
     ) -> Self {
         Self {
+            layout_id: LayoutId::NONE,
+            child_ids: Vec::new(),
+            visible_items: Vec::new(),
             direction: VirtualListDirection::Horizontal,
             item_count,
             item_height: item_width,
@@ -129,7 +136,7 @@ impl VirtualList {
 }
 
 impl Element for VirtualList {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // The virtual list itself occupies the viewport size
         let style = taffy::Style {
             size: taffy::Size {
@@ -145,46 +152,35 @@ impl Element for VirtualList {
 
         // Only create layout nodes for visible items
         let (first, last) = self.visible_range();
-        let mut children = Vec::new();
+        self.visible_items.clear();
+        self.child_ids.clear();
         for idx in first..last {
-            let item = (self.render_item)(idx);
-            children.push(item.layout(engine, font_system));
+            let mut item = (self.render_item)(idx);
+            let id = item.layout(cx);
+            self.child_ids.push(id);
+            self.visible_items.push(item);
         }
 
-        engine.new_with_children(style, &children)
+        self.layout_id = cx.new_with_children(style, &self.child_ids);
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        if *index >= layouts.len() {
-            return;
-        }
-
-        let layout = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Paint background
         if let Some(ref bg) = self.background {
-            draw_list.push(mozui_renderer::DrawCommand::Rect {
-                bounds: Rect::new(layout.x, layout.y, layout.width, layout.height),
+            cx.draw_list.push(mozui_renderer::DrawCommand::Rect {
+                bounds,
                 background: bg.clone(),
                 corner_radii: self.corner_radii,
                 border: None,
-                    shadow: None,
-                });
+                shadow: None,
+            });
         }
 
         // Paint visible items
-        let (first, last) = self.visible_range();
-        for idx in first..last {
-            let item = (self.render_item)(idx);
-            item.paint(layouts, index, draw_list, interactions, font_system);
+        for i in 0..self.visible_items.len() {
+            let child_bounds = cx.bounds(self.child_ids[i]);
+            self.visible_items[i].paint(child_bounds, cx);
         }
     }
 }

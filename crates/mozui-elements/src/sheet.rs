@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
+use crate::{DeferredPosition, Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
 use mozui_style::animation::{Animated, Transition};
-use mozui_style::{Color, Corners, Fill, Shadow, Theme};
-use mozui_text::FontSystem;
+use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -27,6 +26,9 @@ pub enum SheetPlacement {
 }
 
 /// A slide-in panel overlay (drawer / side sheet).
+///
+/// Uses the deferred element system so the sheet always paints on top
+/// of the main tree.
 pub struct Sheet {
     placement: SheetPlacement,
     size: f32,
@@ -103,28 +105,92 @@ impl Sheet {
         self.anim = Some(anim);
         self
     }
+}
 
+impl Element for Sheet {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        // Defer the entire sheet overlay for paint-on-top z-ordering
+        cx.defer(
+            Box::new(SheetOverlay {
+                placement: self.placement,
+                size: self.size,
+                children: std::mem::take(&mut self.children),
+                title: self.title.take(),
+                footer: self.footer.take(),
+                overlay: self.overlay,
+                on_close: self.on_close.take(),
+                bg: self.bg,
+                border_color: self.border_color,
+                overlay_color: self.overlay_color,
+                shadow: self.shadow,
+                anim: self.anim.clone(),
+                layout_id: LayoutId::NONE,
+                panel_id: LayoutId::NONE,
+                title_id: LayoutId::NONE,
+                body_id: LayoutId::NONE,
+                child_ids: Vec::new(),
+                footer_id: LayoutId::NONE,
+            }),
+            DeferredPosition::Overlay,
+        );
+
+        // Return a zero-size placeholder
+        cx.new_leaf(taffy::Style::default())
+    }
+
+    fn paint(&mut self, _bounds: Rect, _cx: &mut PaintContext) {
+        // Nothing — painted by the deferred system
+    }
+}
+
+// ── Deferred sheet overlay ────────────────────────────────────────
+
+struct SheetOverlay {
+    placement: SheetPlacement,
+    size: f32,
+    children: Vec<Box<dyn Element>>,
+    title: Option<Box<dyn Element>>,
+    footer: Option<Box<dyn Element>>,
+    overlay: bool,
+    on_close: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    bg: Color,
+    border_color: Color,
+    overlay_color: Color,
+    shadow: Shadow,
+    anim: Option<Animated<f32>>,
+    // Layout IDs
+    layout_id: LayoutId,
+    panel_id: LayoutId,
+    title_id: LayoutId,
+    body_id: LayoutId,
+    child_ids: Vec<LayoutId>,
+    footer_id: LayoutId,
+}
+
+impl SheetOverlay {
     fn is_horizontal(&self) -> bool {
         matches!(self.placement, SheetPlacement::Left | SheetPlacement::Right)
     }
 }
 
-impl Element for Sheet {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+impl Element for SheetOverlay {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.child_ids.clear();
+
         // Build content children
         let mut content_children = Vec::new();
 
-        if let Some(ref title) = self.title {
-            content_children.push(title.layout(engine, font_system));
+        if let Some(ref mut title) = self.title {
+            self.title_id = title.layout(cx);
+            content_children.push(self.title_id);
         }
 
         // Body wrapper
-        let body_children: Vec<_> = self
-            .children
-            .iter()
-            .map(|c| c.layout(engine, font_system))
-            .collect();
-        content_children.push(engine.new_with_children(
+        for i in 0..self.children.len() {
+            let id = self.children[i].layout(cx);
+            self.child_ids.push(id);
+        }
+        self.body_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -141,21 +207,23 @@ impl Element for Sheet {
                 },
                 ..Default::default()
             },
-            &body_children,
-        ));
+            &self.child_ids,
+        );
+        content_children.push(self.body_id);
 
-        if let Some(ref footer) = self.footer {
-            content_children.push(footer.layout(engine, font_system));
+        if let Some(ref mut footer) = self.footer {
+            self.footer_id = footer.layout(cx);
+            content_children.push(self.footer_id);
         }
 
-        // Panel — sized along placement axis
+        // Panel -- sized along placement axis
         let (panel_w, panel_h) = if self.is_horizontal() {
             (length(self.size), percent(1.0))
         } else {
             (percent(1.0), length(self.size))
         };
 
-        let panel = engine.new_with_children(
+        self.panel_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -168,16 +236,15 @@ impl Element for Sheet {
             &content_children,
         );
 
-        // Full-screen overlay container (absolute positioned)
-        engine.new_with_children(
+        // Full-screen overlay container.
+        // Uses percent(1.0) to fill the sub-engine's available space
+        // (Position::Absolute + inset doesn't work at sub-engine root).
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
-                position: Position::Absolute,
-                inset: taffy::Rect {
-                    left: length(0.0),
-                    right: length(0.0),
-                    top: length(0.0),
-                    bottom: length(0.0),
+                size: Size {
+                    width: percent(1.0),
+                    height: percent(1.0),
                 },
                 // Align panel to the correct edge
                 justify_content: Some(match self.placement {
@@ -192,55 +259,45 @@ impl Element for Sheet {
                 }),
                 ..Default::default()
             },
-            &[panel],
-        )
+            &[self.panel_id],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let progress = self.anim.as_ref().map(|a| a.get()).unwrap_or(1.0);
 
         // Overlay container
-        let overlay_layout = layouts[*index];
-        *index += 1;
-        let overlay_bounds = mozui_style::Rect::new(
-            overlay_layout.x,
-            overlay_layout.y,
-            overlay_layout.width,
-            overlay_layout.height,
-        );
+        let overlay_bounds = bounds;
 
         // Draw overlay backdrop
         if self.overlay {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: overlay_bounds,
-                background: Fill::Solid(self.overlay_color.with_alpha(self.overlay_color.a * progress)),
+                background: Fill::Solid(
+                    self.overlay_color
+                        .with_alpha(self.overlay_color.a * progress),
+                ),
                 corner_radii: Corners::ZERO,
                 border: None,
                 shadow: None,
             });
 
             // Block all interaction behind the overlay
-            interactions.register_hover_region(overlay_bounds);
-            interactions.register_drag_handler(overlay_bounds, Box::new(|_pos, _cx| {}));
+            cx.interactions.register_hover_region(overlay_bounds);
+            cx.interactions
+                .register_drag_handler(overlay_bounds, Box::new(|_pos, _cx| {}));
 
             // Click overlay to close
             if let Some(ref on_close) = self.on_close {
                 let ptr = on_close.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions
+                cx.interactions
                     .register_click(overlay_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
             }
         }
 
         // Panel
-        let panel_layout = layouts[*index];
-        *index += 1;
+        let panel_layout = cx.engine.bounds(self.panel_id);
 
         // Slide offset based on animation progress
         let slide_offset = (1.0 - progress) * SLIDE_PX;
@@ -251,7 +308,7 @@ impl Element for Sheet {
             SheetPlacement::Bottom => (0.0, slide_offset),
         };
 
-        let panel_bounds = mozui_style::Rect::new(
+        let panel_bounds = Rect::new(
             panel_layout.x + dx,
             panel_layout.y + dy,
             panel_layout.width,
@@ -260,25 +317,25 @@ impl Element for Sheet {
 
         // Border on the inner edge
         let border_side = match self.placement {
-            SheetPlacement::Left => Some(mozui_style::Rect::new(
+            SheetPlacement::Left => Some(Rect::new(
                 panel_bounds.origin.x + panel_bounds.size.width - 1.0,
                 panel_bounds.origin.y,
                 1.0,
                 panel_bounds.size.height,
             )),
-            SheetPlacement::Right => Some(mozui_style::Rect::new(
+            SheetPlacement::Right => Some(Rect::new(
                 panel_bounds.origin.x,
                 panel_bounds.origin.y,
                 1.0,
                 panel_bounds.size.height,
             )),
-            SheetPlacement::Top => Some(mozui_style::Rect::new(
+            SheetPlacement::Top => Some(Rect::new(
                 panel_bounds.origin.x,
                 panel_bounds.origin.y + panel_bounds.size.height - 1.0,
                 panel_bounds.size.width,
                 1.0,
             )),
-            SheetPlacement::Bottom => Some(mozui_style::Rect::new(
+            SheetPlacement::Bottom => Some(Rect::new(
                 panel_bounds.origin.x,
                 panel_bounds.origin.y,
                 panel_bounds.size.width,
@@ -287,11 +344,12 @@ impl Element for Sheet {
         };
 
         // Prevent overlay click from firing when clicking inside panel
-        interactions.register_click(panel_bounds, Box::new(|_| {}));
+        cx.interactions
+            .register_click(panel_bounds, Box::new(|_| {}));
 
         // Clip and fade entire panel uniformly
-        draw_list.push_clip(panel_bounds);
-        draw_list.push_opacity(progress);
+        cx.draw_list.push_clip(panel_bounds);
+        cx.draw_list.push_opacity(progress);
 
         // Panel background with shadow
         let shadow = if progress > 0.5 {
@@ -299,7 +357,7 @@ impl Element for Sheet {
         } else {
             None
         };
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: panel_bounds,
             background: Fill::Solid(self.bg),
             corner_radii: Corners::ZERO,
@@ -309,7 +367,7 @@ impl Element for Sheet {
 
         // Border line
         if let Some(border_rect) = border_side {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: border_rect,
                 background: Fill::Solid(self.border_color),
                 corner_radii: Corners::ZERO,
@@ -319,23 +377,24 @@ impl Element for Sheet {
         }
 
         // Title
-        if let Some(ref title) = self.title {
-            title.paint(layouts, index, draw_list, interactions, font_system);
+        if let Some(ref mut title) = self.title {
+            let title_bounds = cx.bounds(self.title_id);
+            title.paint(title_bounds, cx);
         }
 
         // Body
-        let _body = layouts[*index];
-        *index += 1;
-        for child in &self.children {
-            child.paint(layouts, index, draw_list, interactions, font_system);
+        for i in 0..self.children.len() {
+            let child_bounds = cx.bounds(self.child_ids[i]);
+            self.children[i].paint(child_bounds, cx);
         }
 
         // Footer
-        if let Some(ref footer) = self.footer {
-            footer.paint(layouts, index, draw_list, interactions, font_system);
+        if let Some(ref mut footer) = self.footer {
+            let footer_bounds = cx.bounds(self.footer_id);
+            footer.paint(footer_bounds, cx);
         }
 
-        draw_list.pop_opacity();
-        draw_list.pop_clip();
+        cx.draw_list.pop_opacity();
+        cx.draw_list.pop_clip();
     }
 }

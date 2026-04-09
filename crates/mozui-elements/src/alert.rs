@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 const PAD_X: f32 = 16.0;
@@ -81,6 +80,13 @@ pub struct Alert {
     colors: AlertColors,
     muted_fg: Color,
     corner_radius: f32,
+    // Layout IDs
+    layout_id: LayoutId,
+    icon_id: LayoutId,
+    text_col_id: LayoutId,
+    title_id: LayoutId,
+    desc_id: LayoutId,
+    close_id: LayoutId,
 }
 
 pub fn alert(variant: AlertVariant, title: impl Into<String>, theme: &Theme) -> Alert {
@@ -93,6 +99,12 @@ pub fn alert(variant: AlertVariant, title: impl Into<String>, theme: &Theme) -> 
         colors: resolve_colors(variant, theme),
         muted_fg: theme.muted_foreground,
         corner_radius: theme.radius_md,
+        layout_id: LayoutId::NONE,
+        icon_id: LayoutId::NONE,
+        text_col_id: LayoutId::NONE,
+        title_id: LayoutId::NONE,
+        desc_id: LayoutId::NONE,
+        close_id: LayoutId::NONE,
     }
 }
 
@@ -110,9 +122,9 @@ impl Alert {
 }
 
 impl Element for Alert {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Icon
-        let icon_node = engine.new_leaf(Style {
+        self.icon_id = cx.new_leaf(Style {
             size: Size {
                 width: length(ICON_SIZE),
                 height: length(ICON_SIZE),
@@ -126,31 +138,33 @@ impl Element for Alert {
             font_size: TITLE_SIZE,
             ..Default::default()
         };
-        let title_m = mozui_text::measure_text(&self.title, &title_style, None, font_system);
-        text_children.push(engine.new_leaf(Style {
+        let title_m = mozui_text::measure_text(&self.title, &title_style, None, cx.font_system);
+        self.title_id = cx.new_leaf(Style {
             size: Size {
                 width: length(title_m.width),
                 height: length(title_m.height),
             },
             ..Default::default()
-        }));
+        });
+        text_children.push(self.title_id);
 
         if let Some(ref desc) = self.description {
             let desc_style = mozui_text::TextStyle {
                 font_size: DESC_SIZE,
                 ..Default::default()
             };
-            let desc_m = mozui_text::measure_text(desc, &desc_style, None, font_system);
-            text_children.push(engine.new_leaf(Style {
+            let desc_m = mozui_text::measure_text(desc, &desc_style, None, cx.font_system);
+            self.desc_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(desc_m.width),
                     height: length(desc_m.height),
                 },
                 ..Default::default()
-            }));
+            });
+            text_children.push(self.desc_id);
         }
 
-        let text_col = engine.new_with_children(
+        self.text_col_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -164,20 +178,21 @@ impl Element for Alert {
             &text_children,
         );
 
-        let mut row_children = vec![icon_node, text_col];
+        let mut row_children = vec![self.icon_id, self.text_col_id];
 
         // Close button
         if self.dismissible {
-            row_children.push(engine.new_leaf(Style {
+            self.close_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(CLOSE_SIZE + 8.0),
                     height: length(CLOSE_SIZE + 8.0),
                 },
                 ..Default::default()
-            }));
+            });
+            row_children.push(self.close_id);
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -195,24 +210,12 @@ impl Element for Alert {
                 ..Default::default()
             },
             &row_children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        // Container
-        let container = layouts[*index];
-        *index += 1;
-        let bounds =
-            mozui_style::Rect::new(container.x, container.y, container.width, container.height);
-
-        draw_list.push(DrawCommand::Rect {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds,
             background: Fill::Solid(self.colors.bg),
             corner_radii: Corners::uniform(self.corner_radius),
@@ -224,26 +227,20 @@ impl Element for Alert {
         });
 
         // Icon
-        let icon_l = layouts[*index];
-        *index += 1;
-        draw_list.push(DrawCommand::Icon {
+        let icon_bounds = cx.bounds(self.icon_id);
+        cx.draw_list.push(DrawCommand::Icon {
             name: self.variant.icon(),
             weight: IconWeight::Fill,
-            bounds: mozui_style::Rect::new(icon_l.x, icon_l.y, icon_l.width, icon_l.height),
+            bounds: icon_bounds,
             color: self.colors.icon_color,
             size_px: ICON_SIZE,
         });
 
-        // Text column
-        let _text_col = layouts[*index];
-        *index += 1;
-
         // Title
-        let title_l = layouts[*index];
-        *index += 1;
-        draw_list.push(DrawCommand::Text {
+        let title_bounds = cx.bounds(self.title_id);
+        cx.draw_list.push(DrawCommand::Text {
             text: self.title.clone(),
-            bounds: mozui_style::Rect::new(title_l.x, title_l.y, title_l.width, title_l.height),
+            bounds: title_bounds,
             font_size: TITLE_SIZE,
             color: self.colors.fg,
             weight: 600,
@@ -252,11 +249,10 @@ impl Element for Alert {
 
         // Description
         if let Some(ref desc) = self.description {
-            let desc_l = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
+            let desc_bounds = cx.bounds(self.desc_id);
+            cx.draw_list.push(DrawCommand::Text {
                 text: desc.clone(),
-                bounds: mozui_style::Rect::new(desc_l.x, desc_l.y, desc_l.width, desc_l.height),
+                bounds: desc_bounds,
                 font_size: DESC_SIZE,
                 color: self.muted_fg,
                 weight: 400,
@@ -266,14 +262,11 @@ impl Element for Alert {
 
         // Close button
         if self.dismissible {
-            let close_l = layouts[*index];
-            *index += 1;
-            let close_bounds =
-                mozui_style::Rect::new(close_l.x, close_l.y, close_l.width, close_l.height);
-            let hovered = interactions.is_hovered(close_bounds);
+            let close_bounds = cx.bounds(self.close_id);
+            let hovered = cx.interactions.is_hovered(close_bounds);
 
             if hovered {
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: close_bounds,
                     background: Fill::Solid(self.colors.border),
                     corner_radii: Corners::uniform(self.corner_radius),
@@ -282,12 +275,12 @@ impl Element for Alert {
                 });
             }
 
-            draw_list.push(DrawCommand::Icon {
+            cx.draw_list.push(DrawCommand::Icon {
                 name: IconName::X,
                 weight: IconWeight::Bold,
-                bounds: mozui_style::Rect::new(
-                    close_l.x + 4.0,
-                    close_l.y + 4.0,
+                bounds: Rect::new(
+                    close_bounds.origin.x + 4.0,
+                    close_bounds.origin.y + 4.0,
                     CLOSE_SIZE,
                     CLOSE_SIZE,
                 ),
@@ -297,9 +290,9 @@ impl Element for Alert {
 
             if let Some(ref on_dismiss) = self.on_dismiss {
                 let ptr = on_dismiss.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions
+                cx.interactions
                     .register_click(close_bounds, Box::new(move |cx| unsafe { (*ptr)(cx) }));
-                interactions.register_hover_region(close_bounds);
+                cx.interactions.register_hover_region(close_bounds);
             }
         }
     }

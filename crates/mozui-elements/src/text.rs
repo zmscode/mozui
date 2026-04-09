@@ -1,11 +1,11 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::Color;
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::{LayoutId, MeasureContext};
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Rect};
 use taffy::prelude::*;
 
 pub struct Text {
+    layout_id: LayoutId,
     content: String,
     font_size: f32,
     color: Color,
@@ -16,6 +16,7 @@ pub struct Text {
 
 pub fn text(content: impl Into<String>) -> Text {
     Text {
+        layout_id: LayoutId::NONE,
         content: content.into(),
         font_size: 15.0,
         color: Color::WHITE,
@@ -57,9 +58,9 @@ impl Text {
     }
 }
 
-impl Element for Text {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
-        let text_style = mozui_text::TextStyle {
+impl Text {
+    fn text_style(&self) -> mozui_text::TextStyle {
+        mozui_text::TextStyle {
             font_size: self.font_size,
             weight: if self.weight >= 700 {
                 mozui_text::FontWeight::Bold
@@ -74,33 +75,32 @@ impl Element for Text {
             line_height: self.line_height,
             color: self.color,
             ..Default::default()
-        };
+        }
+    }
+}
 
-        let measured_size = mozui_text::measure_text(&self.content, &text_style, None, font_system);
-
-        engine.new_leaf(Style {
-            size: Size {
-                width: length(measured_size.width),
-                height: length(measured_size.height),
+impl Element for Text {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        // Use a measured leaf so taffy calls our measure function with
+        // the actual available width — text wraps automatically.
+        self.layout_id = cx.new_measured_leaf(
+            Style {
+                min_size: Size {
+                    width: length(0.0),
+                    height: auto(),
+                },
+                ..Default::default()
             },
-            ..Default::default()
-        })
+            MeasureContext::Text {
+                text: self.content.clone(),
+                style: self.text_style(),
+            },
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &mozui_text::FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
-
-        draw_list.push(DrawCommand::Text {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        cx.draw_list.push(DrawCommand::Text {
             text: self.content.clone(),
             bounds,
             font_size: self.font_size,

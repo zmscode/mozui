@@ -1,8 +1,7 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
 use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill};
-use mozui_text::FontSystem;
+use mozui_style::{Color, Corners, Fill, Rect};
 use taffy::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +20,10 @@ pub enum DividerVariant {
 }
 
 pub struct Divider {
+    layout_id: LayoutId,
+    left_line_id: LayoutId,
+    text_id: LayoutId,
+    right_line_id: LayoutId,
     direction: DividerDirection,
     color: Color,
     thickness: f32,
@@ -30,6 +33,10 @@ pub struct Divider {
 
 pub fn divider() -> Divider {
     Divider {
+        layout_id: LayoutId::NONE,
+        left_line_id: LayoutId::NONE,
+        text_id: LayoutId::NONE,
+        right_line_id: LayoutId::NONE,
         direction: DividerDirection::Horizontal,
         color: Color::new(1.0, 1.0, 1.0, 0.12),
         thickness: 1.0,
@@ -81,7 +88,7 @@ impl Divider {
 }
 
 impl Element for Divider {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         if self.label.is_some() {
             // Labeled divider: row with [line, text, line]
             let text_style = mozui_text::TextStyle {
@@ -89,10 +96,14 @@ impl Element for Divider {
                 color: self.color,
                 ..Default::default()
             };
-            let measured =
-                mozui_text::measure_text(self.label.as_deref().unwrap(), &text_style, None, font_system);
+            let measured = mozui_text::measure_text(
+                self.label.as_deref().unwrap(),
+                &text_style,
+                None,
+                cx.font_system,
+            );
 
-            let left_line = engine.new_leaf(Style {
+            self.left_line_id = cx.new_leaf(Style {
                 flex_grow: 1.0,
                 size: Size {
                     width: auto(),
@@ -102,7 +113,7 @@ impl Element for Divider {
                 ..Default::default()
             });
 
-            let text_node = engine.new_leaf(Style {
+            self.text_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(measured.width),
                     height: length(measured.height),
@@ -116,7 +127,7 @@ impl Element for Divider {
                 ..Default::default()
             });
 
-            let right_line = engine.new_leaf(Style {
+            self.right_line_id = cx.new_leaf(Style {
                 flex_grow: 1.0,
                 size: Size {
                     width: auto(),
@@ -126,7 +137,7 @@ impl Element for Divider {
                 ..Default::default()
             });
 
-            engine.new_with_children(
+            self.layout_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Row,
@@ -137,59 +148,46 @@ impl Element for Divider {
                     },
                     ..Default::default()
                 },
-                &[left_line, text_node, right_line],
-            )
+                &[self.left_line_id, self.text_id, self.right_line_id],
+            );
+            self.layout_id
         } else {
             match self.direction {
-                DividerDirection::Horizontal => engine.new_leaf(Style {
-                    size: Size {
-                        width: percent(1.0),
-                        height: length(self.thickness),
-                    },
-                    ..Default::default()
-                }),
-                DividerDirection::Vertical => engine.new_leaf(Style {
-                    size: Size {
-                        width: length(self.thickness),
-                        height: percent(1.0),
-                    },
-                    ..Default::default()
-                }),
+                DividerDirection::Horizontal => {
+                    self.layout_id = cx.new_leaf(Style {
+                        size: Size {
+                            width: percent(1.0),
+                            height: length(self.thickness),
+                        },
+                        ..Default::default()
+                    });
+                }
+                DividerDirection::Vertical => {
+                    self.layout_id = cx.new_leaf(Style {
+                        size: Size {
+                            width: length(self.thickness),
+                            height: percent(1.0),
+                        },
+                        ..Default::default()
+                    });
+                }
             }
+            self.layout_id
         }
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         if self.label.is_some() {
             // Labeled divider has 3 children: left line, text, right line
             // Left line
-            let left = layouts[*index];
-            *index += 1;
-            let left_bounds =
-                mozui_style::Rect::new(left.x, left.y, left.width, left.height);
-            self.paint_line(draw_list, left_bounds);
+            let left_bounds = cx.bounds(self.left_line_id);
+            self.paint_line(&mut cx.draw_list, left_bounds);
 
             // Text
-            let text_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
+            let text_bounds = cx.bounds(self.text_id);
+            cx.draw_list.push(DrawCommand::Text {
                 text: self.label.clone().unwrap(),
-                bounds: mozui_style::Rect::new(
-                    text_layout.x,
-                    text_layout.y,
-                    text_layout.width,
-                    text_layout.height,
-                ),
+                bounds: text_bounds,
                 font_size: 12.0,
                 color: self.color,
                 weight: 400,
@@ -197,21 +195,17 @@ impl Element for Divider {
             });
 
             // Right line
-            let right = layouts[*index];
-            *index += 1;
-            let right_bounds =
-                mozui_style::Rect::new(right.x, right.y, right.width, right.height);
-            self.paint_line(draw_list, right_bounds);
+            let right_bounds = cx.bounds(self.right_line_id);
+            self.paint_line(&mut cx.draw_list, right_bounds);
         } else {
-            let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
-            self.paint_line(draw_list, bounds);
+            self.paint_line(&mut cx.draw_list, bounds);
         }
     }
 }
 
 impl Divider {
     /// Paint a line (solid, dashed, or dotted) within the given bounds.
-    fn paint_line(&self, draw_list: &mut DrawList, bounds: mozui_style::Rect) {
+    fn paint_line(&self, draw_list: &mut DrawList, bounds: Rect) {
         match self.variant {
             DividerVariant::Solid => {
                 draw_list.push(DrawCommand::Rect {
@@ -247,13 +241,13 @@ impl Divider {
     fn paint_segments(
         &self,
         draw_list: &mut DrawList,
-        bounds: mozui_style::Rect,
+        bounds: Rect,
         seg_len: f32,
         gap_len: f32,
         corners: Corners,
     ) {
-        let is_horizontal = self.direction == DividerDirection::Horizontal
-            || (self.label.is_some()); // labeled dividers are always horizontal segments
+        let is_horizontal =
+            self.direction == DividerDirection::Horizontal || (self.label.is_some()); // labeled dividers are always horizontal segments
         let total = if is_horizontal {
             bounds.size.width
         } else {
@@ -264,14 +258,14 @@ impl Divider {
         while pos < total {
             let len = (seg_len).min(total - pos);
             let seg_bounds = if is_horizontal {
-                mozui_style::Rect::new(
+                Rect::new(
                     bounds.origin.x + pos,
                     bounds.origin.y,
                     len,
                     bounds.size.height,
                 )
             } else {
-                mozui_style::Rect::new(
+                Rect::new(
                     bounds.origin.x,
                     bounds.origin.y + pos,
                     bounds.size.width,

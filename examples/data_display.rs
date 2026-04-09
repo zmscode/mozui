@@ -228,14 +228,12 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .flex_row()
                                     .gap(16.0)
                                     .items_center()
-                                    .child(
-                                        rating(&theme)
-                                            .value(rating_val)
-                                            .on_change(move |val, cx_any| {
-                                                let cx = cx_any.downcast_mut::<Context>().unwrap();
-                                                cx.set(set_rating_sig, val);
-                                            }),
-                                    )
+                                    .child(rating(&theme).value(rating_val).on_change(
+                                        move |val, cx_any| {
+                                            let cx = cx_any.downcast_mut::<Context>().unwrap();
+                                            cx.set(set_rating_sig, val);
+                                        },
+                                    ))
                                     .child(
                                         label(format!("{:.1}", rating_val))
                                             .font_size(14.0)
@@ -280,7 +278,12 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                     )
                     .child(divider().color(theme.border))
                     // ── Description List ──────────────────────────
-                    .child(label("Description List").font_size(20.0).bold().color(heading))
+                    .child(
+                        label("Description List")
+                            .font_size(20.0)
+                            .bold()
+                            .color(heading),
+                    )
                     .child(
                         description_list(&theme)
                             .bordered(true)
@@ -299,7 +302,9 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .child(
                                 group_box("Account Settings", &theme)
                                     .child(label("Username: admin").color(theme.foreground))
-                                    .child(label("Email: admin@example.com").color(theme.foreground)),
+                                    .child(
+                                        label("Email: admin@example.com").color(theme.foreground),
+                                    ),
                             )
                             .child(
                                 group_box("Preferences", &theme)
@@ -344,11 +349,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                             cx.set(set_list_sel, 2);
                                         }),
                                 )
-                                .child(
-                                    list_item("Trash")
-                                        .icon(IconName::Trash)
-                                        .disabled(true),
-                                ),
+                                .child(list_item("Trash").icon(IconName::Trash).disabled(true)),
                         ),
                     ),
             ),

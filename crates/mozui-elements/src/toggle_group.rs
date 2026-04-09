@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 const ITEM_HEIGHT: f32 = 32.0;
@@ -54,6 +53,9 @@ pub struct ToggleGroup {
     hover_bg: Color,
     border_color: Color,
     corner_radius: f32,
+    // Layout IDs
+    layout_id: LayoutId,
+    item_ids: Vec<LayoutId>,
 }
 
 pub fn toggle_group(theme: &Theme) -> ToggleGroup {
@@ -68,6 +70,8 @@ pub fn toggle_group(theme: &Theme) -> ToggleGroup {
         hover_bg: theme.secondary_hover,
         border_color: theme.border,
         corner_radius: theme.radius_md,
+        layout_id: LayoutId::NONE,
+        item_ids: Vec::new(),
     }
 }
 
@@ -89,22 +93,22 @@ impl ToggleGroup {
 }
 
 impl Element for ToggleGroup {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
-        let mut children = Vec::new();
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.item_ids.clear();
 
         for item in &self.items {
             let text_style = mozui_text::TextStyle {
                 font_size: FONT_SIZE,
                 ..Default::default()
             };
-            let measured = mozui_text::measure_text(&item.label, &text_style, None, font_system);
+            let measured = mozui_text::measure_text(&item.label, &text_style, None, cx.font_system);
             let content_width = if item.icon.is_some() {
                 ICON_SIZE + GAP + measured.width
             } else {
                 measured.width
             };
 
-            children.push(engine.new_leaf(Style {
+            self.item_ids.push(cx.new_leaf(Style {
                 size: Size {
                     width: length(content_width + ITEM_PX * 2.0),
                     height: length(ITEM_HEIGHT),
@@ -113,7 +117,7 @@ impl Element for ToggleGroup {
             }));
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -130,43 +134,35 @@ impl Element for ToggleGroup {
                 },
                 ..Default::default()
             },
-            &children,
-        )
+            &self.item_ids,
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Container background (pill shape)
-        let container = layouts[*index];
-        *index += 1;
-        let container_bounds =
-            mozui_style::Rect::new(container.x, container.y, container.width, container.height);
-        draw_list.push(DrawCommand::Rect {
-            bounds: container_bounds,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds,
             background: Fill::Solid(self.bg),
             corner_radii: Corners::uniform(self.corner_radius + 2.0),
             border: None,
             shadow: None,
         });
 
-        for item in &self.items {
-            let cell = layouts[*index];
-            *index += 1;
-            let cell_bounds = mozui_style::Rect::new(cell.x, cell.y, cell.width, cell.height);
+        for i in 0..self.items.len() {
+            let cell_bounds = cx.bounds(self.item_ids[i]);
 
-            let is_selected = self.selected.as_ref().map_or(false, |s| *s == item.value);
-            let hovered = !item.disabled && !is_selected && interactions.is_hovered(cell_bounds);
-            let alpha = if item.disabled { 0.4 } else { 1.0 };
+            let is_selected = self
+                .selected
+                .as_ref()
+                .map_or(false, |s| *s == self.items[i].value);
+            let hovered =
+                !self.items[i].disabled && !is_selected && cx.interactions.is_hovered(cell_bounds);
+            let alpha = if self.items[i].disabled { 0.4 } else { 1.0 };
 
             // Item background
             if is_selected {
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: cell_bounds,
                     background: Fill::Solid(self.selected_bg),
                     corner_radii: Corners::uniform(self.corner_radius),
@@ -177,7 +173,7 @@ impl Element for ToggleGroup {
                     shadow: None,
                 });
             } else if hovered {
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: cell_bounds,
                     background: Fill::Solid(self.hover_bg),
                     corner_radii: Corners::uniform(self.corner_radius),
@@ -192,15 +188,15 @@ impl Element for ToggleGroup {
                 self.muted_fg
             };
 
-            let mut x = cell.x + ITEM_PX;
-            let cy = cell.y + (ITEM_HEIGHT - ICON_SIZE) / 2.0;
+            let mut x = cell_bounds.origin.x + ITEM_PX;
+            let cy = cell_bounds.origin.y + (ITEM_HEIGHT - ICON_SIZE) / 2.0;
 
             // Optional icon
-            if let Some(icon) = item.icon {
-                draw_list.push(DrawCommand::Icon {
+            if let Some(icon) = self.items[i].icon {
+                cx.draw_list.push(DrawCommand::Icon {
                     name: icon,
                     weight: IconWeight::Regular,
-                    bounds: mozui_style::Rect::new(x, cy, ICON_SIZE, ICON_SIZE),
+                    bounds: Rect::new(x, cy, ICON_SIZE, ICON_SIZE),
                     color: fg.with_alpha(alpha),
                     size_px: ICON_SIZE,
                 });
@@ -208,12 +204,12 @@ impl Element for ToggleGroup {
             }
 
             // Label
-            draw_list.push(DrawCommand::Text {
-                text: item.label.clone(),
-                bounds: mozui_style::Rect::new(
+            cx.draw_list.push(DrawCommand::Text {
+                text: self.items[i].label.clone(),
+                bounds: Rect::new(
                     x,
-                    cell.y,
-                    cell.width - (x - cell.x) - ITEM_PX,
+                    cell_bounds.origin.y,
+                    cell_bounds.size.width - (x - cell_bounds.origin.x) - ITEM_PX,
                     ITEM_HEIGHT,
                 ),
                 font_size: FONT_SIZE,
@@ -223,16 +219,16 @@ impl Element for ToggleGroup {
             });
 
             // Click handler
-            if !item.disabled && !is_selected {
+            if !self.items[i].disabled && !is_selected {
                 if let Some(ref on_change) = self.on_change {
-                    let value = item.value.clone();
+                    let value = self.items[i].value.clone();
                     let ptr = on_change.as_ref() as *const dyn Fn(&str, &mut dyn std::any::Any);
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         cell_bounds,
                         Box::new(move |cx| unsafe { (*ptr)(&value, cx) }),
                     );
                 }
-                interactions.register_hover_region(cell_bounds);
+                cx.interactions.register_hover_region(cell_bounds);
             }
         }
     }

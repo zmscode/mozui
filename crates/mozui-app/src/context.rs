@@ -192,11 +192,7 @@ impl Context {
     ///     sorted
     /// });
     /// ```
-    pub fn use_memo<D: Hash, T: 'static>(
-        &mut self,
-        deps: &D,
-        compute: impl FnOnce() -> T,
-    ) -> &T {
+    pub fn use_memo<D: Hash, T: 'static>(&mut self, deps: &D, compute: impl FnOnce() -> T) -> &T {
         let deps_hash = hash_deps(deps);
         let idx = self.hook_index;
         self.hook_index += 1;
@@ -204,8 +200,9 @@ impl Context {
         if idx >= self.signals.slot_count() {
             // First render — compute and store
             let value = compute();
-            let (signal, _) =
-                self.signals.get_or_create::<(u64, T)>(idx, (deps_hash, value));
+            let (signal, _) = self
+                .signals
+                .get_or_create::<(u64, T)>(idx, (deps_hash, value));
             return &self.signals.get(signal).1;
         }
 
@@ -227,14 +224,11 @@ impl Context {
     ///     tracing::info!("Selection changed to: {}", selected_id);
     /// });
     /// ```
-    pub fn use_effect<D: Hash>(
-        &mut self,
-        deps: &D,
-        effect: impl FnOnce(),
-    ) {
+    pub fn use_effect<D: Hash>(&mut self, deps: &D, effect: impl FnOnce()) {
         let deps_hash = hash_deps(deps);
-        let (signal, set_signal) =
-            self.signals.get_or_create::<u64>(self.hook_index, deps_hash);
+        let (signal, set_signal) = self
+            .signals
+            .get_or_create::<u64>(self.hook_index, deps_hash);
         self.hook_index += 1;
 
         let existing = *self.signals.get(signal);

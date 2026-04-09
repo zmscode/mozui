@@ -103,11 +103,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     cx.set(set_running, true);
                                 }
                             })
-                            .child(
-                                text(button_label)
-                                    .font_size(14.0)
-                                    .color(theme.background),
-                            ),
+                            .child(text(button_label).font_size(14.0).color(theme.background)),
                     )
                     .child(
                         div()

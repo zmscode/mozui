@@ -1,10 +1,9 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::DrawList;
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_style::Rect;
 use std::cell::Cell;
-use taffy::prelude::*;
 use taffy::Overflow;
+use taffy::prelude::*;
 
 /// A container that shows or hides its content based on a height factor.
 ///
@@ -19,6 +18,10 @@ use taffy::Overflow;
 ///     .child(label("Content that expands/collapses"))
 /// ```
 pub struct CollapsibleContainer {
+    layout_id: LayoutId,
+    inner_id: LayoutId,
+    child_ids: Vec<LayoutId>,
+
     height_factor: f32,
     children: Vec<Box<dyn Element>>,
     /// Remembers the full content height for max_size calculation.
@@ -27,6 +30,10 @@ pub struct CollapsibleContainer {
 
 pub fn collapsible(height_factor: f32) -> CollapsibleContainer {
     CollapsibleContainer {
+        layout_id: LayoutId::NONE,
+        inner_id: LayoutId::NONE,
+        child_ids: Vec::new(),
+
         height_factor: height_factor.clamp(0.0, 1.0),
         children: Vec::new(),
         content_height: Cell::new(0.0),
@@ -46,22 +53,22 @@ impl CollapsibleContainer {
 }
 
 impl Element for CollapsibleContainer {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Always lay out children so we get a stable node count and
         // can measure content height even when collapsed.
-        let child_nodes: Vec<taffy::NodeId> = self
+        self.child_ids = self
             .children
-            .iter()
-            .map(|c| c.layout(engine, font_system))
+            .iter_mut()
+            .map(|c| c.layout(cx))
             .collect();
 
-        let inner = engine.new_with_children(
+        self.inner_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 ..Default::default()
             },
-            &child_nodes,
+            &self.child_ids,
         );
 
         let max_height = if self.height_factor >= 0.999 {
@@ -71,7 +78,7 @@ impl Element for CollapsibleContainer {
             length(content_h * self.height_factor)
         };
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -85,35 +92,24 @@ impl Element for CollapsibleContainer {
                 },
                 ..Default::default()
             },
-            &[inner],
-        )
+            &[self.inner_id],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        // Outer clipping container
-        let outer = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Inner container — always measure its height
-        let inner = layouts[*index];
-        *index += 1;
-        self.content_height.set(inner.height);
+        let inner_bounds = cx.bounds(self.inner_id);
+        self.content_height.set(inner_bounds.size.height);
 
         // Clip children to the outer container's visible bounds
-        let clip_rect = mozui_style::Rect::new(outer.x, outer.y, outer.width, outer.height);
-        draw_list.push_clip(clip_rect);
+        cx.draw_list.push_clip(bounds);
 
-        for child in &self.children {
-            child.paint(layouts, index, draw_list, interactions, font_system);
+        for i in 0..self.children.len() {
+            let child_bounds = cx.bounds(self.child_ids[i]);
+            self.children[i].paint(child_bounds, cx);
         }
 
-        draw_list.pop_clip();
+        cx.draw_list.pop_clip();
     }
 }

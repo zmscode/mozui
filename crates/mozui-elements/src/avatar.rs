@@ -1,10 +1,9 @@
 use crate::styled::{ComponentSize, Sizable};
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::IconName;
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList, ImageData};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{DrawCommand, ImageData};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use std::sync::Arc;
 use taffy::prelude::*;
 
@@ -47,6 +46,9 @@ pub struct Avatar {
     status: Option<AvatarStatus>,
     status_color: Option<Color>,
     on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    layout_id: LayoutId,
+    circle_id: LayoutId,
+    dot_id: LayoutId,
 }
 
 pub fn avatar(theme: &Theme) -> Avatar {
@@ -59,6 +61,9 @@ pub fn avatar(theme: &Theme) -> Avatar {
         status: None,
         status_color: None,
         on_click: None,
+        layout_id: LayoutId::NONE,
+        circle_id: LayoutId::NONE,
+        dot_id: LayoutId::NONE,
     }
 }
 
@@ -136,22 +141,23 @@ impl Sizable for Avatar {
 }
 
 impl Element for Avatar {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut children = Vec::new();
 
         // Main circle
-        children.push(engine.new_leaf(Style {
+        self.circle_id = cx.new_leaf(Style {
             size: Size {
                 width: length(self.size),
                 height: length(self.size),
             },
             ..Default::default()
-        }));
+        });
+        children.push(self.circle_id);
 
         // Status dot (absolute positioned)
         if self.status.is_some() {
             let dot = self.status_dot_size();
-            children.push(engine.new_leaf(Style {
+            self.dot_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(dot),
                     height: length(dot),
@@ -164,10 +170,11 @@ impl Element for Avatar {
                     bottom: length(0.0),
                 },
                 ..Default::default()
-            }));
+            });
+            children.push(self.dot_id);
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 position: Position::Relative,
@@ -178,31 +185,18 @@ impl Element for Avatar {
                 ..Default::default()
             },
             &children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        let _wrapper = layouts[*index];
-        *index += 1;
-
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds =
-            mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
+        let bounds = cx.bounds(self.circle_id);
         let radius = self.size / 2.0;
 
         match &self.content {
             AvatarContent::Image(data) => {
                 // Draw image in circle
-                draw_list.push(DrawCommand::Image {
+                cx.draw_list.push(DrawCommand::Image {
                     bounds,
                     data: data.clone(),
                     corner_radii: Corners::uniform(radius),
@@ -212,7 +206,7 @@ impl Element for Avatar {
             }
             AvatarContent::Initials(text) => {
                 // Background circle
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds,
                     background: Fill::Solid(self.bg),
                     corner_radii: Corners::uniform(radius),
@@ -228,13 +222,12 @@ impl Element for Avatar {
                     weight: mozui_text::FontWeight::Bold,
                     ..Default::default()
                 };
-                let measured =
-                    mozui_text::measure_text(text, &text_style, None, font_system);
+                let measured = mozui_text::measure_text(text, &text_style, None, cx.font_system);
                 let tx = bounds.origin.x + (bounds.size.width - measured.width) / 2.0;
                 let ty = bounds.origin.y + (bounds.size.height - measured.height) / 2.0;
-                draw_list.push(DrawCommand::Text {
+                cx.draw_list.push(DrawCommand::Text {
                     text: text.clone(),
-                    bounds: mozui_style::Rect::new(tx, ty, measured.width, measured.height),
+                    bounds: Rect::new(tx, ty, measured.width, measured.height),
                     font_size: font_sz,
                     color: self.fg,
                     weight: 700,
@@ -243,7 +236,7 @@ impl Element for Avatar {
             }
             AvatarContent::Icon => {
                 // Background circle
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds,
                     background: Fill::Solid(self.bg),
                     corner_radii: Corners::uniform(radius),
@@ -255,10 +248,10 @@ impl Element for Avatar {
                 let icon_sz = self.icon_size();
                 let icon_x = bounds.origin.x + (bounds.size.width - icon_sz) / 2.0;
                 let icon_y = bounds.origin.y + (bounds.size.height - icon_sz) / 2.0;
-                draw_list.push(DrawCommand::Icon {
+                cx.draw_list.push(DrawCommand::Icon {
                     name: IconName::User,
                     weight: mozui_icons::IconWeight::Regular,
-                    bounds: mozui_style::Rect::new(icon_x, icon_y, icon_sz, icon_sz),
+                    bounds: Rect::new(icon_x, icon_y, icon_sz, icon_sz),
                     color: self.fg,
                     size_px: icon_sz,
                 });
@@ -268,35 +261,25 @@ impl Element for Avatar {
         // Click handler
         if let Some(ref handler) = self.on_click {
             let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            interactions.register_click(
-                bounds,
-                Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
-            );
-            interactions.register_hover_region(bounds);
+            cx.interactions
+                .register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
+            cx.interactions.register_hover_region(bounds);
         }
 
         // Status dot
         if let Some(status) = self.status {
-            let dot_layout = layouts[*index];
-            *index += 1;
-
+            let dot_bounds = cx.bounds(self.dot_id);
             let dot_size = self.status_dot_size();
-            let dot_bounds = mozui_style::Rect::new(
-                dot_layout.x,
-                dot_layout.y,
-                dot_size,
-                dot_size,
-            );
 
             // White ring behind the dot
             let ring_size = dot_size + 2.0;
-            let ring_bounds = mozui_style::Rect::new(
+            let ring_bounds = Rect::new(
                 dot_bounds.origin.x - 1.0,
                 dot_bounds.origin.y - 1.0,
                 ring_size,
                 ring_size,
             );
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: ring_bounds,
                 background: Fill::Solid(self.border_color),
                 corner_radii: Corners::uniform(ring_size / 2.0),
@@ -304,8 +287,10 @@ impl Element for Avatar {
                 shadow: None,
             });
 
-            let color = self.status_color.unwrap_or_else(|| status.color(&mozui_style::Theme::dark()));
-            draw_list.push(DrawCommand::Rect {
+            let color = self
+                .status_color
+                .unwrap_or_else(|| status.color(&mozui_style::Theme::dark()));
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: dot_bounds,
                 background: Fill::Solid(color),
                 corner_radii: Corners::uniform(dot_size / 2.0),

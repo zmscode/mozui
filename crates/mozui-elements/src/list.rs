@@ -1,10 +1,9 @@
 use crate::styled::{ComponentSize, Disableable, Selectable, Sizable};
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct ListItem {
@@ -65,7 +64,19 @@ impl Disableable for ListItem {
     }
 }
 
+/// Tracks layout IDs for a single list item row.
+struct ListItemLayout {
+    /// For separators this is the divider leaf; for normal items it's the item row node.
+    item_id: LayoutId,
+    icon_id: Option<LayoutId>,
+    label_id: LayoutId,
+    desc_id: Option<LayoutId>,
+}
+
 pub struct List {
+    layout_id: LayoutId,
+    item_layouts: Vec<ListItemLayout>,
+
     items: Vec<ListItem>,
     size: ComponentSize,
     fg: Color,
@@ -78,6 +89,9 @@ pub struct List {
 
 pub fn list(theme: &Theme) -> List {
     List {
+        layout_id: LayoutId::NONE,
+        item_layouts: Vec::new(),
+
         items: Vec::new(),
         size: ComponentSize::Medium,
         fg: theme.foreground,
@@ -153,7 +167,7 @@ impl Sizable for List {
 }
 
 impl Element for List {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let px = self.item_px();
         let py = self.item_py();
         let font_size = self.text_size();
@@ -161,11 +175,12 @@ impl Element for List {
         let icon_sz = self.icon_size();
 
         let mut row_nodes = Vec::new();
+        self.item_layouts = Vec::new();
 
         for item in &self.items {
             if item.separator {
                 // Divider: 1px line with vertical margin
-                row_nodes.push(engine.new_leaf(Style {
+                let div_id = cx.new_leaf(Style {
                     size: Size {
                         width: percent(1.0),
                         height: length(1.0),
@@ -177,22 +192,33 @@ impl Element for List {
                         bottom: length(4.0),
                     },
                     ..Default::default()
-                }));
+                });
+                row_nodes.push(div_id);
+                self.item_layouts.push(ListItemLayout {
+                    item_id: div_id,
+                    icon_id: None,
+                    label_id: LayoutId::NONE,
+                    desc_id: None,
+                });
                 continue;
             }
 
             let mut item_children = Vec::new();
 
             // Icon
-            if item.icon.is_some() {
-                item_children.push(engine.new_leaf(Style {
+            let icon_id = if item.icon.is_some() {
+                let id = cx.new_leaf(Style {
                     size: Size {
                         width: length(icon_sz),
                         height: length(icon_sz),
                     },
                     ..Default::default()
-                }));
-            }
+                });
+                item_children.push(id);
+                Some(id)
+            } else {
+                None
+            };
 
             // Text column (label + optional description)
             let mut text_children = Vec::new();
@@ -202,32 +228,37 @@ impl Element for List {
                 color: self.fg,
                 ..Default::default()
             };
-            let label_m = mozui_text::measure_text(&item.label, &label_style, None, font_system);
-            text_children.push(engine.new_leaf(Style {
+            let label_m = mozui_text::measure_text(&item.label, &label_style, None, cx.font_system);
+            let label_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(label_m.width),
                     height: length(label_m.height),
                 },
                 ..Default::default()
-            }));
+            });
+            text_children.push(label_id);
 
-            if let Some(ref desc) = item.description {
+            let desc_id = if let Some(ref desc) = item.description {
                 let desc_style = mozui_text::TextStyle {
                     font_size: desc_size,
                     color: self.muted_fg,
                     ..Default::default()
                 };
-                let desc_m = mozui_text::measure_text(desc, &desc_style, None, font_system);
-                text_children.push(engine.new_leaf(Style {
+                let desc_m = mozui_text::measure_text(desc, &desc_style, None, cx.font_system);
+                let id = cx.new_leaf(Style {
                     size: Size {
                         width: length(desc_m.width),
                         height: length(desc_m.height),
                     },
                     ..Default::default()
-                }));
-            }
+                });
+                text_children.push(id);
+                Some(id)
+            } else {
+                None
+            };
 
-            let text_col = engine.new_with_children(
+            let text_col_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
@@ -240,9 +271,9 @@ impl Element for List {
                 },
                 &text_children,
             );
-            item_children.push(text_col);
+            item_children.push(text_col_id);
 
-            let item_node = engine.new_with_children(
+            let item_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Row,
@@ -261,45 +292,39 @@ impl Element for List {
                 },
                 &item_children,
             );
-            row_nodes.push(item_node);
+            row_nodes.push(item_id);
+
+            self.item_layouts.push(ListItemLayout {
+                item_id,
+                icon_id,
+                label_id,
+                desc_id,
+            });
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 ..Default::default()
             },
             &row_nodes,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let _outer = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         let font_size = self.text_size();
         let desc_size = self.desc_size();
         let icon_sz = self.icon_size();
 
-        for item in &self.items {
+        for (idx, item) in self.items.iter().enumerate() {
+            let il = &self.item_layouts[idx];
+
             if item.separator {
-                let div_layout = layouts[*index];
-                *index += 1;
-                draw_list.push(DrawCommand::Rect {
-                    bounds: mozui_style::Rect::new(
-                        div_layout.x,
-                        div_layout.y,
-                        div_layout.width,
-                        div_layout.height,
-                    ),
+                let div_bounds = cx.bounds(il.item_id);
+                cx.draw_list.push(DrawCommand::Rect {
+                    bounds: div_bounds,
                     background: Fill::Solid(self.divider_color),
                     corner_radii: Corners::uniform(0.0),
                     border: None,
@@ -308,17 +333,10 @@ impl Element for List {
                 continue;
             }
 
-            let item_layout = layouts[*index];
-            *index += 1;
-            let item_bounds = mozui_style::Rect::new(
-                item_layout.x,
-                item_layout.y,
-                item_layout.width,
-                item_layout.height,
-            );
+            let item_bounds = cx.bounds(il.item_id);
 
             let alpha = if item.disabled { 0.5 } else { 1.0 };
-            let hovered = !item.disabled && !item.selected && interactions.is_hovered(item_bounds);
+            let hovered = !item.disabled && !item.selected && cx.interactions.is_hovered(item_bounds);
 
             // Background
             let bg = if item.selected {
@@ -329,7 +347,7 @@ impl Element for List {
                 Color::TRANSPARENT
             };
             if bg.a > 0.0 {
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: item_bounds,
                     background: Fill::Solid(bg),
                     corner_radii: Corners::uniform(6.0),
@@ -351,37 +369,21 @@ impl Element for List {
 
             // Icon
             if let Some(icon_name) = item.icon {
-                let icon_layout = layouts[*index];
-                *index += 1;
-                draw_list.push(DrawCommand::Icon {
+                let icon_bounds = cx.bounds(il.icon_id.unwrap());
+                cx.draw_list.push(DrawCommand::Icon {
                     name: icon_name,
                     weight: IconWeight::Regular,
-                    bounds: mozui_style::Rect::new(
-                        icon_layout.x,
-                        icon_layout.y,
-                        icon_layout.width,
-                        icon_layout.height,
-                    ),
+                    bounds: icon_bounds,
                     color: fg,
                     size_px: icon_sz,
                 });
             }
 
-            // Text column
-            let _text_col = layouts[*index];
-            *index += 1;
-
             // Label
-            let label_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
+            let label_bounds = cx.bounds(il.label_id);
+            cx.draw_list.push(DrawCommand::Text {
                 text: item.label.clone(),
-                bounds: mozui_style::Rect::new(
-                    label_layout.x,
-                    label_layout.y,
-                    label_layout.width,
-                    label_layout.height,
-                ),
+                bounds: label_bounds,
                 font_size,
                 color: fg,
                 weight: 400,
@@ -390,16 +392,10 @@ impl Element for List {
 
             // Description
             if let Some(ref desc) = item.description {
-                let desc_layout = layouts[*index];
-                *index += 1;
-                draw_list.push(DrawCommand::Text {
+                let desc_bounds = cx.bounds(il.desc_id.unwrap());
+                cx.draw_list.push(DrawCommand::Text {
                     text: desc.clone(),
-                    bounds: mozui_style::Rect::new(
-                        desc_layout.x,
-                        desc_layout.y,
-                        desc_layout.width,
-                        desc_layout.height,
-                    ),
+                    bounds: desc_bounds,
                     font_size: desc_size,
                     color: muted,
                     weight: 400,
@@ -411,7 +407,7 @@ impl Element for List {
             if !item.disabled {
                 if let Some(ref handler) = item.on_click {
                     let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         item_bounds,
                         Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
                     );

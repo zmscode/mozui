@@ -5,3 +5,4 @@ edition.workspace = true
 
 [dependencies]
 taffy = { workspace = true }
+mozui-text = { path = "../mozui-text" }

@@ -1,10 +1,9 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 /// A single step in a Stepper.
@@ -34,7 +33,17 @@ impl StepperItem {
     }
 }
 
+/// Tracks layout IDs for a single step.
+struct StepLayout {
+    circle_id: LayoutId,
+    label_id: LayoutId,
+    line_id: Option<LayoutId>,
+}
+
 pub struct Stepper {
+    layout_id: LayoutId,
+    step_layouts: Vec<StepLayout>,
+
     items: Vec<StepperItem>,
     current: usize,
     disabled: bool,
@@ -50,6 +59,9 @@ pub struct Stepper {
 
 pub fn stepper(theme: &Theme) -> Stepper {
     Stepper {
+        layout_id: LayoutId::NONE,
+        step_layouts: Vec::new(),
+
         items: Vec::new(),
         current: 0,
         disabled: false,
@@ -125,15 +137,16 @@ impl Disableable for Stepper {
 }
 
 impl Element for Stepper {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // Layout: single flex row with alternating [step-column, connector-line] pairs.
         // Each step-column is: circle (fixed) + label text below it.
         let circle_sz = self.circle_size();
         let mut row_children = Vec::new();
+        self.step_layouts = Vec::new();
 
         for (i, item) in self.items.iter().enumerate() {
             // Step column: circle + label stacked vertically, centered
-            let circle_node = engine.new_leaf(Style {
+            let circle_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(circle_sz),
                     height: length(circle_sz),
@@ -147,8 +160,8 @@ impl Element for Stepper {
                 color: self.label_color,
                 ..Default::default()
             };
-            let measured = mozui_text::measure_text(&item.label, &text_style, None, font_system);
-            let label_node = engine.new_leaf(Style {
+            let measured = mozui_text::measure_text(&item.label, &text_style, None, cx.font_system);
+            let label_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(measured.width),
                     height: length(measured.height),
@@ -156,7 +169,7 @@ impl Element for Stepper {
                 ..Default::default()
             });
 
-            let step_col = engine.new_with_children(
+            let step_col_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
@@ -167,13 +180,13 @@ impl Element for Stepper {
                     },
                     ..Default::default()
                 },
-                &[circle_node, label_node],
+                &[circle_id, label_id],
             );
-            row_children.push(step_col);
+            row_children.push(step_col_id);
 
             // Connector line between steps
-            if i < self.items.len() - 1 {
-                let line_node = engine.new_leaf(Style {
+            let line_id = if i < self.items.len() - 1 {
+                let id = cx.new_leaf(Style {
                     size: Size {
                         width: auto(),
                         height: length(2.0),
@@ -188,11 +201,20 @@ impl Element for Stepper {
                     },
                     ..Default::default()
                 });
-                row_children.push(line_node);
-            }
+                row_children.push(id);
+                Some(id)
+            } else {
+                None
+            };
+
+            self.step_layouts.push(StepLayout {
+                circle_id,
+                label_id,
+                line_id,
+            });
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -200,42 +222,23 @@ impl Element for Stepper {
                 ..Default::default()
             },
             &row_children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        // Outer row
-        let _outer = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         let alpha = if self.disabled { 0.5 } else { 1.0 };
         let circle_sz = self.circle_size();
 
         for (i, item) in self.items.iter().enumerate() {
-            // Step column
-            let _step_layout = layouts[*index];
-            *index += 1;
+            let sl = &self.step_layouts[i];
 
             // Circle
-            let circle_layout = layouts[*index];
-            *index += 1;
-            let circle_bounds = mozui_style::Rect::new(
-                circle_layout.x,
-                circle_layout.y,
-                circle_layout.width,
-                circle_layout.height,
-            );
+            let circle_bounds = cx.bounds(sl.circle_id);
 
             let is_completed = i < self.current;
             let is_active = i == self.current;
-            let hovered = !self.disabled && interactions.is_hovered(circle_bounds);
+            let hovered = !self.disabled && cx.interactions.is_hovered(circle_bounds);
 
             let (circle_bg, circle_fg) = if is_completed {
                 (self.completed_color, Color::WHITE)
@@ -251,17 +254,17 @@ impl Element for Stepper {
                 circle_bg.with_alpha(alpha)
             };
 
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: circle_bounds,
                 background: Fill::Solid(circle_bg),
                 corner_radii: Corners::uniform(circle_sz / 2.0),
                 border: None,
-                    shadow: None,
-                });
+                shadow: None,
+            });
 
             // Circle content: check icon for completed, number for others
             if is_completed {
-                draw_list.push(DrawCommand::Icon {
+                cx.draw_list.push(DrawCommand::Icon {
                     name: IconName::Check,
                     weight: IconWeight::Regular,
                     bounds: circle_bounds,
@@ -269,7 +272,7 @@ impl Element for Stepper {
                     size_px: circle_sz * 0.5,
                 });
             } else if let Some(icon_name) = item.icon {
-                draw_list.push(DrawCommand::Icon {
+                cx.draw_list.push(DrawCommand::Icon {
                     name: icon_name,
                     weight: IconWeight::Regular,
                     bounds: circle_bounds,
@@ -277,7 +280,7 @@ impl Element for Stepper {
                     size_px: circle_sz * 0.5,
                 });
             } else {
-                // Number — measure text and center within circle
+                // Number -- measure text and center within circle
                 let num_text = format!("{}", i + 1);
                 let num_font_size = self.num_size();
                 let text_style = mozui_text::TextStyle {
@@ -285,13 +288,14 @@ impl Element for Stepper {
                     color: circle_fg,
                     ..Default::default()
                 };
-                let measured = mozui_text::measure_text(&num_text, &text_style, None, font_system);
+                let measured =
+                    mozui_text::measure_text(&num_text, &text_style, None, cx.font_system);
                 // Center the text within the circle
                 let text_x = circle_bounds.origin.x + (circle_sz - measured.width) / 2.0;
                 let text_y = circle_bounds.origin.y + (circle_sz - measured.height) / 2.0;
-                draw_list.push(DrawCommand::Text {
+                cx.draw_list.push(DrawCommand::Text {
                     text: num_text,
-                    bounds: mozui_style::Rect::new(text_x, text_y, measured.width, measured.height),
+                    bounds: Rect::new(text_x, text_y, measured.width, measured.height),
                     font_size: num_font_size,
                     color: circle_fg.with_alpha(alpha),
                     weight: 600,
@@ -305,7 +309,7 @@ impl Element for Stepper {
                     let handler_ptr =
                         handler.as_ref() as *const dyn Fn(usize, &mut dyn std::any::Any);
                     let step_idx = i;
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         circle_bounds,
                         Box::new(move |cx| unsafe { (*handler_ptr)(step_idx, cx) }),
                     );
@@ -313,21 +317,15 @@ impl Element for Stepper {
             }
 
             // Label text below circle
-            let label_layout = layouts[*index];
-            *index += 1;
+            let label_bounds = cx.bounds(sl.label_id);
             let label_color = if is_active || is_completed {
                 self.label_color
             } else {
                 self.muted_color
             };
-            draw_list.push(DrawCommand::Text {
+            cx.draw_list.push(DrawCommand::Text {
                 text: item.label.clone(),
-                bounds: mozui_style::Rect::new(
-                    label_layout.x,
-                    label_layout.y,
-                    label_layout.width,
-                    label_layout.height,
-                ),
+                bounds: label_bounds,
                 font_size: self.label_size(),
                 color: label_color.with_alpha(alpha),
                 weight: if is_active { 600 } else { 400 },
@@ -335,21 +333,15 @@ impl Element for Stepper {
             });
 
             // Connector line between steps
-            if i < self.items.len() - 1 {
-                let line_layout = layouts[*index];
-                *index += 1;
+            if let Some(line_id) = sl.line_id {
+                let line_bounds = cx.bounds(line_id);
                 let line_color = if is_completed {
                     self.completed_color
                 } else {
                     self.line_color
                 };
-                draw_list.push(DrawCommand::Rect {
-                    bounds: mozui_style::Rect::new(
-                        line_layout.x,
-                        line_layout.y,
-                        line_layout.width,
-                        line_layout.height,
-                    ),
+                cx.draw_list.push(DrawCommand::Rect {
+                    bounds: line_bounds,
                     background: Fill::Solid(line_color.with_alpha(alpha)),
                     corner_radii: Corners::uniform(1.0),
                     border: None,

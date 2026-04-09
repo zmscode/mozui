@@ -1,13 +1,15 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct Checkbox {
+    layout_id: LayoutId,
+    box_id: LayoutId,
+    label_id: LayoutId,
     label: Option<String>,
     checked: bool,
     disabled: bool,
@@ -21,6 +23,9 @@ pub struct Checkbox {
 
 pub fn checkbox(theme: &Theme) -> Checkbox {
     Checkbox {
+        layout_id: LayoutId::NONE,
+        box_id: LayoutId::NONE,
+        label_id: LayoutId::NONE,
         label: None,
         checked: false,
         disabled: false,
@@ -79,19 +84,19 @@ impl Disableable for Checkbox {
 }
 
 impl Element for Checkbox {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let box_sz = self.box_size();
         let mut children = Vec::new();
 
         // Checkbox box
-        let box_node = engine.new_leaf(Style {
+        self.box_id = cx.new_leaf(Style {
             size: Size {
                 width: length(box_sz),
                 height: length(box_sz),
             },
             ..Default::default()
         });
-        children.push(box_node);
+        children.push(self.box_id);
 
         // Label text
         if let Some(ref label_text) = self.label {
@@ -100,18 +105,18 @@ impl Element for Checkbox {
                 color: self.label_color,
                 ..Default::default()
             };
-            let measured = mozui_text::measure_text(label_text, &text_style, None, font_system);
-            let text_node = engine.new_leaf(Style {
+            let measured = mozui_text::measure_text(label_text, &text_style, None, cx.font_system);
+            self.label_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(measured.width),
                     height: length(measured.height),
                 },
                 ..Default::default()
             });
-            children.push(text_node);
+            children.push(self.label_id);
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -123,35 +128,17 @@ impl Element for Checkbox {
                 ..Default::default()
             },
             &children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let full_bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Checkbox box
-        let box_layout = layouts[*index];
-        *index += 1;
-        let box_bounds = mozui_style::Rect::new(
-            box_layout.x,
-            box_layout.y,
-            box_layout.width,
-            box_layout.height,
-        );
+        let box_bounds = cx.bounds(self.box_id);
 
         let alpha = if self.disabled { 0.5 } else { 1.0 };
         let radius = self.box_size() * 0.2;
-        let hovered = !self.disabled && interactions.is_hovered(full_bounds);
+        let hovered = !self.disabled && cx.interactions.is_hovered(bounds);
 
         if self.checked {
             let bg = if hovered {
@@ -159,15 +146,15 @@ impl Element for Checkbox {
             } else {
                 self.checked_bg.with_alpha(alpha)
             };
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: box_bounds,
                 background: Fill::Solid(bg),
                 corner_radii: Corners::uniform(radius),
                 border: None,
-                    shadow: None,
-                });
+                shadow: None,
+            });
             // Check icon
-            draw_list.push(DrawCommand::Icon {
+            cx.draw_list.push(DrawCommand::Icon {
                 name: IconName::Check,
                 weight: IconWeight::Regular,
                 bounds: box_bounds,
@@ -180,7 +167,7 @@ impl Element for Checkbox {
             } else {
                 self.border_color.with_alpha(alpha)
             };
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: box_bounds,
                 background: Fill::Solid(Color::TRANSPARENT),
                 corner_radii: Corners::uniform(radius),
@@ -188,22 +175,16 @@ impl Element for Checkbox {
                     width: 1.5,
                     color: border_c,
                 }),
-                    shadow: None,
-                });
+                shadow: None,
+            });
         }
 
         // Label
         if let Some(ref label_text) = self.label {
-            let text_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
+            let label_bounds = cx.bounds(self.label_id);
+            cx.draw_list.push(DrawCommand::Text {
                 text: label_text.clone(),
-                bounds: mozui_style::Rect::new(
-                    text_layout.x,
-                    text_layout.y,
-                    text_layout.width,
-                    text_layout.height,
-                ),
+                bounds: label_bounds,
                 font_size: self.text_size(),
                 color: self.label_color.with_alpha(alpha),
                 weight: 400,
@@ -215,8 +196,8 @@ impl Element for Checkbox {
         if !self.disabled {
             if let Some(ref handler) = self.on_click {
                 let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions.register_click(
-                    full_bounds,
+                cx.interactions.register_click(
+                    bounds,
                     Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
                 );
             }

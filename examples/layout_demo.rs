@@ -86,7 +86,11 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                 .items_center()
                 .justify_center()
                 .drag_region()
-                .child(label("Layout Demo").font_size(13.0).color(theme.muted_foreground)),
+                .child(
+                    label("Layout Demo")
+                        .font_size(13.0)
+                        .color(theme.muted_foreground),
+                ),
         )
         // Main content: sidebar + resizable panels
         .child(
@@ -119,7 +123,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                                 let cx = cx.downcast_mut::<Context>().unwrap();
                                                 cx.set(set, "dashboard".to_string());
                                             }
-                                        })
+                                        }),
                                 )
                                 .item(
                                     sidebar_item("projects", "Projects")
@@ -131,7 +135,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                                 let cx = cx.downcast_mut::<Context>().unwrap();
                                                 cx.set(set, "projects".to_string());
                                             }
-                                        })
+                                        }),
                                 )
                                 .item(
                                     sidebar_item("tasks", "Tasks")
@@ -143,7 +147,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                                 let cx = cx.downcast_mut::<Context>().unwrap();
                                                 cx.set(set, "tasks".to_string());
                                             }
-                                        })
+                                        }),
                                 )
                                 .item(
                                     sidebar_item("messages", "Messages")
@@ -155,8 +159,8 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                                 let cx = cx.downcast_mut::<Context>().unwrap();
                                                 cx.set(set, "messages".to_string());
                                             }
-                                        })
-                                )
+                                        }),
+                                ),
                         )
                         .group(
                             sidebar_group()
@@ -171,62 +175,92 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                                 let cx = cx.downcast_mut::<Context>().unwrap();
                                                 cx.set(set, "settings".to_string());
                                             }
-                                        })
+                                        }),
                                 )
                                 .item(
                                     sidebar_item("help", "Help")
                                         .icon(IconName::Question)
-                                        .disabled(true)
-                                )
+                                        .disabled(true),
+                                ),
                         )
                 })
                 .child({
                     let mut group = h_resizable(&theme)
                         .panel(
-                            resizable_panel()
-                                .size(500.0)
-                                .min_size(200.0)
-                                .child(
-                                    div()
-                                        .w_full()
-                                        .h_full()
-                                        .flex_col()
-                                        .gap(16.0)
-                                        .p(24.0)
-                                        .child(label(&format!("Page: {}", current_page)).font_size(20.0).bold().color(theme.foreground))
-                                        .child(label("Drag the divider to resize panels.").font_size(13.0).color(theme.muted_foreground))
-                                        .child(label("Cmd+B toggles sidebar. Cmd+. opens sheet.").font_size(13.0).color(theme.muted_foreground))
-                                        .child(
-                                            button("Open Sheet", &theme)
-                                                .with_variant(ButtonVariant::Primary, &theme)
-                                                .on_click({
-                                                    let flag = anim_flag.clone();
-                                                    move |cx| {
-                                                        let cx = cx.downcast_mut::<Context>().unwrap();
-                                                        cx.set(set_sheet_open, true);
-                                                        cx.set(set_sheet_anim_sig, Some(sheet_anim(flag.clone())));
-                                                    }
-                                                })
-                                        )
-                                )
+                            resizable_panel().size(500.0).min_size(200.0).child(
+                                div()
+                                    .w_full()
+                                    .h_full()
+                                    .flex_col()
+                                    .gap(16.0)
+                                    .p(24.0)
+                                    .child(
+                                        label(&format!("Page: {}", current_page))
+                                            .font_size(20.0)
+                                            .bold()
+                                            .color(theme.foreground),
+                                    )
+                                    .child(
+                                        label("Drag the divider to resize panels.")
+                                            .font_size(13.0)
+                                            .color(theme.muted_foreground),
+                                    )
+                                    .child(
+                                        label("Cmd+B toggles sidebar. Cmd+. opens sheet.")
+                                            .font_size(13.0)
+                                            .color(theme.muted_foreground),
+                                    )
+                                    .child(
+                                        button("Open Sheet", &theme)
+                                            .with_variant(ButtonVariant::Primary, &theme)
+                                            .on_click({
+                                                let flag = anim_flag.clone();
+                                                move |cx| {
+                                                    let cx = cx.downcast_mut::<Context>().unwrap();
+                                                    cx.set(set_sheet_open, true);
+                                                    cx.set(
+                                                        set_sheet_anim_sig,
+                                                        Some(sheet_anim(flag.clone())),
+                                                    );
+                                                }
+                                            }),
+                                    ),
+                            ),
                         )
                         .panel(
-                            resizable_panel()
-                                .min_size(150.0)
-                                .child(
-                                    div()
-                                        .w_full()
-                                        .h_full()
-                                        .flex_col()
-                                        .gap(12.0)
-                                        .p(24.0)
-                                        .child(label("Details").font_size(16.0).bold().color(theme.foreground))
-                                        .child(label("Secondary panel — resizable.").font_size(13.0).color(theme.muted_foreground))
-                                        .child(divider())
-                                        .child(label("Status: Active").font_size(13.0).color(theme.success))
-                                        .child(label("Priority: High").font_size(13.0).color(theme.danger))
-                                        .child(label("Assigned: Zac").font_size(13.0).color(theme.foreground))
-                                )
+                            resizable_panel().min_size(150.0).child(
+                                div()
+                                    .w_full()
+                                    .h_full()
+                                    .flex_col()
+                                    .gap(12.0)
+                                    .p(24.0)
+                                    .child(
+                                        label("Details")
+                                            .font_size(16.0)
+                                            .bold()
+                                            .color(theme.foreground),
+                                    )
+                                    .child(
+                                        label("Secondary panel — resizable.")
+                                            .font_size(13.0)
+                                            .color(theme.muted_foreground),
+                                    )
+                                    .child(divider())
+                                    .child(
+                                        label("Status: Active")
+                                            .font_size(13.0)
+                                            .color(theme.success),
+                                    )
+                                    .child(
+                                        label("Priority: High").font_size(13.0).color(theme.danger),
+                                    )
+                                    .child(
+                                        label("Assigned: Zac")
+                                            .font_size(13.0)
+                                            .color(theme.foreground),
+                                    ),
+                            ),
                         )
                         .on_resize(move |sizes, cx| {
                             let cx = cx.downcast_mut::<Context>().unwrap();
@@ -236,7 +270,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                         group = group.sizes(saved_sizes);
                     }
                     group
-                })
+                }),
         );
 
     // Sheet overlay — direct child of root so absolute positioning works
@@ -255,19 +289,29 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                 });
             })
             .title(
-                div()
-                    .w_full()
-                    .flex_row()
-                    .items_center()
-                    .p(16.0)
-                    .child(label("Sheet Panel").font_size(16.0).bold().color(theme.foreground))
+                div().w_full().flex_row().items_center().p(16.0).child(
+                    label("Sheet Panel")
+                        .font_size(16.0)
+                        .bold()
+                        .color(theme.foreground),
+                ),
             )
             .child(
-                div().flex_col().gap(12.0)
-                    .child(label("Slide-in sheet from the right edge.").font_size(13.0).color(theme.muted_foreground))
-                    .child(label("Click overlay or Cmd+. to close.").font_size(13.0).color(theme.muted_foreground))
+                div()
+                    .flex_col()
+                    .gap(12.0)
+                    .child(
+                        label("Slide-in sheet from the right edge.")
+                            .font_size(13.0)
+                            .color(theme.muted_foreground),
+                    )
+                    .child(
+                        label("Click overlay or Cmd+. to close.")
+                            .font_size(13.0)
+                            .color(theme.muted_foreground),
+                    )
                     .child(divider())
-                    .child(progress(&theme).value(0.65))
+                    .child(progress(&theme).value(0.65)),
             );
         if let Some(anim) = sheet_anim_handle {
             s = s.anim(anim);

@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 /// Column sort direction.
@@ -91,6 +90,12 @@ impl TableRow {
 ///     .on_row_click(|row_index, cx| { /* handle row click */ })
 /// ```
 pub struct Table {
+    layout_id: LayoutId,
+    /// Layout IDs for: header_row, header_cells..., data_row0, data_row0_cells..., data_row1, ...
+    /// We store them flat: [header_row, header_cell0..N, row0, row0_cell0..N, row1, ...]
+    row_ids: Vec<LayoutId>,
+    cell_ids: Vec<LayoutId>,
+
     columns: Vec<TableColumn>,
     rows: Vec<TableRow>,
     sort_key: Option<String>,
@@ -117,6 +122,9 @@ pub struct Table {
 
 pub fn table(theme: &Theme) -> Table {
     Table {
+        layout_id: LayoutId::NONE,
+        row_ids: Vec::new(),
+        cell_ids: Vec::new(),
         columns: Vec::new(),
         rows: Vec::new(),
         sort_key: None,
@@ -204,7 +212,8 @@ impl Table {
             })
             .sum();
 
-        let remaining = (total_width - fixed_total - self.cell_px * 2.0 * self.columns.len() as f32).max(0.0);
+        let remaining =
+            (total_width - fixed_total - self.cell_px * 2.0 * self.columns.len() as f32).max(0.0);
 
         self.columns
             .iter()
@@ -223,10 +232,9 @@ impl Table {
 }
 
 impl Element for Table {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
-        // We use a simple approach: one row node per row (header + data rows)
-        // Each row is a flex row with cells sized according to column widths.
-        // Since we don't know the total width at layout time, use percentage-based sizing.
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.row_ids.clear();
+        self.cell_ids.clear();
 
         let mut row_nodes = Vec::new();
 
@@ -263,9 +271,11 @@ impl Element for Table {
                     ..Default::default()
                 },
             };
-            header_cells.push(engine.new_leaf(cell_style));
+            let cell_id = cx.new_leaf(cell_style);
+            self.cell_ids.push(cell_id);
+            header_cells.push(cell_id);
         }
-        row_nodes.push(engine.new_with_children(
+        let header_row_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -273,7 +283,9 @@ impl Element for Table {
                 ..Default::default()
             },
             &header_cells,
-        ));
+        );
+        self.row_ids.push(header_row_id);
+        row_nodes.push(header_row_id);
 
         // Data rows
         for _row in &self.rows {
@@ -309,9 +321,11 @@ impl Element for Table {
                         ..Default::default()
                     },
                 };
-                cells.push(engine.new_leaf(cell_style));
+                let cell_id = cx.new_leaf(cell_style);
+                self.cell_ids.push(cell_id);
+                cells.push(cell_id);
             }
-            row_nodes.push(engine.new_with_children(
+            let row_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Row,
@@ -319,36 +333,28 @@ impl Element for Table {
                     ..Default::default()
                 },
                 &cells,
-            ));
+            );
+            self.row_ids.push(row_id);
+            row_nodes.push(row_id);
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 ..Default::default()
             },
             &row_nodes,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        // Outer container
-        let outer = layouts[*index];
-        *index += 1;
-        let outer_bounds =
-            mozui_style::Rect::new(outer.x, outer.y, outer.width, outer.height);
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        let num_cols = self.columns.len();
 
         // Table border/background
-        draw_list.push(DrawCommand::Rect {
-            bounds: outer_bounds,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds,
             background: Fill::Solid(Color::TRANSPARENT),
             corner_radii: Corners::uniform(self.corner_radius),
             border: Some(Border {
@@ -359,18 +365,11 @@ impl Element for Table {
         });
 
         // ── Header row ──
-        let header_row = layouts[*index];
-        *index += 1;
-        let header_bounds = mozui_style::Rect::new(
-            header_row.x,
-            header_row.y,
-            header_row.width,
-            header_row.height,
-        );
+        let header_row_bounds = cx.bounds(self.row_ids[0]);
 
         // Header background
-        draw_list.push(DrawCommand::Rect {
-            bounds: header_bounds,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: header_row_bounds,
             background: Fill::Solid(self.header_bg),
             corner_radii: Corners {
                 top_left: self.corner_radius,
@@ -383,26 +382,20 @@ impl Element for Table {
         });
 
         // Header cells
-        for col in self.columns.iter() {
-            let cell = layouts[*index];
-            *index += 1;
-            let cell_bounds =
-                mozui_style::Rect::new(cell.x, cell.y, cell.width, cell.height);
+        for (col_idx, col) in self.columns.iter().enumerate() {
+            let cell_bounds = cx.bounds(self.cell_ids[col_idx]);
 
-            let is_sorted = self
-                .sort_key
-                .as_ref()
-                .map_or(false, |k| *k == col.key);
+            let is_sorted = self.sort_key.as_ref().map_or(false, |k| *k == col.key);
 
             // Header label
             let label_weight = if is_sorted { 700 } else { 600 };
-            draw_list.push(DrawCommand::Text {
+            cx.draw_list.push(DrawCommand::Text {
                 text: col.label.clone(),
-                bounds: mozui_style::Rect::new(
-                    cell.x + self.cell_px,
-                    cell.y,
-                    cell.width - self.cell_px * 2.0 - if col.sortable { 16.0 } else { 0.0 },
-                    cell.height,
+                bounds: Rect::new(
+                    cell_bounds.origin.x + self.cell_px,
+                    cell_bounds.origin.y,
+                    cell_bounds.size.width - self.cell_px * 2.0 - if col.sortable { 16.0 } else { 0.0 },
+                    cell_bounds.size.height,
                 ),
                 font_size: self.header_font_size,
                 color: self.header_fg,
@@ -416,12 +409,12 @@ impl Element for Table {
                     SortDirection::Ascending => IconName::ArrowUp,
                     SortDirection::Descending => IconName::ArrowDown,
                 };
-                draw_list.push(DrawCommand::Icon {
+                cx.draw_list.push(DrawCommand::Icon {
                     name: icon,
                     weight: IconWeight::Bold,
-                    bounds: mozui_style::Rect::new(
-                        cell.x + cell.width - self.cell_px - 12.0,
-                        cell.y + (cell.height - 12.0) / 2.0,
+                    bounds: Rect::new(
+                        cell_bounds.origin.x + cell_bounds.size.width - self.cell_px - 12.0,
+                        cell_bounds.origin.y + (cell_bounds.size.height - 12.0) / 2.0,
                         12.0,
                         12.0,
                     ),
@@ -449,7 +442,7 @@ impl Element for Table {
                     };
                     let handler_ptr = handler.as_ref()
                         as *const dyn Fn(&str, SortDirection, &mut dyn std::any::Any);
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         cell_bounds,
                         Box::new(move |cx| unsafe {
                             (*handler_ptr)(&key, next_dir, cx);
@@ -460,11 +453,11 @@ impl Element for Table {
         }
 
         // Header bottom border
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(
-                header_row.x,
-                header_row.y + header_row.height - 1.0,
-                header_row.width,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: Rect::new(
+                header_row_bounds.origin.x,
+                header_row_bounds.origin.y + header_row_bounds.size.height - 1.0,
+                header_row_bounds.size.width,
                 1.0,
             ),
             background: Fill::Solid(self.border_color),
@@ -475,16 +468,9 @@ impl Element for Table {
 
         // ── Data rows ──
         for (row_idx, row) in self.rows.iter().enumerate() {
-            let row_layout = layouts[*index];
-            *index += 1;
-            let row_bounds = mozui_style::Rect::new(
-                row_layout.x,
-                row_layout.y,
-                row_layout.width,
-                row_layout.height,
-            );
+            let row_bounds = cx.bounds(self.row_ids[1 + row_idx]);
 
-            let hovered = interactions.is_hovered(row_bounds);
+            let hovered = cx.interactions.is_hovered(row_bounds);
             let is_last = row_idx == self.rows.len() - 1;
 
             // Row background
@@ -509,7 +495,7 @@ impl Element for Table {
                 } else {
                     Corners::ZERO
                 };
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: row_bounds,
                     background: Fill::Solid(bg),
                     corner_radii: corners,
@@ -519,18 +505,18 @@ impl Element for Table {
             }
 
             // Row cells
-            for col_idx in 0..self.columns.len() {
-                let cell = layouts[*index];
-                *index += 1;
+            for col_idx in 0..num_cols {
+                let cell_idx = (1 + row_idx) * num_cols + col_idx;
+                let cell_bounds = cx.bounds(self.cell_ids[cell_idx]);
 
                 let text = row.cells.get(col_idx).cloned().unwrap_or_default();
-                draw_list.push(DrawCommand::Text {
+                cx.draw_list.push(DrawCommand::Text {
                     text,
-                    bounds: mozui_style::Rect::new(
-                        cell.x + self.cell_px,
-                        cell.y,
-                        cell.width - self.cell_px * 2.0,
-                        cell.height,
+                    bounds: Rect::new(
+                        cell_bounds.origin.x + self.cell_px,
+                        cell_bounds.origin.y,
+                        cell_bounds.size.width - self.cell_px * 2.0,
+                        cell_bounds.size.height,
                     ),
                     font_size: self.font_size,
                     color: self.fg,
@@ -541,11 +527,11 @@ impl Element for Table {
 
             // Row separator
             if !is_last {
-                draw_list.push(DrawCommand::Rect {
-                    bounds: mozui_style::Rect::new(
-                        row_layout.x,
-                        row_layout.y + row_layout.height - 0.5,
-                        row_layout.width,
+                cx.draw_list.push(DrawCommand::Rect {
+                    bounds: Rect::new(
+                        row_bounds.origin.x,
+                        row_bounds.origin.y + row_bounds.size.height - 0.5,
+                        row_bounds.size.width,
                         0.5,
                     ),
                     background: Fill::Solid(self.border_color.with_alpha(0.5)),
@@ -557,10 +543,9 @@ impl Element for Table {
 
             // Row click handler
             if let Some(ref handler) = self.on_row_click {
-                let handler_ptr =
-                    handler.as_ref() as *const dyn Fn(usize, &mut dyn std::any::Any);
+                let handler_ptr = handler.as_ref() as *const dyn Fn(usize, &mut dyn std::any::Any);
                 let idx = row_idx;
-                interactions.register_click(
+                cx.interactions.register_click(
                     row_bounds,
                     Box::new(move |cx| unsafe {
                         (*handler_ptr)(idx, cx);

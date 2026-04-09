@@ -7,9 +7,9 @@ use crate::draw::ImageData;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct ImageInstance {
-    pub bounds: [f32; 4],        // x, y, width, height (physical pixels)
-    pub uv: [f32; 4],            // u_min, v_min, u_max, v_max
-    pub corner_radii: [f32; 4],  // TL, TR, BR, BL (physical pixels)
+    pub bounds: [f32; 4],       // x, y, width, height (physical pixels)
+    pub uv: [f32; 4],           // u_min, v_min, u_max, v_max
+    pub corner_radii: [f32; 4], // TL, TR, BR, BL (physical pixels)
     pub opacity: f32,
     pub _padding: [f32; 3],
 }

@@ -1,0 +1,31 @@
+- DEVTOOLS:
+	- [ ] Element Inspector:
+		- Toggle with `Cmd+Shift+I`
+		- Overlay that highlights hovered elements with their bounds
+		- Side panel showing: element type, computed layout (x, y, width, height), style properties, signal values
+		- Implemented as mozui elements themselves (dogfooding!)
+	- [ ] Signal Debugger:
+		- Shows all active signals with current values
+		- Highlights signals that changed in the last frame
+		- Shows subscriber count for each signal
+		- Shows dependency graph (which views depend on which signals)
+	- [ ] Performance Overlay:
+		- Frame time graph
+		- Layout time, render time, paint time breakdown
+		- Draw call count
+		- Element count
+		- Toggle with `Cmd+Shift+O`
+
+- EDITOR:
+	- [ ] Window creator and editor 
+		- Click and drag window creator
+		- Customisable dimensions, titlebar appearance, title etc
+		- Ability for multiple windows
+	- [ ] Drag and drop component editor:
+		- List of components in a sidebar that can be dragged onto the editor
+		- Would need "lorem ipsum" / dummy data to populate them 
+	- [ ] Export functionality:
+		- Ability to export to a rust project / code
+		- Either a full `cargo init` type project or just a layout `.rs` file
+	- __Node-based editor?__
+	- __New component creator?__

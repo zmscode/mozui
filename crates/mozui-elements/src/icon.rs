@@ -1,14 +1,14 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::Color;
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Rect};
 use taffy::prelude::*;
 
 use crate::styled::{ComponentSize, Sizable};
 
 pub struct Icon {
+    layout_id: LayoutId,
     name: IconName,
     weight: IconWeight,
     color: Color,
@@ -17,6 +17,7 @@ pub struct Icon {
 
 pub fn icon(name: IconName) -> Icon {
     Icon {
+        layout_id: LayoutId::NONE,
         name,
         weight: IconWeight::Regular,
         color: Color::WHITE,
@@ -59,30 +60,19 @@ impl Sizable for Icon {
 }
 
 impl Element for Icon {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
-        engine.new_leaf(Style {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.layout_id = cx.new_leaf(Style {
             size: Size {
                 width: length(self.size_px),
                 height: length(self.size_px),
             },
             ..Default::default()
-        })
+        });
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
-
-        draw_list.push(DrawCommand::Icon {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        cx.draw_list.push(DrawCommand::Icon {
             name: self.name,
             weight: self.weight,
             bounds,

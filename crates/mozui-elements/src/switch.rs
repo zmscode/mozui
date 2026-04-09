@@ -1,12 +1,14 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct Switch {
+    layout_id: LayoutId,
+    track_id: LayoutId,
+    label_id: LayoutId,
     checked: bool,
     disabled: bool,
     label: Option<String>,
@@ -19,6 +21,9 @@ pub struct Switch {
 
 pub fn switch(theme: &Theme) -> Switch {
     Switch {
+        layout_id: LayoutId::NONE,
+        track_id: LayoutId::NONE,
+        label_id: LayoutId::NONE,
         checked: false,
         disabled: false,
         label: None,
@@ -95,18 +100,18 @@ impl Disableable for Switch {
 }
 
 impl Element for Switch {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut children = Vec::new();
 
         // Track (contains thumb visually, but laid out as a single rect)
-        let track_node = engine.new_leaf(Style {
+        self.track_id = cx.new_leaf(Style {
             size: Size {
                 width: length(self.track_width()),
                 height: length(self.track_height()),
             },
             ..Default::default()
         });
-        children.push(track_node);
+        children.push(self.track_id);
 
         // Label
         if let Some(ref label_text) = self.label {
@@ -115,18 +120,18 @@ impl Element for Switch {
                 color: self.label_color,
                 ..Default::default()
             };
-            let measured = mozui_text::measure_text(label_text, &text_style, None, font_system);
-            let text_node = engine.new_leaf(Style {
+            let measured = mozui_text::measure_text(label_text, &text_style, None, cx.font_system);
+            self.label_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(measured.width),
                     height: length(measured.height),
                 },
                 ..Default::default()
             });
-            children.push(text_node);
+            children.push(self.label_id);
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -138,33 +143,16 @@ impl Element for Switch {
                 ..Default::default()
             },
             &children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let full_bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let alpha = if self.disabled { 0.5 } else { 1.0 };
-        let hovered = !self.disabled && interactions.is_hovered(full_bounds);
+        let hovered = !self.disabled && cx.interactions.is_hovered(bounds);
 
         // Track
-        let track_layout = layouts[*index];
-        *index += 1;
-        let track_bounds = mozui_style::Rect::new(
-            track_layout.x,
-            track_layout.y,
-            track_layout.width,
-            track_layout.height,
-        );
+        let track_bounds = cx.bounds(self.track_id);
         let track_radius = self.track_height() / 2.0;
 
         let track_color = if self.checked {
@@ -179,13 +167,13 @@ impl Element for Switch {
             self.inactive_color
         };
 
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: track_bounds,
             background: Fill::Solid(track_color.with_alpha(alpha)),
             corner_radii: Corners::uniform(track_radius),
             border: None,
-                    shadow: None,
-                });
+            shadow: None,
+        });
 
         // Thumb
         let thumb_sz = self.thumb_size();
@@ -196,26 +184,20 @@ impl Element for Switch {
             track_bounds.origin.x + 2.0
         };
 
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(thumb_x, thumb_y, thumb_sz, thumb_sz),
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: Rect::new(thumb_x, thumb_y, thumb_sz, thumb_sz),
             background: Fill::Solid(Color::WHITE.with_alpha(alpha)),
             corner_radii: Corners::uniform(thumb_sz / 2.0),
             border: None,
-                    shadow: None,
-                });
+            shadow: None,
+        });
 
         // Label
         if let Some(ref label_text) = self.label {
-            let text_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
+            let text_bounds = cx.bounds(self.label_id);
+            cx.draw_list.push(DrawCommand::Text {
                 text: label_text.clone(),
-                bounds: mozui_style::Rect::new(
-                    text_layout.x,
-                    text_layout.y,
-                    text_layout.width,
-                    text_layout.height,
-                ),
+                bounds: text_bounds,
                 font_size: self.text_size(),
                 color: self.label_color.with_alpha(alpha),
                 weight: 400,
@@ -227,8 +209,8 @@ impl Element for Switch {
         if !self.disabled {
             if let Some(ref handler) = self.on_click {
                 let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions.register_click(
-                    full_bounds,
+                cx.interactions.register_click(
+                    bounds,
                     Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
                 );
             }

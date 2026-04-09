@@ -1,13 +1,12 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use std::cell::Cell;
-use taffy::prelude::*;
 use taffy::Overflow;
+use taffy::prelude::*;
 
 pub struct AccordionItem {
     title: String,
@@ -70,7 +69,22 @@ impl Disableable for AccordionItem {
     }
 }
 
+/// Tracks layout IDs for a single accordion section.
+struct AccordionSectionLayout {
+    header_id: LayoutId,
+    icon_id: Option<LayoutId>,
+    title_id: LayoutId,
+    chevron_id: LayoutId,
+    clip_id: LayoutId,
+    inner_id: LayoutId,
+    child_ids: Vec<LayoutId>,
+    divider_id: Option<LayoutId>,
+}
+
 pub struct Accordion {
+    layout_id: LayoutId,
+    section_layouts: Vec<AccordionSectionLayout>,
+
     items: Vec<AccordionItem>,
     bordered: bool,
     size: ComponentSize,
@@ -82,6 +96,9 @@ pub struct Accordion {
 
 pub fn accordion(theme: &Theme) -> Accordion {
     Accordion {
+        layout_id: LayoutId::NONE,
+        section_layouts: Vec::new(),
+
         items: Vec::new(),
         bordered: true,
         size: ComponentSize::Medium,
@@ -141,25 +158,30 @@ impl Sizable for Accordion {
 }
 
 impl Element for Accordion {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let py = self.header_py();
         let icon_sz = self.icon_size();
         let text_sz = self.text_size();
         let mut section_nodes = Vec::new();
+        self.section_layouts = Vec::new();
 
-        for item in &self.items {
+        for item in &mut self.items {
             let mut header_children = Vec::new();
 
             // Optional leading icon
-            if item.icon.is_some() {
-                header_children.push(engine.new_leaf(Style {
+            let icon_id = if item.icon.is_some() {
+                let id = cx.new_leaf(Style {
                     size: Size {
                         width: length(icon_sz),
                         height: length(icon_sz),
                     },
                     ..Default::default()
-                }));
-            }
+                });
+                header_children.push(id);
+                Some(id)
+            } else {
+                None
+            };
 
             // Title
             let title_style = mozui_text::TextStyle {
@@ -167,26 +189,28 @@ impl Element for Accordion {
                 color: self.fg,
                 ..Default::default()
             };
-            let title_m = mozui_text::measure_text(&item.title, &title_style, None, font_system);
-            header_children.push(engine.new_leaf(Style {
+            let title_m = mozui_text::measure_text(&item.title, &title_style, None, cx.font_system);
+            let title_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(title_m.width),
                     height: length(title_m.height),
                 },
                 flex_grow: 1.0,
                 ..Default::default()
-            }));
+            });
+            header_children.push(title_id);
 
             // Chevron
-            header_children.push(engine.new_leaf(Style {
+            let chevron_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(icon_sz),
                     height: length(icon_sz),
                 },
                 ..Default::default()
-            }));
+            });
+            header_children.push(chevron_id);
 
-            let header_node = engine.new_with_children(
+            let header_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Row,
@@ -207,14 +231,8 @@ impl Element for Accordion {
             );
 
             // Content area (collapsible)
-            // Always lay out content children for stable node count and
-            // content height measurement, even when collapsed.
-            let content_children: Vec<taffy::NodeId> = item
-                .children
-                .iter()
-                .map(|c| c.layout(engine, font_system))
-                .collect();
-            let inner = engine.new_with_children(
+            let child_ids: Vec<LayoutId> = item.children.iter_mut().map(|c| c.layout(cx)).collect();
+            let inner_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
@@ -230,7 +248,7 @@ impl Element for Accordion {
                     },
                     ..Default::default()
                 },
-                &content_children,
+                &child_ids,
             );
             let max_height = if item.height_factor >= 0.999 {
                 auto()
@@ -238,7 +256,7 @@ impl Element for Accordion {
                 let max_h = item.content_height.get() * item.height_factor;
                 length(max_h.max(0.0))
             };
-            let content_node = engine.new_with_children(
+            let clip_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
@@ -252,75 +270,73 @@ impl Element for Accordion {
                     },
                     ..Default::default()
                 },
-                &[inner],
+                &[inner_id],
             );
 
             // Section = header + content
-            let section = engine.new_with_children(
+            let section_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
                     ..Default::default()
                 },
-                &[header_node, content_node],
+                &[header_id, clip_id],
             );
-            section_nodes.push(section);
+            section_nodes.push(section_id);
 
             // Border divider
-            if self.bordered {
-                section_nodes.push(engine.new_leaf(Style {
+            let divider_id = if self.bordered {
+                let id = cx.new_leaf(Style {
                     size: Size {
                         width: percent(1.0),
                         height: length(1.0),
                     },
                     ..Default::default()
-                }));
-            }
+                });
+                section_nodes.push(id);
+                Some(id)
+            } else {
+                None
+            };
+
+            self.section_layouts.push(AccordionSectionLayout {
+                header_id,
+                icon_id,
+                title_id,
+                chevron_id,
+                clip_id,
+                inner_id,
+                child_ids,
+                divider_id,
+            });
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 ..Default::default()
             },
             &section_nodes,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        let _outer = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         let icon_sz = self.icon_size();
+        let item_count = self.items.len();
 
-        for (i, item) in self.items.iter().enumerate() {
-            // Section container
-            let _section = layouts[*index];
-            *index += 1;
+        for i in 0..item_count {
+            let sl = &self.section_layouts[i];
 
             // Header
-            let header_layout = layouts[*index];
-            *index += 1;
-            let header_bounds = mozui_style::Rect::new(
-                header_layout.x,
-                header_layout.y,
-                header_layout.width,
-                header_layout.height,
-            );
+            let header_bounds = cx.bounds(sl.header_id);
 
-            let alpha = if item.disabled { 0.5 } else { 1.0 };
-            let hovered = !item.disabled && interactions.is_hovered(header_bounds);
+            let alpha = if self.items[i].disabled { 0.5 } else { 1.0 };
+            let hovered = !self.items[i].disabled && cx.interactions.is_hovered(header_bounds);
 
             if hovered {
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: header_bounds,
                     background: Fill::Solid(self.hover_bg.with_alpha(alpha)),
                     corner_radii: Corners::uniform(4.0),
@@ -330,34 +346,22 @@ impl Element for Accordion {
             }
 
             // Optional icon
-            if let Some(icon_name) = item.icon {
-                let icon_layout = layouts[*index];
-                *index += 1;
-                draw_list.push(DrawCommand::Icon {
+            if let Some(icon_name) = self.items[i].icon {
+                let icon_bounds = cx.bounds(sl.icon_id.unwrap());
+                cx.draw_list.push(DrawCommand::Icon {
                     name: icon_name,
                     weight: IconWeight::Regular,
-                    bounds: mozui_style::Rect::new(
-                        icon_layout.x,
-                        icon_layout.y,
-                        icon_layout.width,
-                        icon_layout.height,
-                    ),
+                    bounds: icon_bounds,
                     color: self.fg.with_alpha(alpha),
                     size_px: icon_sz,
                 });
             }
 
             // Title
-            let title_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
-                text: item.title.clone(),
-                bounds: mozui_style::Rect::new(
-                    title_layout.x,
-                    title_layout.y,
-                    title_layout.width,
-                    title_layout.height,
-                ),
+            let title_bounds = cx.bounds(sl.title_id);
+            cx.draw_list.push(DrawCommand::Text {
+                text: self.items[i].title.clone(),
+                bounds: title_bounds,
                 font_size: self.text_size(),
                 color: self.fg.with_alpha(alpha),
                 weight: 500,
@@ -365,78 +369,58 @@ impl Element for Accordion {
             });
 
             // Chevron
-            let chevron_layout = layouts[*index];
-            *index += 1;
-            let chevron_icon = if item.open {
+            let chevron_bounds = cx.bounds(sl.chevron_id);
+            let chevron_icon = if self.items[i].open {
                 IconName::CaretUp
             } else {
                 IconName::CaretDown
             };
-            draw_list.push(DrawCommand::Icon {
+            cx.draw_list.push(DrawCommand::Icon {
                 name: chevron_icon,
                 weight: IconWeight::Regular,
-                bounds: mozui_style::Rect::new(
-                    chevron_layout.x,
-                    chevron_layout.y,
-                    chevron_layout.width,
-                    chevron_layout.height,
-                ),
+                bounds: chevron_bounds,
                 color: self.muted_fg.with_alpha(alpha),
                 size_px: icon_sz,
             });
 
             // Click handler on header
-            if !item.disabled {
-                if let Some(ref handler) = item.on_toggle {
+            if !self.items[i].disabled {
+                if let Some(ref handler) = self.items[i].on_toggle {
                     let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         header_bounds,
                         Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
                     );
                 }
             }
 
-            // Content area — always traverse nodes (layout is always built)
-            // Outer clipping container
-            let clip_layout = layouts[*index];
-            *index += 1;
-            // Inner padded container — remember height for animation
-            let inner = layouts[*index];
-            *index += 1;
-            item.content_height.set(inner.height);
+            // Content area — remember height for animation
+            let inner_bounds = cx.bounds(sl.inner_id);
+            self.items[i].content_height.set(inner_bounds.size.height);
 
             // Clip content to the outer container's visible bounds
-            let clip_rect = mozui_style::Rect::new(
-                clip_layout.x,
-                clip_layout.y,
-                clip_layout.width,
-                clip_layout.height,
-            );
-            draw_list.push_clip(clip_rect);
+            let clip_bounds = cx.bounds(sl.clip_id);
+            cx.draw_list.push_clip(clip_bounds);
 
-            for child in &item.children {
-                child.paint(layouts, index, draw_list, interactions, font_system);
+            let child_count = self.items[i].children.len();
+            for ci in 0..child_count {
+                let child_bounds = cx.bounds(sl.child_ids[ci]);
+                self.items[i].children[ci].paint(child_bounds, cx);
             }
 
-            draw_list.pop_clip();
+            cx.draw_list.pop_clip();
 
             // Border divider
-            if self.bordered {
-                let div_layout = layouts[*index];
-                *index += 1;
-                if i < self.items.len() - 1 {
-                    draw_list.push(DrawCommand::Rect {
-                        bounds: mozui_style::Rect::new(
-                            div_layout.x,
-                            div_layout.y,
-                            div_layout.width,
-                            div_layout.height,
-                        ),
+            if let Some(div_id) = sl.divider_id {
+                if i < item_count - 1 {
+                    let div_bounds = cx.bounds(div_id);
+                    cx.draw_list.push(DrawCommand::Rect {
+                        bounds: div_bounds,
                         background: Fill::Solid(self.border_color),
                         corner_radii: Corners::uniform(0.0),
                         border: None,
-                    shadow: None,
-                });
+                        shadow: None,
+                    });
                 }
             }
         }

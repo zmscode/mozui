@@ -76,9 +76,7 @@ pub fn shape_text(text: &str, style: &TextStyle, font_system: &FontSystem) -> Sh
 
     let line_height = style.font_size * style.line_height;
     let metrics = ct::Metrics::new(style.font_size, line_height);
-    let attrs = ct::Attrs::new()
-        .weight(ct_weight)
-        .style(ct_style);
+    let attrs = ct::Attrs::new().weight(ct_weight).style(ct_style);
 
     let mut fs = font_system.borrow_mut();
     let mut buffer = ct::Buffer::new(&mut fs, metrics);
@@ -110,5 +108,10 @@ pub fn shape_text(text: &str, style: &TextStyle, font_system: &FontSystem) -> Sh
 
     let width = glyphs.last().map(|g| g.x_offset + g.advance).unwrap_or(0.0)
         + style.letter_spacing * glyphs.len().saturating_sub(1) as f32;
-    ShapedRun { glyphs, width, max_ascent, max_descent }
+    ShapedRun {
+        glyphs,
+        width,
+        max_ascent,
+        max_descent,
+    }
 }

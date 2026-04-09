@@ -6,6 +6,7 @@ mod breadcrumb;
 mod button;
 mod card;
 mod checkbox;
+mod clipboard_button;
 pub(crate) mod collapsible;
 mod color_picker;
 mod command_palette;
@@ -15,6 +16,7 @@ mod dialog;
 mod div;
 mod divider;
 mod group_box;
+mod hover_card;
 mod icon;
 mod img;
 mod kbd;
@@ -31,6 +33,7 @@ mod radio;
 mod rating;
 mod resizable;
 mod root;
+mod scroll_container;
 mod select;
 mod sheet;
 mod sidebar;
@@ -58,6 +61,7 @@ pub use breadcrumb::{Breadcrumb, BreadcrumbItem, breadcrumb, breadcrumb_item};
 pub use button::{Button, ButtonGroup, ButtonVariant, button, button_group, icon_button};
 pub use card::{Card, card};
 pub use checkbox::{Checkbox, checkbox};
+pub use clipboard_button::{ClipboardButton, clipboard_button};
 pub use collapsible::{CollapsibleContainer, collapsible};
 pub use color_picker::{ColorPicker, color_picker};
 pub use command_palette::{
@@ -71,6 +75,7 @@ pub use dialog::{DIALOG_ANIM_MS, Dialog, dialog, dialog_anim};
 pub use div::{Div, ScrollOffset, div};
 pub use divider::{Divider, DividerDirection, DividerVariant, divider};
 pub use group_box::{GroupBox, group_box};
+pub use hover_card::{HoverCard, hover_card};
 pub use icon::{Icon, icon};
 pub use img::{
     AnimatedImage, ImageSource, Img, decode_gif_frames, decode_image, decode_image_file,
@@ -87,7 +92,7 @@ pub use notification::{
 };
 pub use number_input::{NumberInput, number_input};
 pub use pagination::{Pagination, pagination};
-pub use popover::{FitMode, Popover};
+pub use popover::Popover;
 pub use progress::{Progress, progress};
 pub use radio::{Radio, radio};
 pub use rating::{Rating, rating};
@@ -95,9 +100,12 @@ pub use resizable::{
     ResizablePanel, ResizablePanelGroup, ResizeAxis, h_resizable, resizable_panel, v_resizable,
 };
 pub use root::Root;
+pub use scroll_container::{ScrollContainer, ScrollbarShow, scroll_container};
 pub use select::{Select, SelectOption, select, select_option};
-pub use sheet::{SHEET_ANIM_MS, SheetPlacement, Sheet, sheet, sheet_anim};
-pub use sidebar::{SidebarSide, Sidebar, SidebarGroup, SidebarItem, sidebar, sidebar_group, sidebar_item};
+pub use sheet::{SHEET_ANIM_MS, Sheet, SheetPlacement, sheet, sheet_anim};
+pub use sidebar::{
+    Sidebar, SidebarGroup, SidebarItem, SidebarSide, sidebar, sidebar_group, sidebar_item,
+};
 pub use skeleton::{Skeleton, SkeletonShape, skeleton};
 pub use slider::{Slider, slider};
 pub use spinner::{Spinner, spinner};
@@ -116,27 +124,207 @@ pub use tooltip::{Tooltip, tooltip};
 pub use tree::{TreeNode, TreeView, tree_node, tree_view};
 pub use virtual_list::{VirtualList, VirtualListDirection};
 
+pub use mozui_layout::LayoutId;
+pub use mozui_layout::cache::{LayoutCache, LayoutCacheKey};
 use mozui_layout::LayoutEngine;
 use mozui_renderer::DrawList;
-use mozui_style::{Point, Rect};
+use mozui_style::{Placement, Point, Rect, Size};
 use mozui_text::FontSystem;
-use taffy::NodeId;
 
 /// A node in the UI element tree.
+///
+/// Three-phase lifecycle:
+/// 1. `layout` — build taffy nodes, return a `LayoutId`
+/// 2. `prepaint` — resolve deferred state after layout is computed (optional)
+/// 3. `paint` — emit draw commands using resolved bounds
 pub trait Element {
-    /// Build this element's Taffy layout node and return it.
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> NodeId;
+    /// Build this element's layout nodes and return the root `LayoutId`.
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId;
 
-    /// Paint this element using the computed layout positions.
-    /// `layouts` is a pre-order traversal of computed layouts; `index` is consumed as we go.
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    );
+    /// Called after layout is resolved but before paint.
+    /// Use for positioning floating elements, caching resolved bounds, etc.
+    fn prepaint(&mut self, _bounds: Rect, _cx: &mut PaintContext) {}
+
+    /// Emit draw commands and register interactions using the resolved bounds.
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext);
+}
+
+// ── Deferred elements ─────────────────────────────────────────────
+
+/// How a deferred element should be positioned after layout solving.
+pub enum DeferredPosition {
+    /// Position relative to an anchor element from the main layout tree.
+    /// The content is centered on the anchor edge specified by `placement`,
+    /// offset by `gap` pixels.
+    Anchored {
+        anchor_id: LayoutId,
+        placement: Placement,
+        gap: f32,
+    },
+    /// Full-screen overlay. The element positions itself using its own
+    /// layout (e.g. `Position::Absolute` with inset). No anchor needed.
+    Overlay,
+}
+
+/// A deferred floating element registered during layout.
+///
+/// Deferred elements get their own independent layout tree, solved after
+/// the main tree. They paint on top of the main tree, ensuring correct
+/// z-ordering for overlays, tooltips, popovers, etc.
+pub struct DeferredEntry {
+    pub element: Box<dyn Element>,
+    pub position: DeferredPosition,
+}
+
+/// A deferred element after layout resolution — ready to paint.
+pub struct ResolvedDeferred {
+    pub element: Box<dyn Element>,
+    pub engine: LayoutEngine,
+    pub root_id: LayoutId,
+    /// Anchor bounds from the main tree (for hover checking etc.).
+    /// `None` for overlay-type deferred elements.
+    pub anchor_bounds: Option<Rect>,
+}
+
+/// Compute the position for an anchored deferred element.
+pub fn compute_anchored_position(
+    anchor: Rect,
+    content_size: Size,
+    placement: Placement,
+    gap: f32,
+    window_size: Size,
+) -> Point {
+    let (mut x, mut y) = match placement {
+        Placement::Top => (
+            anchor.origin.x + (anchor.size.width - content_size.width) / 2.0,
+            anchor.origin.y - content_size.height - gap,
+        ),
+        Placement::Bottom => (
+            anchor.origin.x + (anchor.size.width - content_size.width) / 2.0,
+            anchor.origin.y + anchor.size.height + gap,
+        ),
+        Placement::Left => (
+            anchor.origin.x - content_size.width - gap,
+            anchor.origin.y + (anchor.size.height - content_size.height) / 2.0,
+        ),
+        Placement::Right => (
+            anchor.origin.x + anchor.size.width + gap,
+            anchor.origin.y + (anchor.size.height - content_size.height) / 2.0,
+        ),
+    };
+
+    // Clamp to window bounds
+    x = x.clamp(0.0, (window_size.width - content_size.width).max(0.0));
+    y = y.clamp(0.0, (window_size.height - content_size.height).max(0.0));
+
+    Point::new(x, y)
+}
+
+// ── Layout context ────────────────────────────────────────────────
+
+/// Context for the layout phase — wraps the layout engine and font system.
+pub struct LayoutContext<'a> {
+    pub engine: &'a mut LayoutEngine,
+    pub font_system: &'a FontSystem,
+    pub deferred: &'a mut Vec<DeferredEntry>,
+    pub cache: &'a mut LayoutCache,
+}
+
+impl<'a> LayoutContext<'a> {
+    pub fn new(
+        engine: &'a mut LayoutEngine,
+        font_system: &'a FontSystem,
+        deferred: &'a mut Vec<DeferredEntry>,
+        cache: &'a mut LayoutCache,
+    ) -> Self {
+        Self {
+            engine,
+            font_system,
+            deferred,
+            cache,
+        }
+    }
+
+    /// Check the layout cache for a previously computed LayoutId.
+    pub fn cached(&mut self, key: LayoutCacheKey) -> Option<LayoutId> {
+        self.cache.get(key)
+    }
+
+    /// Store a computed LayoutId in the cache for future frames.
+    pub fn cache(&mut self, key: LayoutCacheKey, layout_id: LayoutId) {
+        self.cache.insert(key, layout_id);
+    }
+
+    pub fn new_leaf(&mut self, style: taffy::Style) -> LayoutId {
+        self.engine.new_leaf(style)
+    }
+
+    pub fn new_measured_leaf(
+        &mut self,
+        style: taffy::Style,
+        context: mozui_layout::MeasureContext,
+    ) -> LayoutId {
+        self.engine.new_measured_leaf(style, context)
+    }
+
+    pub fn new_with_children(&mut self, style: taffy::Style, children: &[LayoutId]) -> LayoutId {
+        self.engine.new_with_children(style, children)
+    }
+
+    /// Defer a floating element for independent layout and painting.
+    ///
+    /// The element will be laid out in its own layout tree after the main
+    /// tree is solved, and painted on top of the main tree.
+    ///
+    /// For anchor-relative positioning (tooltips, popovers), use
+    /// `DeferredPosition::Anchored`. For full-screen overlays (dialogs,
+    /// sheets), use `DeferredPosition::Overlay`.
+    pub fn defer(&mut self, element: Box<dyn Element>, position: DeferredPosition) {
+        self.deferred.push(DeferredEntry { element, position });
+    }
+}
+
+/// Context for the prepaint and paint phases — wraps drawing and interaction state.
+pub struct PaintContext<'a> {
+    pub engine: &'a LayoutEngine,
+    pub draw_list: &'a mut DrawList,
+    pub interactions: &'a mut InteractionMap,
+    pub font_system: &'a FontSystem,
+    /// Window size for clamping popovers, computing overlay positions, etc.
+    pub window_size: Size,
+    /// For deferred elements: the resolved bounds of the anchor element
+    /// from the main layout tree. `None` for main-tree elements and overlays.
+    pub anchor_bounds: Option<Rect>,
+}
+
+impl<'a> PaintContext<'a> {
+    pub fn new(
+        engine: &'a LayoutEngine,
+        draw_list: &'a mut DrawList,
+        interactions: &'a mut InteractionMap,
+        font_system: &'a FontSystem,
+        window_size: Size,
+    ) -> Self {
+        Self {
+            engine,
+            draw_list,
+            interactions,
+            font_system,
+            window_size,
+            anchor_bounds: None,
+        }
+    }
+
+    /// Look up the resolved absolute bounds for a layout node.
+    pub fn bounds(&self, id: LayoutId) -> Rect {
+        let cl = self.engine.bounds(id);
+        Rect::new(cl.x, cl.y, cl.width, cl.height)
+    }
+
+    /// Look up the content size of a layout node (may exceed node size for scroll containers).
+    pub fn content_size(&self, id: LayoutId) -> (f32, f32) {
+        self.engine.content_size(id)
+    }
 }
 
 /// Stored click handler — captures signal setters etc.
@@ -310,6 +498,11 @@ impl InteractionMap {
         self.dnd_targets.clear();
         // Note: active_dnd persists across clears (drag spans rebuilds)
         // Note: mouse_position, mouse_pressed, press_origin_bounds persist across clears
+    }
+
+    /// Number of interactive element entries (click targets).
+    pub fn entry_count(&self) -> usize {
+        self.entries.len()
     }
 
     // ── Mouse state ─────────────────────────────────────────────

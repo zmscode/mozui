@@ -1,8 +1,7 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,6 +11,11 @@ enum GroupBoxVariant {
 }
 
 pub struct GroupBox {
+    layout_id: LayoutId,
+    title_id: LayoutId,
+    content_id: LayoutId,
+    child_ids: Vec<LayoutId>,
+
     title: String,
     children: Vec<Box<dyn Element>>,
     variant: GroupBoxVariant,
@@ -23,6 +27,11 @@ pub struct GroupBox {
 
 pub fn group_box(title: impl Into<String>, theme: &Theme) -> GroupBox {
     GroupBox {
+        layout_id: LayoutId::NONE,
+        title_id: LayoutId::NONE,
+        content_id: LayoutId::NONE,
+        child_ids: Vec::new(),
+
         title: title.into(),
         children: Vec::new(),
         variant: GroupBoxVariant::Outline,
@@ -55,16 +64,16 @@ impl GroupBox {
 }
 
 impl Element for GroupBox {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let title_style = mozui_text::TextStyle {
             font_size: self.title_font_size(),
             color: self.title_color,
             ..Default::default()
         };
-        let title_measured = mozui_text::measure_text(&self.title, &title_style, None, font_system);
+        let title_measured = mozui_text::measure_text(&self.title, &title_style, None, cx.font_system);
 
         // Title node (positioned absolutely on the top border)
-        let title_node = engine.new_leaf(Style {
+        self.title_id = cx.new_leaf(Style {
             size: Size {
                 width: length(title_measured.width + 12.0), // padding
                 height: length(title_measured.height),
@@ -80,14 +89,14 @@ impl Element for GroupBox {
         });
 
         // Content children
-        let child_nodes: Vec<taffy::NodeId> = self
+        self.child_ids = self
             .children
-            .iter()
-            .map(|c| c.layout(engine, font_system))
+            .iter_mut()
+            .map(|c| c.layout(cx))
             .collect();
 
         // Content container
-        let content_node = engine.new_with_children(
+        self.content_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -103,10 +112,10 @@ impl Element for GroupBox {
                 },
                 ..Default::default()
             },
-            &child_nodes,
+            &self.child_ids,
         );
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -118,61 +127,43 @@ impl Element for GroupBox {
                 },
                 ..Default::default()
             },
-            &[title_node, content_node],
-        )
+            &[self.title_id, self.content_id],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        let outer = layouts[*index];
-        *index += 1;
-
-        let outer_bounds = mozui_style::Rect::new(outer.x, outer.y, outer.width, outer.height);
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Draw border/fill for the box
         let bg = match self.variant {
             GroupBoxVariant::Fill => self.fill_color,
             GroupBoxVariant::Outline => Color::TRANSPARENT,
         };
-        draw_list.push(DrawCommand::Rect {
-            bounds: outer_bounds,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds,
             background: Fill::Solid(bg),
             corner_radii: Corners::uniform(8.0),
             border: Some(Border {
                 width: 1.0,
                 color: self.border_color,
             }),
-                    shadow: None,
-                });
+            shadow: None,
+        });
 
         // Title
-        let title_layout = layouts[*index];
-        *index += 1;
-        let title_bounds = mozui_style::Rect::new(
-            title_layout.x,
-            title_layout.y,
-            title_layout.width,
-            title_layout.height,
-        );
+        let title_bounds = cx.bounds(self.title_id);
 
         // Background behind title text to "cut" the border
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: title_bounds,
             background: Fill::Solid(self.title_bg),
             corner_radii: Corners::uniform(0.0),
             border: None,
-                    shadow: None,
-                });
+            shadow: None,
+        });
 
-        draw_list.push(DrawCommand::Text {
+        cx.draw_list.push(DrawCommand::Text {
             text: self.title.clone(),
-            bounds: mozui_style::Rect::new(
+            bounds: Rect::new(
                 title_bounds.origin.x + 6.0,
                 title_bounds.origin.y,
                 title_bounds.size.width - 12.0,
@@ -184,13 +175,10 @@ impl Element for GroupBox {
             italic: false,
         });
 
-        // Content container
-        let _content = layouts[*index];
-        *index += 1;
-
         // Paint children
-        for child in &self.children {
-            child.paint(layouts, index, draw_list, interactions, font_system);
+        for i in 0..self.children.len() {
+            let child_bounds = cx.bounds(self.child_ids[i]);
+            self.children[i].paint(child_bounds, cx);
         }
     }
 }

@@ -1,8 +1,7 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::Color;
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::{LayoutId, MeasureContext};
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Rect};
 use taffy::prelude::*;
 
 use crate::styled::{ComponentSize, Sizable};
@@ -24,6 +23,7 @@ pub struct LabelHighlight {
 }
 
 pub struct Label {
+    layout_id: LayoutId,
     text: String,
     font_size: f32,
     color: Color,
@@ -37,6 +37,7 @@ pub struct Label {
 
 pub fn label(text: impl Into<String>) -> Label {
     Label {
+        layout_id: LayoutId::NONE,
         text: text.into(),
         font_size: 14.0,
         color: Color::WHITE,
@@ -124,20 +125,9 @@ impl Label {
             ComponentSize::Custom(px) => px as f32,
         }
     }
-}
 
-impl Sizable for Label {
-    fn with_size(mut self, size: impl Into<ComponentSize>) -> Self {
-        self.font_size = Self::font_size_for_component(size.into());
-        self
-    }
-}
-
-impl Element for Label {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
-        let display_text = self.display_text();
-
-        let text_style = mozui_text::TextStyle {
+    fn text_style(&self) -> mozui_text::TextStyle {
+        mozui_text::TextStyle {
             font_size: self.font_size,
             weight: if self.weight >= 700 {
                 mozui_text::FontWeight::Bold
@@ -152,41 +142,45 @@ impl Element for Label {
             line_height: self.line_height,
             color: self.color,
             ..Default::default()
-        };
+        }
+    }
+}
 
-        let max_width = if self.single_line { None } else { None }; // TODO: constrained width
-        let measured = mozui_text::measure_text(&display_text, &text_style, max_width, font_system);
+impl Sizable for Label {
+    fn with_size(mut self, size: impl Into<ComponentSize>) -> Self {
+        self.font_size = Self::font_size_for_component(size.into());
+        self
+    }
+}
 
-        engine.new_leaf(Style {
-            size: Size {
-                width: length(measured.width),
-                height: length(measured.height),
+impl Element for Label {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        let display_text = self.display_text();
+
+        // Use a measured leaf so taffy calls our measure function with
+        // the actual available width — multi-line labels wrap automatically.
+        self.layout_id = cx.new_measured_leaf(
+            Style {
+                min_size: Size {
+                    width: length(0.0),
+                    height: auto(),
+                },
+                ..Default::default()
             },
-            min_size: Size {
-                width: length(0.0),
-                height: auto(),
+            MeasureContext::Text {
+                text: display_text,
+                style: self.text_style(),
             },
-            ..Default::default()
-        })
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let display_text = self.display_text();
 
         // TODO: render highlight background rects behind matched ranges
 
-        draw_list.push(DrawCommand::Text {
+        cx.draw_list.push(DrawCommand::Text {
             text: display_text,
             bounds,
             font_size: self.font_size,

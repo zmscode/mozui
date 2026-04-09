@@ -1,8 +1,7 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Point, Theme};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Point, Rect, Theme};
 use taffy::prelude::*;
 
 use std::f32::consts::FRAC_PI_2;
@@ -91,7 +90,13 @@ impl Hsv {
     }
 
     fn hue_color(&self) -> Color {
-        Hsv { h: self.h, s: 1.0, v: 1.0, a: 1.0 }.to_color()
+        Hsv {
+            h: self.h,
+            s: 1.0,
+            v: 1.0,
+            a: 1.0,
+        }
+        .to_color()
     }
 }
 
@@ -105,6 +110,14 @@ pub struct ColorPicker {
     fg: Color,
     border_color: Color,
     corner_radius: f32,
+    // Layout IDs
+    layout_id: LayoutId,
+    sv_id: LayoutId,
+    hue_id: LayoutId,
+    alpha_id: LayoutId,
+    preview_row_id: LayoutId,
+    swatch_id: LayoutId,
+    hex_id: LayoutId,
 }
 
 pub fn color_picker(theme: &Theme) -> ColorPicker {
@@ -118,6 +131,13 @@ pub fn color_picker(theme: &Theme) -> ColorPicker {
         fg: theme.popover_foreground,
         border_color: theme.border,
         corner_radius: theme.radius_lg,
+        layout_id: LayoutId::NONE,
+        sv_id: LayoutId::NONE,
+        hue_id: LayoutId::NONE,
+        alpha_id: LayoutId::NONE,
+        preview_row_id: LayoutId::NONE,
+        swatch_id: LayoutId::NONE,
+        hex_id: LayoutId::NONE,
     }
 }
 
@@ -127,10 +147,7 @@ impl ColorPicker {
         self
     }
 
-    pub fn on_change(
-        mut self,
-        handler: impl Fn(Color, &mut dyn std::any::Any) + 'static,
-    ) -> Self {
+    pub fn on_change(mut self, handler: impl Fn(Color, &mut dyn std::any::Any) + 'static) -> Self {
         self.on_change = Some(Box::new(handler));
         self
     }
@@ -147,36 +164,53 @@ impl ColorPicker {
 }
 
 impl Element for ColorPicker {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut children = Vec::new();
 
         // SV area
-        children.push(engine.new_leaf(Style {
-            size: Size { width: length(AREA_SIZE), height: length(AREA_SIZE) },
+        self.sv_id = cx.new_leaf(Style {
+            size: Size {
+                width: length(AREA_SIZE),
+                height: length(AREA_SIZE),
+            },
             ..Default::default()
-        }));
+        });
+        children.push(self.sv_id);
 
         // Hue slider
-        children.push(engine.new_leaf(Style {
-            size: Size { width: length(AREA_SIZE), height: length(SLIDER_HEIGHT) },
+        self.hue_id = cx.new_leaf(Style {
+            size: Size {
+                width: length(AREA_SIZE),
+                height: length(SLIDER_HEIGHT),
+            },
             ..Default::default()
-        }));
+        });
+        children.push(self.hue_id);
 
         // Alpha slider
         if self.show_alpha {
-            children.push(engine.new_leaf(Style {
-                size: Size { width: length(AREA_SIZE), height: length(SLIDER_HEIGHT) },
+            self.alpha_id = cx.new_leaf(Style {
+                size: Size {
+                    width: length(AREA_SIZE),
+                    height: length(SLIDER_HEIGHT),
+                },
                 ..Default::default()
-            }));
+            });
+            children.push(self.alpha_id);
         }
 
         // Preview row
         if self.show_preview {
             let mut preview_children = Vec::new();
-            preview_children.push(engine.new_leaf(Style {
-                size: Size { width: length(PREVIEW_SIZE), height: length(PREVIEW_SIZE) },
+            self.swatch_id = cx.new_leaf(Style {
+                size: Size {
+                    width: length(PREVIEW_SIZE),
+                    height: length(PREVIEW_SIZE),
+                },
                 ..Default::default()
-            }));
+            });
+            preview_children.push(self.swatch_id);
+
             if self.show_hex {
                 let hex_text = format_hex(&self.color);
                 let text_style = mozui_text::TextStyle {
@@ -184,29 +218,41 @@ impl Element for ColorPicker {
                     color: self.fg,
                     ..Default::default()
                 };
-                let m = mozui_text::measure_text(&hex_text, &text_style, None, font_system);
-                preview_children.push(engine.new_leaf(Style {
-                    size: Size { width: length(m.width), height: length(m.height) },
+                let m = mozui_text::measure_text(&hex_text, &text_style, None, cx.font_system);
+                self.hex_id = cx.new_leaf(Style {
+                    size: Size {
+                        width: length(m.width),
+                        height: length(m.height),
+                    },
                     ..Default::default()
-                }));
+                });
+                preview_children.push(self.hex_id);
             }
-            children.push(engine.new_with_children(
+
+            self.preview_row_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Row,
                     align_items: Some(AlignItems::Center),
-                    gap: Size { width: length(GAP), height: zero() },
+                    gap: Size {
+                        width: length(GAP),
+                        height: zero(),
+                    },
                     ..Default::default()
                 },
                 &preview_children,
-            ));
+            );
+            children.push(self.preview_row_id);
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
-                gap: Size { width: zero(), height: length(GAP) },
+                gap: Size {
+                    width: zero(),
+                    height: length(GAP),
+                },
                 padding: taffy::Rect {
                     left: length(PADDING),
                     right: length(PADDING),
@@ -216,43 +262,31 @@ impl Element for ColorPicker {
                 ..Default::default()
             },
             &children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let hsv = Hsv::from_color(self.color);
 
         // Outer container
-        let container = layouts[*index];
-        *index += 1;
-        let container_bounds = mozui_style::Rect::new(
-            container.x, container.y, container.width, container.height,
-        );
-        draw_list.push(DrawCommand::Rect {
-            bounds: container_bounds,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds,
             background: Fill::Solid(self.bg),
             corner_radii: Corners::uniform(self.corner_radius),
-            border: Some(mozui_renderer::Border { width: 1.0, color: self.border_color }),
+            border: Some(mozui_renderer::Border {
+                width: 1.0,
+                color: self.border_color,
+            }),
             shadow: None,
         });
 
         // ── SV Area ──────────────────────────────────────────────
-        let sv_layout = layouts[*index];
-        *index += 1;
-        let sv_bounds = mozui_style::Rect::new(
-            sv_layout.x, sv_layout.y, sv_layout.width, sv_layout.height,
-        );
+        let sv_bounds = cx.bounds(self.sv_id);
         let sv_radius = 6.0;
 
         // Base: solid hue color
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: sv_bounds,
             background: Fill::Solid(hsv.hue_color()),
             corner_radii: Corners::uniform(sv_radius),
@@ -260,8 +294,7 @@ impl Element for ColorPicker {
             shadow: None,
         });
         // Overlay: white → transparent (left to right = saturation)
-        // angle=0 means left-to-right in our shader
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: sv_bounds,
             background: Fill::LinearGradient {
                 angle: 0.0,
@@ -272,8 +305,7 @@ impl Element for ColorPicker {
             shadow: None,
         });
         // Overlay: transparent → black (top to bottom = brightness)
-        // angle=PI/2 means top-to-bottom
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: sv_bounds,
             background: Fill::LinearGradient {
                 angle: FRAC_PI_2,
@@ -284,7 +316,7 @@ impl Element for ColorPicker {
             shadow: None,
         });
         // Border on the SV area
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: sv_bounds,
             background: Fill::Solid(Color::TRANSPARENT),
             corner_radii: Corners::uniform(sv_radius),
@@ -299,52 +331,61 @@ impl Element for ColorPicker {
         let thumb_x = sv_bounds.origin.x + hsv.s * sv_bounds.size.width;
         let thumb_y = sv_bounds.origin.y + (1.0 - hsv.v) * sv_bounds.size.height;
         // Outer ring (shadow)
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(
-                thumb_x - THUMB_RADIUS - 1.0, thumb_y - THUMB_RADIUS - 1.0,
-                (THUMB_RADIUS + 1.0) * 2.0, (THUMB_RADIUS + 1.0) * 2.0,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: Rect::new(
+                thumb_x - THUMB_RADIUS - 1.0,
+                thumb_y - THUMB_RADIUS - 1.0,
+                (THUMB_RADIUS + 1.0) * 2.0,
+                (THUMB_RADIUS + 1.0) * 2.0,
             ),
             background: Fill::Solid(Color::rgba(0, 0, 0, 0.3)),
             corner_radii: Corners::uniform(THUMB_RADIUS + 1.0),
             border: None,
             shadow: None,
         });
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(
-                thumb_x - THUMB_RADIUS, thumb_y - THUMB_RADIUS,
-                THUMB_RADIUS * 2.0, THUMB_RADIUS * 2.0,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: Rect::new(
+                thumb_x - THUMB_RADIUS,
+                thumb_y - THUMB_RADIUS,
+                THUMB_RADIUS * 2.0,
+                THUMB_RADIUS * 2.0,
             ),
             background: Fill::Solid(self.color.with_alpha(1.0)),
             corner_radii: Corners::uniform(THUMB_RADIUS),
-            border: Some(mozui_renderer::Border { width: 2.0, color: Color::WHITE }),
+            border: Some(mozui_renderer::Border {
+                width: 2.0,
+                color: Color::WHITE,
+            }),
             shadow: None,
         });
 
-        // SV drag handler — use screen-space bounds so scroll offset is accounted for
+        // SV drag handler
         if let Some(ref handler) = self.on_change {
             let handler_ptr = handler.as_ref() as *const dyn Fn(Color, &mut dyn std::any::Any);
-            let screen_sv = interactions.adjust_bounds(sv_bounds);
+            let screen_sv = cx.interactions.adjust_bounds(sv_bounds);
             let sv_origin = screen_sv.origin;
             let sv_size = screen_sv.size;
             let hue = hsv.h;
             let alpha = hsv.a;
-            interactions.register_drag_handler(
+            cx.interactions.register_drag_handler(
                 sv_bounds,
                 Box::new(move |pos: Point, cx| {
                     let s = ((pos.x - sv_origin.x) / sv_size.width).clamp(0.0, 1.0);
                     let v = 1.0 - ((pos.y - sv_origin.y) / sv_size.height).clamp(0.0, 1.0);
-                    let new_color = Hsv { h: hue, s, v, a: alpha }.to_color();
+                    let new_color = Hsv {
+                        h: hue,
+                        s,
+                        v,
+                        a: alpha,
+                    }
+                    .to_color();
                     unsafe { (*handler_ptr)(new_color, cx) };
                 }),
             );
         }
 
         // ── Hue slider ──────────────────────────────────────────
-        let hue_layout = layouts[*index];
-        *index += 1;
-        let hue_bounds = mozui_style::Rect::new(
-            hue_layout.x, hue_layout.y, hue_layout.width, hue_layout.height,
-        );
+        let hue_bounds = cx.bounds(self.hue_id);
         let slider_radius = SLIDER_HEIGHT / 2.0;
 
         // Draw 6 segments for the full hue spectrum
@@ -353,20 +394,30 @@ impl Element for ColorPicker {
             let (r0, g0, b0) = HUE_COLORS[i];
             let (r1, g1, b1) = HUE_COLORS[i + 1];
             let seg_x = hue_bounds.origin.x + i as f32 * seg_w;
-            let seg_bounds = mozui_style::Rect::new(
-                seg_x, hue_bounds.origin.y, seg_w + 1.0, hue_bounds.size.height,
+            let seg_bounds = Rect::new(
+                seg_x,
+                hue_bounds.origin.y,
+                seg_w + 1.0,
+                hue_bounds.size.height,
             );
-            // Corner radii: round only the leftmost and rightmost segments
             let corners = Corners {
                 top_left: if i == 0 { slider_radius } else { 0.0 },
                 bottom_left: if i == 0 { slider_radius } else { 0.0 },
-                top_right: if i == HUE_SEGMENTS - 1 { slider_radius } else { 0.0 },
-                bottom_right: if i == HUE_SEGMENTS - 1 { slider_radius } else { 0.0 },
+                top_right: if i == HUE_SEGMENTS - 1 {
+                    slider_radius
+                } else {
+                    0.0
+                },
+                bottom_right: if i == HUE_SEGMENTS - 1 {
+                    slider_radius
+                } else {
+                    0.0
+                },
             };
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: seg_bounds,
                 background: Fill::LinearGradient {
-                    angle: 0.0, // left to right
+                    angle: 0.0,
                     stops: vec![
                         (0.0, Color::new(r0, g0, b0, 1.0)),
                         (1.0, Color::new(r1, g1, b1, 1.0)),
@@ -383,31 +434,42 @@ impl Element for ColorPicker {
         let hue_thumb_x = hue_bounds.origin.x + hue_frac * hue_bounds.size.width;
         let hue_thumb_cy = hue_bounds.origin.y + hue_bounds.size.height / 2.0;
         let thumb_r = slider_radius;
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(
-                hue_thumb_x - thumb_r, hue_thumb_cy - thumb_r,
-                thumb_r * 2.0, thumb_r * 2.0,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: Rect::new(
+                hue_thumb_x - thumb_r,
+                hue_thumb_cy - thumb_r,
+                thumb_r * 2.0,
+                thumb_r * 2.0,
             ),
             background: Fill::Solid(hsv.hue_color()),
             corner_radii: Corners::uniform(thumb_r),
-            border: Some(mozui_renderer::Border { width: 2.0, color: Color::WHITE }),
+            border: Some(mozui_renderer::Border {
+                width: 2.0,
+                color: Color::WHITE,
+            }),
             shadow: None,
         });
 
         // Hue drag handler
         if let Some(ref handler) = self.on_change {
             let handler_ptr = handler.as_ref() as *const dyn Fn(Color, &mut dyn std::any::Any);
-            let screen_hue = interactions.adjust_bounds(hue_bounds);
+            let screen_hue = cx.interactions.adjust_bounds(hue_bounds);
             let hue_origin_x = screen_hue.origin.x;
             let hue_width = screen_hue.size.width;
             let sat = hsv.s;
             let val = hsv.v;
             let alpha = hsv.a;
-            interactions.register_drag_handler(
+            cx.interactions.register_drag_handler(
                 hue_bounds,
                 Box::new(move |pos: Point, cx| {
                     let h = ((pos.x - hue_origin_x) / hue_width).clamp(0.0, 1.0) * 360.0;
-                    let new_color = Hsv { h, s: sat, v: val, a: alpha }.to_color();
+                    let new_color = Hsv {
+                        h,
+                        s: sat,
+                        v: val,
+                        a: alpha,
+                    }
+                    .to_color();
                     unsafe { (*handler_ptr)(new_color, cx) };
                 }),
             );
@@ -415,11 +477,7 @@ impl Element for ColorPicker {
 
         // ── Alpha slider ─────────────────────────────────────────
         if self.show_alpha {
-            let alpha_layout = layouts[*index];
-            *index += 1;
-            let alpha_bounds = mozui_style::Rect::new(
-                alpha_layout.x, alpha_layout.y, alpha_layout.width, alpha_layout.height,
-            );
+            let alpha_bounds = cx.bounds(self.alpha_id);
 
             // Checkerboard simulation: alternating light/dark gray segments
             let checker_count = 12;
@@ -430,15 +488,28 @@ impl Element for ColorPicker {
                 } else {
                     Color::hex("#999999")
                 };
-                let cx = alpha_bounds.origin.x + i as f32 * checker_w;
+                let checker_x = alpha_bounds.origin.x + i as f32 * checker_w;
                 let corners = Corners {
                     top_left: if i == 0 { slider_radius } else { 0.0 },
                     bottom_left: if i == 0 { slider_radius } else { 0.0 },
-                    top_right: if i == checker_count - 1 { slider_radius } else { 0.0 },
-                    bottom_right: if i == checker_count - 1 { slider_radius } else { 0.0 },
+                    top_right: if i == checker_count - 1 {
+                        slider_radius
+                    } else {
+                        0.0
+                    },
+                    bottom_right: if i == checker_count - 1 {
+                        slider_radius
+                    } else {
+                        0.0
+                    },
                 };
-                draw_list.push(DrawCommand::Rect {
-                    bounds: mozui_style::Rect::new(cx, alpha_bounds.origin.y, checker_w, alpha_bounds.size.height),
+                cx.draw_list.push(DrawCommand::Rect {
+                    bounds: Rect::new(
+                        checker_x,
+                        alpha_bounds.origin.y,
+                        checker_w,
+                        alpha_bounds.size.height,
+                    ),
                     background: Fill::Solid(c),
                     corner_radii: corners,
                     border: None,
@@ -448,7 +519,7 @@ impl Element for ColorPicker {
 
             // Alpha gradient overlay
             let opaque = self.color.with_alpha(1.0);
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: alpha_bounds,
                 background: Fill::LinearGradient {
                     angle: 0.0,
@@ -462,27 +533,32 @@ impl Element for ColorPicker {
             // Alpha thumb
             let alpha_thumb_x = alpha_bounds.origin.x + hsv.a * alpha_bounds.size.width;
             let alpha_thumb_cy = alpha_bounds.origin.y + alpha_bounds.size.height / 2.0;
-            draw_list.push(DrawCommand::Rect {
-                bounds: mozui_style::Rect::new(
-                    alpha_thumb_x - thumb_r, alpha_thumb_cy - thumb_r,
-                    thumb_r * 2.0, thumb_r * 2.0,
+            cx.draw_list.push(DrawCommand::Rect {
+                bounds: Rect::new(
+                    alpha_thumb_x - thumb_r,
+                    alpha_thumb_cy - thumb_r,
+                    thumb_r * 2.0,
+                    thumb_r * 2.0,
                 ),
                 background: Fill::Solid(self.color),
                 corner_radii: Corners::uniform(thumb_r),
-                border: Some(mozui_renderer::Border { width: 2.0, color: Color::WHITE }),
+                border: Some(mozui_renderer::Border {
+                    width: 2.0,
+                    color: Color::WHITE,
+                }),
                 shadow: None,
             });
 
             // Alpha drag handler
             if let Some(ref handler) = self.on_change {
                 let handler_ptr = handler.as_ref() as *const dyn Fn(Color, &mut dyn std::any::Any);
-                let screen_alpha = interactions.adjust_bounds(alpha_bounds);
+                let screen_alpha = cx.interactions.adjust_bounds(alpha_bounds);
                 let alpha_origin_x = screen_alpha.origin.x;
                 let alpha_width = screen_alpha.size.width;
                 let h = hsv.h;
                 let s = hsv.s;
                 let v = hsv.v;
-                interactions.register_drag_handler(
+                cx.interactions.register_drag_handler(
                     alpha_bounds,
                     Box::new(move |pos: Point, cx| {
                         let a = ((pos.x - alpha_origin_x) / alpha_width).clamp(0.0, 1.0);
@@ -495,29 +571,21 @@ impl Element for ColorPicker {
 
         // ── Preview row ──────────────────────────────────────────
         if self.show_preview {
-            let _preview_row = layouts[*index];
-            *index += 1;
-
-            let swatch_layout = layouts[*index];
-            *index += 1;
-            let swatch_bounds = mozui_style::Rect::new(
-                swatch_layout.x, swatch_layout.y, swatch_layout.width, swatch_layout.height,
-            );
-            draw_list.push(DrawCommand::Rect {
+            let swatch_bounds = cx.bounds(self.swatch_id);
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: swatch_bounds,
                 background: Fill::Solid(self.color),
                 corner_radii: Corners::uniform(6.0),
-                border: Some(mozui_renderer::Border { width: 1.0, color: self.border_color }),
+                border: Some(mozui_renderer::Border {
+                    width: 1.0,
+                    color: self.border_color,
+                }),
                 shadow: None,
             });
 
             if self.show_hex {
-                let hex_layout = layouts[*index];
-                *index += 1;
-                let hex_bounds = mozui_style::Rect::new(
-                    hex_layout.x, hex_layout.y, hex_layout.width, hex_layout.height,
-                );
-                draw_list.push(DrawCommand::Text {
+                let hex_bounds = cx.bounds(self.hex_id);
+                cx.draw_list.push(DrawCommand::Text {
                     text: format_hex(&self.color),
                     bounds: hex_bounds,
                     font_size: 13.0,

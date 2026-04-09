@@ -1,9 +1,8 @@
 use crate::styled::{ComponentSize, Sizable};
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 /// Shape variant for skeleton placeholders.
@@ -18,6 +17,7 @@ pub enum SkeletonShape {
 }
 
 pub struct Skeleton {
+    layout_id: LayoutId,
     width: f32,
     height: f32,
     shape: SkeletonShape,
@@ -27,6 +27,7 @@ pub struct Skeleton {
 
 pub fn skeleton(theme: &Theme) -> Skeleton {
     Skeleton {
+        layout_id: LayoutId::NONE,
         width: 100.0,
         height: 16.0,
         shape: SkeletonShape::Rect,
@@ -111,32 +112,20 @@ impl Sizable for Skeleton {
 }
 
 impl Element for Skeleton {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let (w, h) = self.resolved_size();
-        engine.new_leaf(Style {
+        self.layout_id = cx.new_leaf(Style {
             size: Size {
                 width: length(w),
                 height: length(h),
             },
             ..Default::default()
-        })
+        });
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds =
-            mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
-
-        draw_list.push(DrawCommand::Rect {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds,
             background: Fill::Solid(self.color),
             corner_radii: self.corner_radii(),

@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Shadow, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
 use taffy::prelude::*;
 
 /// A single option in a select dropdown.
@@ -72,6 +71,14 @@ pub struct Select {
     // Searchable (combobox)
     searchable: bool,
     search_text: String,
+    // Layout IDs
+    layout_id: LayoutId,
+    trigger_id: LayoutId,
+    text_id: LayoutId,
+    chevron_id: LayoutId,
+    dropdown_id: LayoutId,
+    search_id: LayoutId,
+    item_ids: Vec<LayoutId>,
 }
 
 pub fn select(theme: &Theme) -> Select {
@@ -96,6 +103,13 @@ pub fn select(theme: &Theme) -> Select {
         disabled: false,
         searchable: false,
         search_text: String::new(),
+        layout_id: LayoutId::NONE,
+        trigger_id: LayoutId::NONE,
+        text_id: LayoutId::NONE,
+        chevron_id: LayoutId::NONE,
+        dropdown_id: LayoutId::NONE,
+        search_id: LayoutId::NONE,
+        item_ids: Vec::new(),
     }
 }
 
@@ -183,17 +197,17 @@ const GAP: f32 = 4.0;
 const CHEVRON_SIZE: f32 = 14.0;
 
 impl Element for Select {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let display_text = self.selected_label().unwrap_or(&self.placeholder);
         let text_style = mozui_text::TextStyle {
             font_size: self.font_size,
             color: self.fg,
             ..Default::default()
         };
-        let measured = mozui_text::measure_text(display_text, &text_style, None, font_system);
+        let measured = mozui_text::measure_text(display_text, &text_style, None, cx.font_system);
 
         // Trigger button: [text] [chevron]
-        let text_node = engine.new_leaf(Style {
+        self.text_id = cx.new_leaf(Style {
             size: taffy::Size {
                 width: length(measured.width),
                 height: length(measured.height),
@@ -201,14 +215,14 @@ impl Element for Select {
             flex_grow: 1.0,
             ..Default::default()
         });
-        let chevron_node = engine.new_leaf(Style {
+        self.chevron_id = cx.new_leaf(Style {
             size: taffy::Size {
                 width: length(CHEVRON_SIZE),
                 height: length(CHEVRON_SIZE),
             },
             ..Default::default()
         });
-        let trigger = engine.new_with_children(
+        self.trigger_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -229,16 +243,27 @@ impl Element for Select {
                 },
                 ..Default::default()
             },
-            &[text_node, chevron_node],
+            &[self.text_id, self.chevron_id],
         );
 
         if !self.open {
-            return trigger;
+            self.layout_id = self.trigger_id;
+            return self.layout_id;
         }
 
-        // Dropdown list
-        let filtered = self.filtered_options();
-        let mut item_nodes = Vec::new();
+        // Dropdown list — collect filtered indices to avoid borrowing self
+        let filtered_indices: Vec<usize> = if !self.searchable || self.search_text.is_empty() {
+            (0..self.options.len()).collect()
+        } else {
+            let query = self.search_text.to_lowercase();
+            self.options
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| o.label.to_lowercase().contains(&query))
+                .map(|(i, _)| i)
+                .collect()
+        };
+        self.item_ids.clear();
 
         // Optional search input
         if self.searchable {
@@ -252,24 +277,24 @@ impl Element for Select {
             } else {
                 &self.search_text
             };
-            let sm = mozui_text::measure_text(search_text, &search_style, None, font_system);
-            item_nodes.push(engine.new_leaf(Style {
+            let sm = mozui_text::measure_text(search_text, &search_style, None, cx.font_system);
+            self.search_id = cx.new_leaf(Style {
                 size: taffy::Size {
                     width: percent(1.0),
                     height: length(sm.height + ITEM_PY * 2.0),
                 },
                 ..Default::default()
-            }));
+            });
         }
 
-        for option in &filtered {
+        for &idx in &filtered_indices {
             let style = mozui_text::TextStyle {
                 font_size: self.font_size,
                 color: self.fg,
                 ..Default::default()
             };
-            let m = mozui_text::measure_text(&option.label, &style, None, font_system);
-            item_nodes.push(engine.new_leaf(Style {
+            let m = mozui_text::measure_text(&self.options[idx].label, &style, None, cx.font_system);
+            self.item_ids.push(cx.new_leaf(Style {
                 size: taffy::Size {
                     width: percent(1.0),
                     height: length(m.height + ITEM_PY * 2.0),
@@ -284,7 +309,13 @@ impl Element for Select {
             }));
         }
 
-        let dropdown = engine.new_with_children(
+        let mut dropdown_children = Vec::new();
+        if self.searchable {
+            dropdown_children.push(self.search_id);
+        }
+        dropdown_children.extend_from_slice(&self.item_ids);
+
+        self.dropdown_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -300,11 +331,11 @@ impl Element for Select {
                 },
                 ..Default::default()
             },
-            &item_nodes,
+            &dropdown_children,
         );
 
         // Wrapper: trigger + dropdown stacked vertically
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -314,43 +345,26 @@ impl Element for Select {
                 },
                 ..Default::default()
             },
-            &[trigger, dropdown],
-        )
+            &[self.trigger_id, self.dropdown_id],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         if !self.open {
             // Just the trigger
-            self.paint_trigger(layouts, index, draw_list, interactions);
+            self.paint_trigger(cx);
             return;
         }
 
-        // Wrapper node
-        let _wrapper = layouts[*index];
-        *index += 1;
-
         // Trigger
-        self.paint_trigger(layouts, index, draw_list, interactions);
+        self.paint_trigger(cx);
 
         // Dropdown
-        let dropdown_layout = layouts[*index];
-        *index += 1;
-        let dropdown_bounds = mozui_style::Rect::new(
-            dropdown_layout.x,
-            dropdown_layout.y,
-            dropdown_layout.width,
-            dropdown_layout.height,
-        );
+        let dropdown_bounds = cx.bounds(self.dropdown_id);
 
         // Dropdown background
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: dropdown_bounds,
             background: Fill::Solid(self.popover_bg),
             corner_radii: Corners::uniform(self.corner_radius),
@@ -363,22 +377,15 @@ impl Element for Select {
 
         // Search input (if searchable)
         if self.searchable {
-            let search_layout = layouts[*index];
-            *index += 1;
-            let search_bounds = mozui_style::Rect::new(
-                search_layout.x + ITEM_PX,
-                search_layout.y + ITEM_PY,
-                search_layout.width - ITEM_PX * 2.0,
-                search_layout.height - ITEM_PY * 2.0,
-            );
+            let search_bounds = cx.bounds(self.search_id);
 
             // Search input background
-            draw_list.push(DrawCommand::Rect {
-                bounds: mozui_style::Rect::new(
-                    search_layout.x,
-                    search_layout.y,
-                    search_layout.width,
-                    search_layout.height,
+            cx.draw_list.push(DrawCommand::Rect {
+                bounds: Rect::new(
+                    search_bounds.origin.x,
+                    search_bounds.origin.y,
+                    search_bounds.size.width,
+                    search_bounds.size.height,
                 ),
                 background: Fill::Solid(self.bg),
                 corner_radii: Corners::uniform(self.corner_radius),
@@ -399,9 +406,14 @@ impl Element for Select {
             } else {
                 self.fg
             };
-            draw_list.push(DrawCommand::Text {
+            cx.draw_list.push(DrawCommand::Text {
                 text: text.to_string(),
-                bounds: search_bounds,
+                bounds: Rect::new(
+                    search_bounds.origin.x + ITEM_PX,
+                    search_bounds.origin.y + ITEM_PY,
+                    search_bounds.size.width - ITEM_PX * 2.0,
+                    search_bounds.size.height - ITEM_PY * 2.0,
+                ),
                 font_size: self.font_size,
                 color,
                 weight: 400,
@@ -411,22 +423,15 @@ impl Element for Select {
 
         // Options
         let filtered = self.filtered_options();
-        for option in &filtered {
-            let item_layout = layouts[*index];
-            *index += 1;
-            let item_bounds = mozui_style::Rect::new(
-                item_layout.x,
-                item_layout.y,
-                item_layout.width,
-                item_layout.height,
-            );
+        for i in 0..filtered.len() {
+            let item_bounds = cx.bounds(self.item_ids[i]);
 
             let is_selected = self
                 .selected_value
                 .as_ref()
-                .map_or(false, |v| *v == option.value);
-            let alpha = if option.disabled { 0.5 } else { 1.0 };
-            let hovered = !option.disabled && interactions.is_hovered(item_bounds);
+                .map_or(false, |v| *v == filtered[i].value);
+            let alpha = if filtered[i].disabled { 0.5 } else { 1.0 };
+            let hovered = !filtered[i].disabled && cx.interactions.is_hovered(item_bounds);
 
             // Hover / selected highlight
             if hovered || is_selected {
@@ -435,7 +440,7 @@ impl Element for Select {
                 } else {
                     self.hover_bg
                 };
-                draw_list.push(DrawCommand::Rect {
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: item_bounds,
                     background: Fill::Solid(bg),
                     corner_radii: Corners::uniform(4.0),
@@ -450,13 +455,13 @@ impl Element for Select {
             } else {
                 self.fg.with_alpha(alpha)
             };
-            draw_list.push(DrawCommand::Text {
-                text: option.label.clone(),
-                bounds: mozui_style::Rect::new(
-                    item_layout.x + ITEM_PX,
-                    item_layout.y + ITEM_PY,
-                    item_layout.width - ITEM_PX * 2.0,
-                    item_layout.height - ITEM_PY * 2.0,
+            cx.draw_list.push(DrawCommand::Text {
+                text: filtered[i].label.clone(),
+                bounds: Rect::new(
+                    item_bounds.origin.x + ITEM_PX,
+                    item_bounds.origin.y + ITEM_PY,
+                    item_bounds.size.width - ITEM_PX * 2.0,
+                    item_bounds.size.height - ITEM_PY * 2.0,
                 ),
                 font_size: self.font_size,
                 color: text_color,
@@ -466,12 +471,12 @@ impl Element for Select {
 
             // Check mark for selected item
             if is_selected {
-                draw_list.push(DrawCommand::Icon {
+                cx.draw_list.push(DrawCommand::Icon {
                     name: IconName::Check,
                     weight: IconWeight::Bold,
-                    bounds: mozui_style::Rect::new(
-                        item_layout.x + item_layout.width - ITEM_PX - 14.0,
-                        item_layout.y + (item_layout.height - 14.0) / 2.0,
+                    bounds: Rect::new(
+                        item_bounds.origin.x + item_bounds.size.width - ITEM_PX - 14.0,
+                        item_bounds.origin.y + (item_bounds.size.height - 14.0) / 2.0,
                         14.0,
                         14.0,
                     ),
@@ -481,16 +486,15 @@ impl Element for Select {
             }
 
             // Click handler
-            if !option.disabled {
+            if !filtered[i].disabled {
                 if let Some(ref handler) = self.on_select {
-                    let value = option.value.clone();
+                    let value = filtered[i].value.clone();
                     let handler_ptr =
                         handler.as_ref() as *const dyn Fn(&str, &mut dyn std::any::Any);
                     // Also dismiss on select
                     if let Some(ref toggle) = self.on_toggle {
-                        let toggle_ptr =
-                            toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                        interactions.register_click(
+                        let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
+                        cx.interactions.register_click(
                             item_bounds,
                             Box::new(move |cx| unsafe {
                                 (*handler_ptr)(&value, cx);
@@ -498,7 +502,7 @@ impl Element for Select {
                             }),
                         );
                     } else {
-                        interactions.register_click(
+                        cx.interactions.register_click(
                             item_bounds,
                             Box::new(move |cx| unsafe {
                                 (*handler_ptr)(&value, cx);
@@ -512,34 +516,22 @@ impl Element for Select {
         // Escape to close
         if let Some(ref toggle) = self.on_toggle {
             let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            interactions.register_key_handler(Box::new(move |key, _mods, cx| {
-                if key == mozui_events::Key::Escape {
-                    unsafe { (*toggle_ptr)(cx) };
-                }
-            }));
+            cx.interactions
+                .register_key_handler(Box::new(move |key, _mods, cx| {
+                    if key == mozui_events::Key::Escape {
+                        unsafe { (*toggle_ptr)(cx) };
+                    }
+                }));
         }
     }
 }
 
 impl Select {
-    fn paint_trigger(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-    ) {
-        let trigger_layout = layouts[*index];
-        *index += 1;
-        let trigger_bounds = mozui_style::Rect::new(
-            trigger_layout.x,
-            trigger_layout.y,
-            trigger_layout.width,
-            trigger_layout.height,
-        );
+    fn paint_trigger(&self, cx: &mut PaintContext) {
+        let trigger_bounds = cx.bounds(self.trigger_id);
 
-        let hovered = !self.disabled && interactions.is_hovered(trigger_bounds);
-        let active = !self.disabled && interactions.is_active(trigger_bounds);
+        let hovered = !self.disabled && cx.interactions.is_hovered(trigger_bounds);
+        let active = !self.disabled && cx.interactions.is_active(trigger_bounds);
 
         // Trigger background
         let bg = if active {
@@ -555,7 +547,7 @@ impl Select {
             self.bg
         };
 
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: trigger_bounds,
             background: Fill::Solid(bg),
             corner_radii: Corners::uniform(self.corner_radius),
@@ -571,22 +563,16 @@ impl Select {
         });
 
         // Text
-        let text_layout = layouts[*index];
-        *index += 1;
+        let text_bounds = cx.bounds(self.text_id);
         let display_text = self.selected_label().unwrap_or(&self.placeholder);
         let text_color = if self.selected_value.is_some() {
             self.fg
         } else {
             self.muted_fg
         };
-        draw_list.push(DrawCommand::Text {
+        cx.draw_list.push(DrawCommand::Text {
             text: display_text.to_string(),
-            bounds: mozui_style::Rect::new(
-                text_layout.x,
-                text_layout.y,
-                text_layout.width,
-                text_layout.height,
-            ),
+            bounds: text_bounds,
             font_size: self.font_size,
             color: if self.disabled {
                 text_color.with_alpha(0.5)
@@ -598,21 +584,15 @@ impl Select {
         });
 
         // Chevron icon
-        let chevron_layout = layouts[*index];
-        *index += 1;
-        draw_list.push(DrawCommand::Icon {
+        let chevron_bounds = cx.bounds(self.chevron_id);
+        cx.draw_list.push(DrawCommand::Icon {
             name: if self.open {
                 IconName::CaretUp
             } else {
                 IconName::CaretDown
             },
             weight: IconWeight::Bold,
-            bounds: mozui_style::Rect::new(
-                chevron_layout.x,
-                chevron_layout.y,
-                chevron_layout.width,
-                chevron_layout.height,
-            ),
+            bounds: chevron_bounds,
             color: self.muted_fg,
             size_px: CHEVRON_SIZE,
         });
@@ -621,7 +601,7 @@ impl Select {
         if !self.disabled {
             if let Some(ref toggle) = self.on_toggle {
                 let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions.register_click(
+                cx.interactions.register_click(
                     trigger_bounds,
                     Box::new(move |cx| unsafe { (*toggle_ptr)(cx) }),
                 );

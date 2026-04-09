@@ -1,12 +1,14 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct Spinner {
+    layout_id: LayoutId,
+    icon_id: LayoutId,
+    label_id: LayoutId,
     size: f32,
     color: Color,
     label: Option<String>,
@@ -15,6 +17,9 @@ pub struct Spinner {
 
 pub fn spinner(theme: &Theme) -> Spinner {
     Spinner {
+        layout_id: LayoutId::NONE,
+        icon_id: LayoutId::NONE,
+        label_id: LayoutId::NONE,
         size: 20.0,
         color: theme.primary,
         label: None,
@@ -45,17 +50,18 @@ impl Spinner {
 }
 
 impl Element for Spinner {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut children = Vec::new();
 
         // Spinner icon
-        children.push(engine.new_leaf(Style {
+        self.icon_id = cx.new_leaf(Style {
             size: Size {
                 width: length(self.size),
                 height: length(self.size),
             },
             ..Default::default()
-        }));
+        });
+        children.push(self.icon_id);
 
         // Optional label
         if let Some(ref label_text) = self.label {
@@ -64,17 +70,18 @@ impl Element for Spinner {
                 color: self.label_color,
                 ..Default::default()
             };
-            let m = mozui_text::measure_text(label_text, &style, None, font_system);
-            children.push(engine.new_leaf(Style {
+            let m = mozui_text::measure_text(label_text, &style, None, cx.font_system);
+            self.label_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(m.width),
                     height: length(m.height),
                 },
                 ..Default::default()
-            }));
+            });
+            children.push(self.label_id);
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -86,31 +93,14 @@ impl Element for Spinner {
                 ..Default::default()
             },
             &children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        // Container
-        let _container = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         // Spinner icon (SpinnerGap has a visual gap that suggests rotation)
-        let icon_layout = layouts[*index];
-        *index += 1;
-        let icon_bounds = mozui_style::Rect::new(
-            icon_layout.x,
-            icon_layout.y,
-            icon_layout.width,
-            icon_layout.height,
-        );
-        draw_list.push(DrawCommand::Icon {
+        let icon_bounds = cx.bounds(self.icon_id);
+        cx.draw_list.push(DrawCommand::Icon {
             name: IconName::SpinnerGap,
             weight: IconWeight::Bold,
             bounds: icon_bounds,
@@ -120,15 +110,8 @@ impl Element for Spinner {
 
         // Label
         if let Some(ref label_text) = self.label {
-            let label_layout = layouts[*index];
-            *index += 1;
-            let label_bounds = mozui_style::Rect::new(
-                label_layout.x,
-                label_layout.y,
-                label_layout.width,
-                label_layout.height,
-            );
-            draw_list.push(DrawCommand::Text {
+            let label_bounds = cx.bounds(self.label_id);
+            cx.draw_list.push(DrawCommand::Text {
                 text: label_text.clone(),
                 bounds: label_bounds,
                 font_size: 13.0,

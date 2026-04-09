@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_events::CursorStyle;
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
 use mozui_style::{Color, Corners, Fill, Point, Rect, Theme};
-use mozui_text::FontSystem;
 use taffy::prelude::*;
 
 const HANDLE_SIZE: f32 = 1.0;
@@ -23,6 +22,7 @@ pub struct ResizablePanel {
     initial_size: Option<f32>,
     min_size: f32,
     max_size: f32,
+    child_ids: Vec<LayoutId>,
 }
 
 pub fn resizable_panel() -> ResizablePanel {
@@ -31,6 +31,7 @@ pub fn resizable_panel() -> ResizablePanel {
         initial_size: None,
         min_size: PANEL_MIN_SIZE,
         max_size: f32::MAX,
+        child_ids: Vec::new(),
     }
 }
 
@@ -69,6 +70,9 @@ pub struct ResizablePanelGroup {
     on_resize: Option<Box<dyn Fn(Vec<f32>, &mut dyn std::any::Any)>>,
     handle_color: Color,
     handle_hover_color: Color,
+    layout_id: LayoutId,
+    handle_ids: Vec<LayoutId>,
+    panel_ids: Vec<LayoutId>,
 }
 
 pub fn h_resizable(theme: &Theme) -> ResizablePanelGroup {
@@ -79,6 +83,9 @@ pub fn h_resizable(theme: &Theme) -> ResizablePanelGroup {
         on_resize: None,
         handle_color: theme.border,
         handle_hover_color: theme.primary,
+        layout_id: LayoutId::NONE,
+        handle_ids: Vec::new(),
+        panel_ids: Vec::new(),
     }
 }
 
@@ -90,6 +97,9 @@ pub fn v_resizable(theme: &Theme) -> ResizablePanelGroup {
         on_resize: None,
         handle_color: theme.border,
         handle_hover_color: theme.primary,
+        layout_id: LayoutId::NONE,
+        handle_ids: Vec::new(),
+        panel_ids: Vec::new(),
     }
 }
 
@@ -104,10 +114,7 @@ impl ResizablePanelGroup {
         self
     }
 
-    pub fn on_resize(
-        mut self,
-        f: impl Fn(Vec<f32>, &mut dyn std::any::Any) + 'static,
-    ) -> Self {
+    pub fn on_resize(mut self, f: impl Fn(Vec<f32>, &mut dyn std::any::Any) + 'static) -> Self {
         self.on_resize = Some(Box::new(f));
         self
     }
@@ -118,10 +125,12 @@ impl ResizablePanelGroup {
 }
 
 impl Element for ResizablePanelGroup {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let n = self.panels.len();
         let has_sizes = self.has_valid_sizes();
         let mut children = Vec::new();
+        self.handle_ids.clear();
+        self.panel_ids.clear();
 
         for i in 0..n {
             if i > 0 {
@@ -143,14 +152,16 @@ impl Element for ResizablePanelGroup {
                         ..Default::default()
                     },
                 };
-                children.push(engine.new_leaf(handle_style));
+                let handle_id = cx.new_leaf(handle_style);
+                self.handle_ids.push(handle_id);
+                children.push(handle_id);
             }
 
-            let panel_children: Vec<_> = self.panels[i]
-                .children
-                .iter()
-                .map(|c| c.layout(engine, font_system))
-                .collect();
+            self.panels[i].child_ids.clear();
+            for j in 0..self.panels[i].children.len() {
+                let child_id = self.panels[i].children[j].layout(cx);
+                self.panels[i].child_ids.push(child_id);
+            }
 
             let panel = &self.panels[i];
 
@@ -220,7 +231,9 @@ impl Element for ResizablePanelGroup {
                     ..Default::default()
                 },
             };
-            children.push(engine.new_with_children(panel_style, &panel_children));
+            let panel_id = cx.new_with_children(panel_style, &panel.child_ids);
+            self.panel_ids.push(panel_id);
+            children.push(panel_id);
         }
 
         let container_style = match self.axis {
@@ -243,69 +256,50 @@ impl Element for ResizablePanelGroup {
                 ..Default::default()
             },
         };
-        engine.new_with_children(container_style, &children)
+        self.layout_id = cx.new_with_children(container_style, &children);
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let n = self.panels.len();
         if n == 0 {
             return;
         }
 
-        let container = layouts[*index];
-        *index += 1;
-
-        // We need actual rendered sizes for drag calculations.
-        // Pre-scan: the layout array is in pre-order. For each panel, its layout
-        // node is at a known position relative to handles. We peek ahead to read
-        // panel layout widths/heights before painting.
-        let mut peek = *index;
+        // Collect actual rendered sizes for drag calculations.
         let mut actual_sizes = Vec::with_capacity(n);
         for i in 0..n {
-            if i > 0 {
-                peek += 1; // handle leaf
-            }
-            let pl = layouts[peek];
+            let panel_bounds = cx.bounds(self.panel_ids[i]);
             actual_sizes.push(match self.axis {
-                ResizeAxis::Horizontal => pl.width,
-                ResizeAxis::Vertical => pl.height,
+                ResizeAxis::Horizontal => panel_bounds.size.width,
+                ResizeAxis::Vertical => panel_bounds.size.height,
             });
-            peek += 1; // panel container node
-            // We don't know how many children follow, but we don't need to skip them
-            // because we only need the panel container nodes which are at predictable offsets.
         }
 
+        let mut handle_idx = 0;
         for i in 0..n {
             // Handle
             if i > 0 {
-                let hl = layouts[*index];
-                *index += 1;
+                let handle_bounds = cx.bounds(self.handle_ids[handle_idx]);
+                handle_idx += 1;
 
-                let handle_bounds = Rect::new(hl.x, hl.y, hl.width, hl.height);
                 let hit_bounds = match self.axis {
                     ResizeAxis::Horizontal => Rect::new(
-                        hl.x - HANDLE_HIT_AREA / 2.0,
-                        hl.y,
+                        handle_bounds.origin.x - HANDLE_HIT_AREA / 2.0,
+                        handle_bounds.origin.y,
                         HANDLE_SIZE + HANDLE_HIT_AREA,
-                        hl.height,
+                        handle_bounds.size.height,
                     ),
                     ResizeAxis::Vertical => Rect::new(
-                        hl.x,
-                        hl.y - HANDLE_HIT_AREA / 2.0,
-                        hl.width,
+                        handle_bounds.origin.x,
+                        handle_bounds.origin.y - HANDLE_HIT_AREA / 2.0,
+                        handle_bounds.size.width,
                         HANDLE_SIZE + HANDLE_HIT_AREA,
                     ),
                 };
 
-                let hovered = interactions.is_hovered(hit_bounds);
-                draw_list.push(DrawCommand::Rect {
+                let hovered = cx.interactions.is_hovered(hit_bounds);
+                cx.draw_list.push(DrawCommand::Rect {
                     bounds: handle_bounds,
                     background: Fill::Solid(if hovered {
                         self.handle_hover_color
@@ -321,8 +315,8 @@ impl Element for ResizablePanelGroup {
                     ResizeAxis::Horizontal => CursorStyle::ResizeEW,
                     ResizeAxis::Vertical => CursorStyle::ResizeNS,
                 };
-                interactions.register_cursor_region(hit_bounds, cursor);
-                interactions.register_hover_region(hit_bounds);
+                cx.interactions.register_cursor_region(hit_bounds, cursor);
+                cx.interactions.register_hover_region(hit_bounds);
 
                 if let Some(ref on_resize) = self.on_resize {
                     let ptr =
@@ -333,11 +327,11 @@ impl Element for ResizablePanelGroup {
                     let mins: Vec<f32> = self.panels.iter().map(|p| p.min_size).collect();
                     let maxs: Vec<f32> = self.panels.iter().map(|p| p.max_size).collect();
                     let origin = match axis {
-                        ResizeAxis::Horizontal => container.x,
-                        ResizeAxis::Vertical => container.y,
+                        ResizeAxis::Horizontal => bounds.origin.x,
+                        ResizeAxis::Vertical => bounds.origin.y,
                     };
 
-                    interactions.register_drag_handler(
+                    cx.interactions.register_drag_handler(
                         hit_bounds,
                         Box::new(move |pos: Point, cx| {
                             let mouse = match axis {
@@ -352,8 +346,7 @@ impl Element for ResizablePanelGroup {
                                 left_origin += ns[k] + HANDLE_SIZE;
                             }
 
-                            let new_left =
-                                (mouse - left_origin).clamp(mins[li], maxs[li]);
+                            let new_left = (mouse - left_origin).clamp(mins[li], maxs[li]);
                             let delta = new_left - ns[li];
                             let new_right =
                                 (ns[panel_idx] - delta).clamp(mins[panel_idx], maxs[panel_idx]);
@@ -368,16 +361,15 @@ impl Element for ResizablePanelGroup {
             }
 
             // Panel container
-            let pl = layouts[*index];
-            *index += 1;
-            let panel_bounds = Rect::new(pl.x, pl.y, pl.width, pl.height);
-            draw_list.push_clip(panel_bounds);
+            let panel_bounds = cx.bounds(self.panel_ids[i]);
+            cx.draw_list.push_clip(panel_bounds);
 
-            for child in &self.panels[i].children {
-                child.paint(layouts, index, draw_list, interactions, font_system);
+            for j in 0..self.panels[i].children.len() {
+                let child_bounds = cx.bounds(self.panels[i].child_ids[j]);
+                self.panels[i].children[j].paint(child_bounds, cx);
             }
 
-            draw_list.pop_clip();
+            cx.draw_list.pop_clip();
         }
     }
 }

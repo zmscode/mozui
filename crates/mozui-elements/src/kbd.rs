@@ -1,8 +1,7 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect};
 use taffy::prelude::*;
 
 /// Display a keyboard shortcut with platform-appropriate symbols.
@@ -10,6 +9,7 @@ use taffy::prelude::*;
 /// On macOS, modifiers render as symbols: ⌘ ⇧ ⌥ ⌃
 /// On other platforms, modifiers render as text: Ctrl+Shift+Alt
 pub struct Kbd {
+    layout_id: LayoutId,
     keys: Vec<String>,
     font_size: f32,
     color: Color,
@@ -70,6 +70,7 @@ fn format_key(k: &str) -> String {
 pub fn kbd(combo: &str) -> Kbd {
     let keys = parse_combo_to_display(combo);
     Kbd {
+        layout_id: LayoutId::NONE,
         keys,
         font_size: 11.0,
         color: Color::new(1.0, 1.0, 1.0, 0.7),
@@ -96,7 +97,7 @@ impl Kbd {
 }
 
 impl Element for Kbd {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let display = self.display_string();
         let text_style = mozui_text::TextStyle {
             font_size: self.font_size,
@@ -104,35 +105,24 @@ impl Element for Kbd {
             ..Default::default()
         };
 
-        let measured = mozui_text::measure_text(&display, &text_style, None, font_system);
+        let measured = mozui_text::measure_text(&display, &text_style, None, cx.font_system);
 
         let px = 5.0_f32;
         let py = 2.0_f32;
 
-        engine.new_leaf(Style {
+        self.layout_id = cx.new_leaf(Style {
             size: Size {
                 width: length(measured.width + px * 2.0),
                 height: length(measured.height + py * 2.0),
             },
             ..Default::default()
-        })
+        });
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Background with border
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds,
             background: Fill::Solid(self.bg_color),
             corner_radii: Corners::uniform(4.0),
@@ -140,20 +130,20 @@ impl Element for Kbd {
                 width: 1.0,
                 color: self.border_color,
             }),
-                    shadow: None,
-                });
+            shadow: None,
+        });
 
         // Text centered within the badge
         let px = 5.0_f32;
         let py = 2.0_f32;
-        let text_bounds = mozui_style::Rect::new(
-            layout.x + px,
-            layout.y + py,
-            layout.width - px * 2.0,
-            layout.height - py * 2.0,
+        let text_bounds = Rect::new(
+            bounds.origin.x + px,
+            bounds.origin.y + py,
+            bounds.size.width - px * 2.0,
+            bounds.size.height - py * 2.0,
         );
 
-        draw_list.push(DrawCommand::Text {
+        cx.draw_list.push(DrawCommand::Text {
             text: self.display_string(),
             bounds: text_bounds,
             font_size: self.font_size,

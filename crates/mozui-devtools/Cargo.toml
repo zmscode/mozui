@@ -1,0 +1,6 @@
+[package]
+name = "mozui-devtools"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
+use crate::{DeferredPosition, Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
 use mozui_style::animation::{Animated, Transition};
-use mozui_style::{Color, Corners, Fill, Shadow, Theme};
-use mozui_text::FontSystem;
+use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -16,6 +15,9 @@ pub const DIALOG_ANIM_MS: u64 = 200;
 
 /// A modal dialog overlay with backdrop, centered content, focus trap,
 /// and optional escape/backdrop-click to dismiss.
+///
+/// Uses the deferred element system so the dialog always paints on top
+/// of the main tree, regardless of where it appears in the element tree.
 ///
 /// ```rust,ignore
 /// dialog(&theme)
@@ -47,8 +49,8 @@ pub struct Dialog {
 /// Store this in your state and pass it to the dialog builder via `.anim()`.
 /// Call `.set(0.0)` to trigger the exit animation.
 pub fn dialog_anim(animation_flag: Rc<Cell<bool>>) -> Animated<f32> {
-    let transition = Transition::new(Duration::from_millis(DIALOG_ANIM_MS))
-        .custom_bezier(0.4, 0.0, 0.2, 1.0);
+    let transition =
+        Transition::new(Duration::from_millis(DIALOG_ANIM_MS)).custom_bezier(0.4, 0.0, 0.2, 1.0);
     let anim = Animated::new(0.0, transition, animation_flag);
     anim.set(1.0); // start entrance animation
     anim
@@ -131,16 +133,73 @@ impl Dialog {
 }
 
 impl Element for Dialog {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        // Defer the entire dialog overlay for paint-on-top z-ordering
+        cx.defer(
+            Box::new(DialogOverlay {
+                children: std::mem::take(&mut self.children),
+                on_dismiss: self.on_dismiss.take(),
+                dismiss_on_backdrop: self.dismiss_on_backdrop,
+                dismiss_on_escape: self.dismiss_on_escape,
+                backdrop_color: self.backdrop_color,
+                bg: self.bg,
+                border_color: self.border_color,
+                shadow: self.shadow,
+                corner_radius: self.corner_radius,
+                max_width: self.max_width,
+                anim: self.anim.clone(),
+                no_anim: self.no_anim,
+                layout_id: LayoutId::NONE,
+                content_id: LayoutId::NONE,
+                child_ids: Vec::new(),
+            }),
+            DeferredPosition::Overlay,
+        );
+
+        // Return a zero-size placeholder
+        cx.new_leaf(taffy::Style::default())
+    }
+
+    fn paint(&mut self, _bounds: Rect, _cx: &mut PaintContext) {
+        // Nothing — painted by the deferred system
+    }
+}
+
+// ── Deferred dialog overlay ───────────────────────────────────────
+
+/// The full dialog overlay (backdrop + centered content panel),
+/// laid out and painted by the deferred system.
+struct DialogOverlay {
+    children: Vec<Box<dyn Element>>,
+    on_dismiss: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    dismiss_on_backdrop: bool,
+    dismiss_on_escape: bool,
+    backdrop_color: Color,
+    bg: Color,
+    border_color: Color,
+    shadow: Shadow,
+    corner_radius: f32,
+    max_width: f32,
+    anim: Animated<f32>,
+    no_anim: bool,
+    // Layout IDs
+    layout_id: LayoutId,
+    content_id: LayoutId,
+    child_ids: Vec<LayoutId>,
+}
+
+impl Element for DialogOverlay {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.child_ids.clear();
+
         // Build content children
-        let child_nodes: Vec<taffy::NodeId> = self
-            .children
-            .iter()
-            .map(|c| c.layout(engine, font_system))
-            .collect();
+        for i in 0..self.children.len() {
+            let id = self.children[i].layout(cx);
+            self.child_ids.push(id);
+        }
 
         // Content panel
-        let content = engine.new_with_children(
+        self.content_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -150,51 +209,37 @@ impl Element for Dialog {
                 },
                 ..Default::default()
             },
-            &child_nodes,
+            &self.child_ids,
         );
 
-        // Full-screen backdrop that centers the content
-        engine.new_with_children(
+        // Full-screen backdrop that centers the content.
+        // Uses percent(1.0) to fill the sub-engine's available space
+        // (Position::Absolute + inset doesn't work at sub-engine root).
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
-                position: Position::Absolute,
-                inset: taffy::Rect {
-                    left: length(0.0),
-                    right: length(0.0),
-                    top: length(0.0),
-                    bottom: length(0.0),
+                size: Size {
+                    width: percent(1.0),
+                    height: percent(1.0),
                 },
                 justify_content: Some(JustifyContent::Center),
                 align_items: Some(AlignItems::Center),
                 ..Default::default()
             },
-            &[content],
-        )
+            &[self.content_id],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let progress = if self.no_anim { 1.0 } else { self.anim.get() };
         let fade = |c: Color| -> Color { c.with_alpha(c.a * progress) };
 
         // Backdrop
-        let backdrop_layout = layouts[*index];
-        *index += 1;
-        let backdrop_bounds = mozui_style::Rect::new(
-            backdrop_layout.x,
-            backdrop_layout.y,
-            backdrop_layout.width,
-            backdrop_layout.height,
-        );
+        let backdrop_bounds = bounds;
 
         // Draw backdrop with animated opacity
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: backdrop_bounds,
             background: Fill::Solid(fade(self.backdrop_color)),
             corner_radii: Corners::ZERO,
@@ -203,21 +248,16 @@ impl Element for Dialog {
         });
 
         // Content panel
-        let content_layout = layouts[*index];
-        *index += 1;
+        let content_layout = cx.engine.bounds(self.content_id);
 
-        // gpui-component: content scales from 0.95→1.0 during entrance
+        // gpui-component: content scales from 0.95->1.0 during entrance
         let scale = 0.95 + 0.05 * progress;
-        let cx = content_layout.x + content_layout.width / 2.0;
-        let cy = content_layout.y + content_layout.height / 2.0;
+        let ccx = content_layout.x + content_layout.width / 2.0;
+        let ccy = content_layout.y + content_layout.height / 2.0;
         let scaled_w = content_layout.width * scale;
         let scaled_h = content_layout.height * scale;
-        let content_bounds = mozui_style::Rect::new(
-            cx - scaled_w / 2.0,
-            cy - scaled_h / 2.0,
-            scaled_w,
-            scaled_h,
-        );
+        let content_bounds =
+            Rect::new(ccx - scaled_w / 2.0, ccy - scaled_h / 2.0, scaled_w, scaled_h);
 
         // Draw content background with shadow (shadow hidden during animation)
         let shadow = if progress < 0.85 {
@@ -225,7 +265,7 @@ impl Element for Dialog {
         } else {
             Some(self.shadow)
         };
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: content_bounds,
             background: Fill::Solid(fade(self.bg)),
             corner_radii: Corners::uniform(self.corner_radius),
@@ -237,17 +277,18 @@ impl Element for Dialog {
         });
 
         // Push focus trap so Tab stays within dialog
-        interactions.push_focus_trap();
+        cx.interactions.push_focus_trap();
 
         // Register escape key handler
         if self.dismiss_on_escape {
             if let Some(ref handler) = self.on_dismiss {
                 let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions.register_key_handler(Box::new(move |key, _mods, cx| {
-                    if key == mozui_events::Key::Escape {
-                        unsafe { (*handler_ptr)(cx) };
-                    }
-                }));
+                cx.interactions
+                    .register_key_handler(Box::new(move |key, _mods, cx| {
+                        if key == mozui_events::Key::Escape {
+                            unsafe { (*handler_ptr)(cx) };
+                        }
+                    }));
             }
         }
 
@@ -255,11 +296,11 @@ impl Element for Dialog {
         if self.dismiss_on_backdrop {
             if let Some(ref handler) = self.on_dismiss {
                 let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                // Register click on backdrop area. We register the content area click first
-                // as a no-op to prevent backdrop click from triggering when clicking content.
-                interactions
+                // Register the content area click first as a no-op to prevent
+                // backdrop click from triggering when clicking content.
+                cx.interactions
                     .register_click(content_bounds, Box::new(move |_cx| { /* absorb click */ }));
-                interactions.register_click(
+                cx.interactions.register_click(
                     backdrop_bounds,
                     Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
                 );
@@ -267,10 +308,11 @@ impl Element for Dialog {
         }
 
         // Paint children
-        for child in &self.children {
-            child.paint(layouts, index, draw_list, interactions, font_system);
+        for i in 0..self.children.len() {
+            let child_bounds = cx.bounds(self.child_ids[i]);
+            self.children[i].paint(child_bounds, cx);
         }
 
-        interactions.pop_focus_trap();
+        cx.interactions.pop_focus_trap();
     }
 }

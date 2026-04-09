@@ -122,7 +122,11 @@ impl Renderer {
 
         // Batch types: 0=rects, 1=glyphs, 2=image(index into image_batches)
         #[derive(Clone, Copy, PartialEq)]
-        enum BatchKind { Rects, Glyphs, Image(usize) }
+        enum BatchKind {
+            Rects,
+            Glyphs,
+            Image(usize),
+        }
         let mut batches: Vec<(BatchKind, usize, usize)> = Vec::new();
         let mut current_kind: Option<BatchKind> = None;
 
@@ -297,11 +301,7 @@ impl Renderer {
                         ..Default::default()
                     };
 
-                    let run = mozui_text::shaping::shape_text(
-                        text,
-                        &text_style,
-                        &self.font_system,
-                    );
+                    let run = mozui_text::shaping::shape_text(text, &text_style, &self.font_system);
 
                     // cosmic-text's render() passes (0, run.line_y) as offset to
                     // physical(). glyph.y is 0 for the first line, so offset.1
@@ -329,10 +329,9 @@ impl Renderer {
 
                         // Rasterize if not cached
                         if self.atlas.get(&cache_key).is_none() {
-                            if let Some((bitmap, placement)) = rasterize_glyph_swash(
-                                &self.font_system,
-                                cache_key,
-                            ) {
+                            if let Some((bitmap, placement)) =
+                                rasterize_glyph_swash(&self.font_system, cache_key)
+                            {
                                 let w = placement.width;
                                 let h = placement.height;
                                 let bearing_x = placement.left as f32;
@@ -349,15 +348,8 @@ impl Renderer {
                                 );
                                 self.atlas_dirty = true;
                             } else {
-                                self.atlas.insert(
-                                    &self.gpu.queue,
-                                    cache_key,
-                                    0,
-                                    0,
-                                    0.0,
-                                    0.0,
-                                    &[],
-                                );
+                                self.atlas
+                                    .insert(&self.gpu.queue, cache_key, 0, 0, 0.0, 0.0, &[]);
                             }
                         }
 
@@ -390,14 +382,23 @@ impl Renderer {
                     object_fit,
                 } => {
                     let (uv, draw_bounds) = compute_image_uv_and_bounds(
-                        bounds, data.width, data.height, *object_fit, scale,
+                        bounds,
+                        data.width,
+                        data.height,
+                        *object_fit,
+                        scale,
                     );
 
                     let img_idx = image_batches.len();
                     image_batches.push((
                         data.clone(),
                         ImageInstance {
-                            bounds: [draw_bounds[0], draw_bounds[1], draw_bounds[2], draw_bounds[3]],
+                            bounds: [
+                                draw_bounds[0],
+                                draw_bounds[1],
+                                draw_bounds[2],
+                                draw_bounds[3],
+                            ],
                             uv,
                             corner_radii: [
                                 corner_radii.top_left * scale,
@@ -532,11 +533,7 @@ fn rasterize_glyph_swash(
     let font_size = f32::from_bits(cache_key.font_size_bits);
 
     let mut context = ScaleContext::new();
-    let mut scaler = context
-        .builder(font_ref)
-        .size(font_size)
-        .hint(true)
-        .build();
+    let mut scaler = context.builder(font_ref).size(font_size).hint(true).build();
 
     let image = Render::new(&[
         Source::ColorOutline(0),
@@ -567,9 +564,7 @@ fn compute_image_uv_and_bounds(
     let bh = bounds.size.height * scale;
 
     match fit {
-        draw::ObjectFit::Fill => {
-            ([0.0, 0.0, 1.0, 1.0], [bx, by, bw, bh])
-        }
+        draw::ObjectFit::Fill => ([0.0, 0.0, 1.0, 1.0], [bx, by, bw, bh]),
         draw::ObjectFit::Contain => {
             let img_aspect = img_w as f32 / img_h as f32;
             let box_aspect = bw / bh;

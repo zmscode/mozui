@@ -24,8 +24,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
     // Dialog state — animation handle persists across frames
     let (dialog_open, set_dialog_open) = cx.use_signal(false);
     let is_dialog_open = *cx.get(dialog_open);
-    let (dialog_anim_sig, set_dialog_anim_sig) =
-        cx.use_signal::<Option<Animated<f32>>>(None);
+    let (dialog_anim_sig, set_dialog_anim_sig) = cx.use_signal::<Option<Animated<f32>>>(None);
     let dialog_anim_handle = cx.get(dialog_anim_sig).clone();
 
     // Menu state
@@ -202,20 +201,16 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                     .flex_col()
                     .gap(12.0)
                     .child(label("Dialog").color(heading_color).font_size(18.0).bold())
-                    .child(
-                        div().flex_row().gap(12.0).child(
-                            button("Open Dialog", &theme)
-                                .primary(&theme)
-                                .on_click({
-                                    let flag = anim_flag.clone();
-                                    move |cx| {
-                                        let cx = cx.downcast_mut::<Context>().unwrap();
-                                        cx.set(set_dialog_open, true);
-                                        cx.set(set_dialog_anim_sig, Some(dialog_anim(flag.clone())));
-                                    }
-                                }),
-                        ),
-                    ),
+                    .child(div().flex_row().gap(12.0).child(
+                        button("Open Dialog", &theme).primary(&theme).on_click({
+                            let flag = anim_flag.clone();
+                            move |cx| {
+                                let cx = cx.downcast_mut::<Context>().unwrap();
+                                cx.set(set_dialog_open, true);
+                                cx.set(set_dialog_anim_sig, Some(dialog_anim(flag.clone())));
+                            }
+                        }),
+                    )),
             )
             // ── Notifications ──
             .child(
@@ -241,7 +236,13 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     cx.set(set_notif_counter, id + 1);
                                     let anim = notification_anim(flag.clone());
                                     cx.update(set_notif_list, move |list| {
-                                        list.push((id, NotificationType::Default, "Notification", "A plain notification with no icon.", anim));
+                                        list.push((
+                                            id,
+                                            NotificationType::Default,
+                                            "Notification",
+                                            "A plain notification with no icon.",
+                                            anim,
+                                        ));
                                     });
                                 }
                             }))
@@ -253,7 +254,13 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     cx.set(set_notif_counter, id + 1);
                                     let anim = notification_anim(flag.clone());
                                     cx.update(set_notif_list, move |list| {
-                                        list.push((id, NotificationType::Info, "Info", "This is an informational notification.", anim));
+                                        list.push((
+                                            id,
+                                            NotificationType::Info,
+                                            "Info",
+                                            "This is an informational notification.",
+                                            anim,
+                                        ));
                                     });
                                 }
                             }))
@@ -265,7 +272,13 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     cx.set(set_notif_counter, id + 1);
                                     let anim = notification_anim(flag.clone());
                                     cx.update(set_notif_list, move |list| {
-                                        list.push((id, NotificationType::Success, "File saved", "Your changes have been saved successfully.", anim));
+                                        list.push((
+                                            id,
+                                            NotificationType::Success,
+                                            "File saved",
+                                            "Your changes have been saved successfully.",
+                                            anim,
+                                        ));
                                     });
                                 }
                             }))
@@ -277,7 +290,13 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     cx.set(set_notif_counter, id + 1);
                                     let anim = notification_anim(flag.clone());
                                     cx.update(set_notif_list, move |list| {
-                                        list.push((id, NotificationType::Warning, "Warning", "Disk space is running low.", anim));
+                                        list.push((
+                                            id,
+                                            NotificationType::Warning,
+                                            "Warning",
+                                            "Disk space is running low.",
+                                            anim,
+                                        ));
                                     });
                                 }
                             }))
@@ -289,7 +308,13 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     cx.set(set_notif_counter, id + 1);
                                     let anim = notification_anim(flag.clone());
                                     cx.update(set_notif_list, move |list| {
-                                        list.push((id, NotificationType::Error, "Connection failed", "Unable to reach the server. Please try again.", anim));
+                                        list.push((
+                                            id,
+                                            NotificationType::Error,
+                                            "Connection failed",
+                                            "Unable to reach the server. Please try again.",
+                                            anim,
+                                        ));
                                     });
                                 }
                             }))
@@ -409,11 +434,9 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .bold(),
                     )
                     .child(
-                        label(
-                            "Are you sure you want to proceed? This action cannot be undone.",
-                        )
-                        .color(t.muted_foreground)
-                        .font_size(14.0),
+                        label("Are you sure you want to proceed? This action cannot be undone.")
+                            .color(t.muted_foreground)
+                            .font_size(14.0),
                     )
                     .child(
                         div()

@@ -1,12 +1,14 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct Radio {
+    layout_id: LayoutId,
+    circle_id: LayoutId,
+    text_id: LayoutId,
     label: String,
     checked: bool,
     disabled: bool,
@@ -19,6 +21,9 @@ pub struct Radio {
 
 pub fn radio(label: impl Into<String>, theme: &Theme) -> Radio {
     Radio {
+        layout_id: LayoutId::NONE,
+        circle_id: LayoutId::NONE,
+        text_id: LayoutId::NONE,
         label: label.into(),
         checked: false,
         disabled: false,
@@ -71,11 +76,11 @@ impl Disableable for Radio {
 }
 
 impl Element for Radio {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let circle_sz = self.circle_size();
 
         // Outer circle
-        let circle_node = engine.new_leaf(Style {
+        self.circle_id = cx.new_leaf(Style {
             size: Size {
                 width: length(circle_sz),
                 height: length(circle_sz),
@@ -89,8 +94,8 @@ impl Element for Radio {
             color: self.label_color,
             ..Default::default()
         };
-        let measured = mozui_text::measure_text(&self.label, &text_style, None, font_system);
-        let text_node = engine.new_leaf(Style {
+        let measured = mozui_text::measure_text(&self.label, &text_style, None, cx.font_system);
+        self.text_id = cx.new_leaf(Style {
             size: Size {
                 width: length(measured.width),
                 height: length(measured.height),
@@ -98,7 +103,7 @@ impl Element for Radio {
             ..Default::default()
         });
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -109,34 +114,17 @@ impl Element for Radio {
                 },
                 ..Default::default()
             },
-            &[circle_node, text_node],
-        )
+            &[self.circle_id, self.text_id],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let full_bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let alpha = if self.disabled { 0.5 } else { 1.0 };
-        let hovered = !self.disabled && interactions.is_hovered(full_bounds);
+        let hovered = !self.disabled && cx.interactions.is_hovered(bounds);
 
         // Outer circle
-        let circle_layout = layouts[*index];
-        *index += 1;
-        let circle_bounds = mozui_style::Rect::new(
-            circle_layout.x,
-            circle_layout.y,
-            circle_layout.width,
-            circle_layout.height,
-        );
+        let circle_bounds = cx.bounds(self.circle_id);
         let radius = self.circle_size() / 2.0;
 
         if self.checked {
@@ -146,18 +134,18 @@ impl Element for Radio {
                 self.active_color.with_alpha(alpha)
             };
             // Filled outer circle
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: circle_bounds,
                 background: Fill::Solid(bg),
                 corner_radii: Corners::uniform(radius),
                 border: None,
-                    shadow: None,
-                });
+                shadow: None,
+            });
             // Inner white dot
             let inner_size = self.circle_size() * 0.4;
             let offset = (self.circle_size() - inner_size) / 2.0;
-            draw_list.push(DrawCommand::Rect {
-                bounds: mozui_style::Rect::new(
+            cx.draw_list.push(DrawCommand::Rect {
+                bounds: Rect::new(
                     circle_bounds.origin.x + offset,
                     circle_bounds.origin.y + offset,
                     inner_size,
@@ -166,15 +154,15 @@ impl Element for Radio {
                 background: Fill::Solid(Color::WHITE.with_alpha(alpha)),
                 corner_radii: Corners::uniform(inner_size / 2.0),
                 border: None,
-                    shadow: None,
-                });
+                shadow: None,
+            });
         } else {
             let border_c = if hovered {
                 self.active_color.with_alpha(alpha)
             } else {
                 self.border_color.with_alpha(alpha)
             };
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: circle_bounds,
                 background: Fill::Solid(Color::TRANSPARENT),
                 corner_radii: Corners::uniform(radius),
@@ -182,21 +170,15 @@ impl Element for Radio {
                     width: 1.5,
                     color: border_c,
                 }),
-                    shadow: None,
-                });
+                shadow: None,
+            });
         }
 
         // Label
-        let text_layout = layouts[*index];
-        *index += 1;
-        draw_list.push(DrawCommand::Text {
+        let text_bounds = cx.bounds(self.text_id);
+        cx.draw_list.push(DrawCommand::Text {
             text: self.label.clone(),
-            bounds: mozui_style::Rect::new(
-                text_layout.x,
-                text_layout.y,
-                text_layout.width,
-                text_layout.height,
-            ),
+            bounds: text_bounds,
             font_size: self.text_size(),
             color: self.label_color.with_alpha(alpha),
             weight: 400,
@@ -207,8 +189,8 @@ impl Element for Radio {
         if !self.disabled {
             if let Some(ref handler) = self.on_click {
                 let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions.register_click(
-                    full_bounds,
+                cx.interactions.register_click(
+                    bounds,
                     Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
                 );
             }

@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
 use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
 use taffy::prelude::*;
 use time::{Date, Month};
 
@@ -123,6 +122,14 @@ pub struct Calendar {
     hover_bg: Color,
     corner_radius: f32,
     font_size: f32,
+    // Layout IDs
+    layout_id: LayoutId,
+    prev_btn_id: LayoutId,
+    title_id: LayoutId,
+    next_btn_id: LayoutId,
+    weekday_ids: [LayoutId; GRID_COLS],
+    /// 6 rows × 7 cols of day cell IDs
+    day_ids: [[LayoutId; GRID_COLS]; GRID_ROWS],
 }
 
 pub fn calendar(theme: &Theme) -> Calendar {
@@ -144,6 +151,12 @@ pub fn calendar(theme: &Theme) -> Calendar {
         hover_bg: theme.secondary,
         corner_radius: theme.radius_md,
         font_size: DAY_FONT_SIZE,
+        layout_id: LayoutId::NONE,
+        prev_btn_id: LayoutId::NONE,
+        title_id: LayoutId::NONE,
+        next_btn_id: LayoutId::NONE,
+        weekday_ids: [LayoutId::NONE; GRID_COLS],
+        day_ids: [[LayoutId::NONE; GRID_COLS]; GRID_ROWS],
     }
 }
 
@@ -234,7 +247,7 @@ fn centered_text_bounds(
     text: &str,
     font_size: f32,
     cell: mozui_style::Rect,
-    font_system: &FontSystem,
+    font_system: &mozui_text::FontSystem,
 ) -> mozui_style::Rect {
     let style = mozui_text::TextStyle {
         font_size,
@@ -246,19 +259,19 @@ fn centered_text_bounds(
 }
 
 impl Element for Calendar {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let grid_width = CELL_SIZE * GRID_COLS as f32 + GAP * (GRID_COLS - 1) as f32;
         let total_width = grid_width + PAD * 2.0;
 
         // Navigation header: [<] [Month Year] [>]
-        let prev_btn = engine.new_leaf(Style {
+        self.prev_btn_id = cx.new_leaf(Style {
             size: Size {
                 width: length(HEADER_HEIGHT),
                 height: length(HEADER_HEIGHT),
             },
             ..Default::default()
         });
-        let title = engine.new_leaf(Style {
+        self.title_id = cx.new_leaf(Style {
             flex_grow: 1.0,
             size: Size {
                 width: auto(),
@@ -266,14 +279,14 @@ impl Element for Calendar {
             },
             ..Default::default()
         });
-        let next_btn = engine.new_leaf(Style {
+        self.next_btn_id = cx.new_leaf(Style {
             size: Size {
                 width: length(HEADER_HEIGHT),
                 height: length(HEADER_HEIGHT),
             },
             ..Default::default()
         });
-        let header = engine.new_with_children(
+        let header = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -284,21 +297,20 @@ impl Element for Calendar {
                 },
                 ..Default::default()
             },
-            &[prev_btn, title, next_btn],
+            &[self.prev_btn_id, self.title_id, self.next_btn_id],
         );
 
         // Weekday labels row
-        let mut weekday_cells = Vec::new();
-        for _ in 0..GRID_COLS {
-            weekday_cells.push(engine.new_leaf(Style {
+        for i in 0..GRID_COLS {
+            self.weekday_ids[i] = cx.new_leaf(Style {
                 size: Size {
                     width: length(CELL_SIZE),
                     height: length(CELL_SIZE * 0.75),
                 },
                 ..Default::default()
-            }));
+            });
         }
-        let weekday_row = engine.new_with_children(
+        let weekday_row = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -314,23 +326,22 @@ impl Element for Calendar {
                 },
                 ..Default::default()
             },
-            &weekday_cells,
+            &self.weekday_ids,
         );
 
         // Day grid: 6 rows × 7 cells
         let mut rows = Vec::new();
-        for _ in 0..GRID_ROWS {
-            let mut cells = Vec::new();
-            for _ in 0..GRID_COLS {
-                cells.push(engine.new_leaf(Style {
+        for row in 0..GRID_ROWS {
+            for col in 0..GRID_COLS {
+                self.day_ids[row][col] = cx.new_leaf(Style {
                     size: Size {
                         width: length(CELL_SIZE),
                         height: length(CELL_SIZE),
                     },
                     ..Default::default()
-                }));
+                });
             }
-            rows.push(engine.new_with_children(
+            rows.push(cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Row,
@@ -346,14 +357,14 @@ impl Element for Calendar {
                     },
                     ..Default::default()
                 },
-                &cells,
+                &self.day_ids[row],
             ));
         }
 
         let mut children = vec![header, weekday_row];
         children.extend(rows);
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -370,26 +381,16 @@ impl Element for Calendar {
                 ..Default::default()
             },
             &children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
+    fn paint(&mut self, bounds: mozui_style::Rect, cx: &mut PaintContext) {
         let dates = self.grid_dates();
 
-        // Container
-        let container = layouts[*index];
-        *index += 1;
-        let container_bounds =
-            mozui_style::Rect::new(container.x, container.y, container.width, container.height);
-        draw_list.push(DrawCommand::Rect {
-            bounds: container_bounds,
+        // Container background
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds,
             background: Fill::Solid(self.bg),
             corner_radii: Corners::uniform(self.corner_radius),
             border: Some(Border {
@@ -400,21 +401,12 @@ impl Element for Calendar {
         });
 
         // ── Header ───────────────────────────────────────────────
-        let _header = layouts[*index];
-        *index += 1;
 
         // Prev button
-        let prev_layout = layouts[*index];
-        *index += 1;
-        let prev_bounds = mozui_style::Rect::new(
-            prev_layout.x,
-            prev_layout.y,
-            prev_layout.width,
-            prev_layout.height,
-        );
-        let prev_hovered = interactions.is_hovered(prev_bounds);
+        let prev_bounds = cx.bounds(self.prev_btn_id);
+        let prev_hovered = cx.interactions.is_hovered(prev_bounds);
         if prev_hovered {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: prev_bounds,
                 background: Fill::Solid(self.hover_bg),
                 corner_radii: Corners::uniform(HEADER_HEIGHT / 2.0),
@@ -422,12 +414,12 @@ impl Element for Calendar {
                 shadow: None,
             });
         }
-        draw_list.push(DrawCommand::Icon {
+        cx.draw_list.push(DrawCommand::Icon {
             name: IconName::CaretLeft,
             weight: IconWeight::Bold,
             bounds: mozui_style::Rect::new(
-                prev_layout.x + (HEADER_HEIGHT - NAV_ICON_SIZE) / 2.0,
-                prev_layout.y + (HEADER_HEIGHT - NAV_ICON_SIZE) / 2.0,
+                prev_bounds.origin.x + (HEADER_HEIGHT - NAV_ICON_SIZE) / 2.0,
+                prev_bounds.origin.y + (HEADER_HEIGHT - NAV_ICON_SIZE) / 2.0,
                 NAV_ICON_SIZE,
                 NAV_ICON_SIZE,
             ),
@@ -437,24 +429,17 @@ impl Element for Calendar {
         if let Some(ref nav) = self.on_nav {
             let (y, m) = self.prev_month();
             let nav_ptr = nav.as_ref() as *const dyn Fn(i32, Month, &mut dyn std::any::Any);
-            interactions.register_click(
+            cx.interactions.register_click(
                 prev_bounds,
                 Box::new(move |cx| unsafe { (*nav_ptr)(y, m, cx) }),
             );
         }
 
         // Title (Month Year) — centered
-        let title_layout = layouts[*index];
-        *index += 1;
+        let title_rect = cx.bounds(self.title_id);
         let title_text = format!("{} {}", self.month_name(), self.view_year);
-        let title_rect = mozui_style::Rect::new(
-            title_layout.x,
-            title_layout.y,
-            title_layout.width,
-            title_layout.height,
-        );
-        let title_bounds = centered_text_bounds(&title_text, 14.0, title_rect, font_system);
-        draw_list.push(DrawCommand::Text {
+        let title_bounds = centered_text_bounds(&title_text, 14.0, title_rect, cx.font_system);
+        cx.draw_list.push(DrawCommand::Text {
             text: title_text,
             bounds: title_bounds,
             font_size: 14.0,
@@ -464,17 +449,10 @@ impl Element for Calendar {
         });
 
         // Next button
-        let next_layout = layouts[*index];
-        *index += 1;
-        let next_bounds = mozui_style::Rect::new(
-            next_layout.x,
-            next_layout.y,
-            next_layout.width,
-            next_layout.height,
-        );
-        let next_hovered = interactions.is_hovered(next_bounds);
+        let next_bounds = cx.bounds(self.next_btn_id);
+        let next_hovered = cx.interactions.is_hovered(next_bounds);
         if next_hovered {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: next_bounds,
                 background: Fill::Solid(self.hover_bg),
                 corner_radii: Corners::uniform(HEADER_HEIGHT / 2.0),
@@ -482,12 +460,12 @@ impl Element for Calendar {
                 shadow: None,
             });
         }
-        draw_list.push(DrawCommand::Icon {
+        cx.draw_list.push(DrawCommand::Icon {
             name: IconName::CaretRight,
             weight: IconWeight::Bold,
             bounds: mozui_style::Rect::new(
-                next_layout.x + (HEADER_HEIGHT - NAV_ICON_SIZE) / 2.0,
-                next_layout.y + (HEADER_HEIGHT - NAV_ICON_SIZE) / 2.0,
+                next_bounds.origin.x + (HEADER_HEIGHT - NAV_ICON_SIZE) / 2.0,
+                next_bounds.origin.y + (HEADER_HEIGHT - NAV_ICON_SIZE) / 2.0,
                 NAV_ICON_SIZE,
                 NAV_ICON_SIZE,
             ),
@@ -497,26 +475,22 @@ impl Element for Calendar {
         if let Some(ref nav) = self.on_nav {
             let (y, m) = self.next_month();
             let nav_ptr = nav.as_ref() as *const dyn Fn(i32, Month, &mut dyn std::any::Any);
-            interactions.register_click(
+            cx.interactions.register_click(
                 next_bounds,
                 Box::new(move |cx| unsafe { (*nav_ptr)(y, m, cx) }),
             );
         }
 
         // Register hover regions for nav buttons
-        interactions.register_hover_region(prev_bounds);
-        interactions.register_hover_region(next_bounds);
+        cx.interactions.register_hover_region(prev_bounds);
+        cx.interactions.register_hover_region(next_bounds);
 
         // ── Weekday labels ───────────────────────────────────────
-        let _weekday_row = layouts[*index];
-        *index += 1;
         for i in 0..GRID_COLS {
-            let cell = layouts[*index];
-            *index += 1;
-            let cell_rect = mozui_style::Rect::new(cell.x, cell.y, cell.width, cell.height);
+            let cell_rect = cx.bounds(self.weekday_ids[i]);
             let text_bounds =
-                centered_text_bounds(WEEKDAY_LABELS[i], WEEKDAY_FONT_SIZE, cell_rect, font_system);
-            draw_list.push(DrawCommand::Text {
+                centered_text_bounds(WEEKDAY_LABELS[i], WEEKDAY_FONT_SIZE, cell_rect, cx.font_system);
+            cx.draw_list.push(DrawCommand::Text {
                 text: WEEKDAY_LABELS[i].to_string(),
                 bounds: text_bounds,
                 font_size: WEEKDAY_FONT_SIZE,
@@ -528,13 +502,7 @@ impl Element for Calendar {
 
         // ── Day cells ────────────────────────────────────────────
         for row in 0..GRID_ROWS {
-            let _row_layout = layouts[*index];
-            *index += 1;
-
             for col in 0..GRID_COLS {
-                let cell = layouts[*index];
-                *index += 1;
-
                 let day_idx = row * GRID_COLS + col;
                 let date = dates[day_idx];
                 let in_current_month = date.month() == self.view_month;
@@ -543,13 +511,13 @@ impl Element for Calendar {
                 let is_in_range = self.selection.is_in_range(date);
                 let is_disabled = self.is_disabled(date);
 
-                let cell_bounds = mozui_style::Rect::new(cell.x, cell.y, cell.width, cell.height);
+                let cell_bounds = cx.bounds(self.day_ids[row][col]);
                 let hovered =
-                    !is_disabled && in_current_month && interactions.is_hovered(cell_bounds);
+                    !is_disabled && in_current_month && cx.interactions.is_hovered(cell_bounds);
 
                 // Background
                 if is_active {
-                    draw_list.push(DrawCommand::Rect {
+                    cx.draw_list.push(DrawCommand::Rect {
                         bounds: cell_bounds,
                         background: Fill::Solid(self.primary),
                         corner_radii: Corners::uniform(DAY_RADIUS),
@@ -557,7 +525,7 @@ impl Element for Calendar {
                         shadow: None,
                     });
                 } else if is_in_range {
-                    draw_list.push(DrawCommand::Rect {
+                    cx.draw_list.push(DrawCommand::Rect {
                         bounds: cell_bounds,
                         background: Fill::Solid(self.primary.with_alpha(0.15)),
                         corner_radii: Corners::uniform(DAY_RADIUS),
@@ -565,7 +533,7 @@ impl Element for Calendar {
                         shadow: None,
                     });
                 } else if hovered {
-                    draw_list.push(DrawCommand::Rect {
+                    cx.draw_list.push(DrawCommand::Rect {
                         bounds: cell_bounds,
                         background: Fill::Solid(self.hover_bg),
                         corner_radii: Corners::uniform(DAY_RADIUS),
@@ -573,7 +541,7 @@ impl Element for Calendar {
                         shadow: None,
                     });
                 } else if is_today && !is_active {
-                    draw_list.push(DrawCommand::Rect {
+                    cx.draw_list.push(DrawCommand::Rect {
                         bounds: cell_bounds,
                         background: Fill::Solid(Color::TRANSPARENT),
                         corner_radii: Corners::uniform(DAY_RADIUS),
@@ -599,8 +567,8 @@ impl Element for Calendar {
                 // Day number (centered in cell)
                 let day_text = date.day().to_string();
                 let day_bounds =
-                    centered_text_bounds(&day_text, self.font_size, cell_bounds, font_system);
-                draw_list.push(DrawCommand::Text {
+                    centered_text_bounds(&day_text, self.font_size, cell_bounds, cx.font_system);
+                cx.draw_list.push(DrawCommand::Text {
                     text: day_text,
                     bounds: day_bounds,
                     font_size: self.font_size,
@@ -613,12 +581,12 @@ impl Element for Calendar {
                 if !is_disabled && in_current_month {
                     if let Some(ref on_select) = self.on_select {
                         let ptr = on_select.as_ref() as *const dyn Fn(Date, &mut dyn std::any::Any);
-                        interactions.register_click(
+                        cx.interactions.register_click(
                             cell_bounds,
                             Box::new(move |cx| unsafe { (*ptr)(date, cx) }),
                         );
                     }
-                    interactions.register_hover_region(cell_bounds);
+                    cx.interactions.register_hover_region(cell_bounds);
                 }
             }
         }
@@ -658,6 +626,12 @@ pub struct DatePicker {
     corner_radius: f32,
     font_size: f32,
     min_width: f32,
+    // Layout IDs
+    layout_id: LayoutId,
+    trigger_id: LayoutId,
+    icon_id: LayoutId,
+    text_id: LayoutId,
+    chevron_id: LayoutId,
 }
 
 pub fn date_picker(theme: &Theme) -> DatePicker {
@@ -675,6 +649,11 @@ pub fn date_picker(theme: &Theme) -> DatePicker {
         corner_radius: theme.radius_md,
         font_size: theme.font_size_sm,
         min_width: 200.0,
+        layout_id: LayoutId::NONE,
+        trigger_id: LayoutId::NONE,
+        icon_id: LayoutId::NONE,
+        text_id: LayoutId::NONE,
+        chevron_id: LayoutId::NONE,
     }
 }
 
@@ -742,27 +721,25 @@ impl DatePicker {
     fn has_value(&self) -> bool {
         !self.calendar.selection.format().is_empty()
     }
-}
 
-impl Element for DatePicker {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout_trigger(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let display_text = self.display_text();
         let text_style = mozui_text::TextStyle {
             font_size: self.font_size,
             color: self.trigger_fg,
             ..Default::default()
         };
-        let measured = mozui_text::measure_text(&display_text, &text_style, None, font_system);
+        let measured = mozui_text::measure_text(&display_text, &text_style, None, cx.font_system);
 
         // Trigger: [calendar icon] [text] [chevron]
-        let icon_node = engine.new_leaf(Style {
+        self.icon_id = cx.new_leaf(Style {
             size: Size {
                 width: length(ICON_SIZE),
                 height: length(ICON_SIZE),
             },
             ..Default::default()
         });
-        let text_node = engine.new_leaf(Style {
+        self.text_id = cx.new_leaf(Style {
             size: Size {
                 width: length(measured.width),
                 height: length(measured.height),
@@ -770,14 +747,14 @@ impl Element for DatePicker {
             flex_grow: 1.0,
             ..Default::default()
         });
-        let chevron_node = engine.new_leaf(Style {
+        self.chevron_id = cx.new_leaf(Style {
             size: Size {
                 width: length(ICON_SIZE),
                 height: length(ICON_SIZE),
             },
             ..Default::default()
         });
-        let trigger = engine.new_with_children(
+        self.trigger_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -798,85 +775,16 @@ impl Element for DatePicker {
                 },
                 ..Default::default()
             },
-            &[icon_node, text_node, chevron_node],
+            &[self.icon_id, self.text_id, self.chevron_id],
         );
-
-        if !self.open {
-            return trigger;
-        }
-
-        // Calendar dropdown
-        let cal_node = self.calendar.layout(engine, font_system);
-
-        engine.new_with_children(
-            Style {
-                display: Display::Flex,
-                flex_direction: FlexDirection::Column,
-                gap: Size {
-                    width: zero(),
-                    height: length(DROPDOWN_GAP),
-                },
-                ..Default::default()
-            },
-            &[trigger, cal_node],
-        )
+        self.trigger_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        if !self.open {
-            self.paint_trigger(layouts, index, draw_list, interactions);
-            return;
-        }
+    fn paint_trigger(&self, cx: &mut PaintContext) {
+        let trigger_bounds = cx.bounds(self.trigger_id);
 
-        // Wrapper
-        let _wrapper = layouts[*index];
-        *index += 1;
-
-        // Trigger
-        self.paint_trigger(layouts, index, draw_list, interactions);
-
-        // Calendar
-        self.calendar
-            .paint(layouts, index, draw_list, interactions, font_system);
-
-        // Escape to close
-        if let Some(ref toggle) = self.on_toggle {
-            let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            interactions.register_key_handler(Box::new(move |key, _mods, cx| {
-                if key == mozui_events::Key::Escape {
-                    unsafe { (*toggle_ptr)(cx) };
-                }
-            }));
-        }
-    }
-}
-
-impl DatePicker {
-    fn paint_trigger(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-    ) {
-        let trigger_layout = layouts[*index];
-        *index += 1;
-        let trigger_bounds = mozui_style::Rect::new(
-            trigger_layout.x,
-            trigger_layout.y,
-            trigger_layout.width,
-            trigger_layout.height,
-        );
-
-        let hovered = interactions.is_hovered(trigger_bounds);
-        let active = interactions.is_active(trigger_bounds);
+        let hovered = cx.interactions.is_hovered(trigger_bounds);
+        let active = cx.interactions.is_active(trigger_bounds);
 
         let bg = if active {
             self.trigger_hover_bg
@@ -891,7 +799,7 @@ impl DatePicker {
             self.trigger_bg
         };
 
-        draw_list.push(DrawCommand::Rect {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds: trigger_bounds,
             background: Fill::Solid(bg),
             corner_radii: Corners::uniform(self.corner_radius),
@@ -907,37 +815,25 @@ impl DatePicker {
         });
 
         // Calendar icon
-        let icon_layout = layouts[*index];
-        *index += 1;
-        draw_list.push(DrawCommand::Icon {
+        let icon_bounds = cx.bounds(self.icon_id);
+        cx.draw_list.push(DrawCommand::Icon {
             name: IconName::CalendarBlank,
             weight: IconWeight::Regular,
-            bounds: mozui_style::Rect::new(
-                icon_layout.x,
-                icon_layout.y,
-                icon_layout.width,
-                icon_layout.height,
-            ),
+            bounds: icon_bounds,
             color: self.trigger_muted_fg,
             size_px: ICON_SIZE,
         });
 
         // Text
-        let text_layout = layouts[*index];
-        *index += 1;
+        let text_bounds = cx.bounds(self.text_id);
         let text_color = if self.has_value() {
             self.trigger_fg
         } else {
             self.trigger_muted_fg
         };
-        draw_list.push(DrawCommand::Text {
+        cx.draw_list.push(DrawCommand::Text {
             text: self.display_text(),
-            bounds: mozui_style::Rect::new(
-                text_layout.x,
-                text_layout.y,
-                text_layout.width,
-                text_layout.height,
-            ),
+            bounds: text_bounds,
             font_size: self.font_size,
             color: text_color,
             weight: 400,
@@ -945,21 +841,15 @@ impl DatePicker {
         });
 
         // Chevron
-        let chevron_layout = layouts[*index];
-        *index += 1;
-        draw_list.push(DrawCommand::Icon {
+        let chevron_bounds = cx.bounds(self.chevron_id);
+        cx.draw_list.push(DrawCommand::Icon {
             name: if self.open {
                 IconName::CaretUp
             } else {
                 IconName::CaretDown
             },
             weight: IconWeight::Bold,
-            bounds: mozui_style::Rect::new(
-                chevron_layout.x,
-                chevron_layout.y,
-                chevron_layout.width,
-                chevron_layout.height,
-            ),
+            bounds: chevron_bounds,
             color: self.trigger_muted_fg,
             size_px: ICON_SIZE,
         });
@@ -967,10 +857,57 @@ impl DatePicker {
         // Click to toggle
         if let Some(ref toggle) = self.on_toggle {
             let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-            interactions.register_click(
+            cx.interactions.register_click(
                 trigger_bounds,
                 Box::new(move |cx| unsafe { (*toggle_ptr)(cx) }),
             );
+        }
+    }
+}
+
+impl Element for DatePicker {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        let trigger_id = self.layout_trigger(cx);
+
+        if !self.open {
+            self.layout_id = trigger_id;
+            return self.layout_id;
+        }
+
+        // Calendar dropdown
+        let cal_id = self.calendar.layout(cx);
+
+        self.layout_id = cx.new_with_children(
+            Style {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                gap: Size {
+                    width: zero(),
+                    height: length(DROPDOWN_GAP),
+                },
+                ..Default::default()
+            },
+            &[trigger_id, cal_id],
+        );
+        self.layout_id
+    }
+
+    fn paint(&mut self, _bounds: mozui_style::Rect, cx: &mut PaintContext) {
+        self.paint_trigger(cx);
+
+        if self.open {
+            let cal_bounds = cx.bounds(self.calendar.layout_id);
+            self.calendar.paint(cal_bounds, cx);
+
+            // Escape to close
+            if let Some(ref toggle) = self.on_toggle {
+                let toggle_ptr = toggle.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
+                cx.interactions.register_key_handler(Box::new(move |key, _mods, cx| {
+                    if key == mozui_events::Key::Escape {
+                        unsafe { (*toggle_ptr)(cx) };
+                    }
+                }));
+            }
         }
     }
 }

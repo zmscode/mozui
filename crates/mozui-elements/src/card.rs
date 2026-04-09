@@ -1,10 +1,9 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Shadow, Theme};
-use mozui_text::FontSystem;
-use taffy::prelude::*;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
 use taffy::Overflow;
+use taffy::prelude::*;
 
 const PAD: f32 = 20.0;
 const HEADER_GAP: f32 = 4.0;
@@ -26,6 +25,14 @@ pub struct Card {
     border_color: Color,
     corner_radius: f32,
     shadow: Option<Shadow>,
+    // Layout IDs
+    layout_id: LayoutId,
+    section_ids: Vec<LayoutId>,
+    title_id: LayoutId,
+    desc_id: LayoutId,
+    body_child_ids: Vec<LayoutId>,
+    footer_child_ids: Vec<LayoutId>,
+    footer_section_id: LayoutId,
 }
 
 pub fn card(theme: &Theme) -> Card {
@@ -41,6 +48,13 @@ pub fn card(theme: &Theme) -> Card {
         border_color: theme.border,
         corner_radius: theme.radius_lg,
         shadow: Some(theme.shadow_sm),
+        layout_id: LayoutId::NONE,
+        section_ids: Vec::new(),
+        title_id: LayoutId::NONE,
+        desc_id: LayoutId::NONE,
+        body_child_ids: Vec::new(),
+        footer_child_ids: Vec::new(),
+        footer_section_id: LayoutId::NONE,
     }
 }
 
@@ -85,8 +99,10 @@ impl Card {
 }
 
 impl Element for Card {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
-        let mut sections = Vec::new();
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        self.section_ids.clear();
+        self.body_child_ids.clear();
+        self.footer_child_ids.clear();
         let max_text_width = self.width.map(|w| w - PAD * 2.0);
 
         // Header section (title + description)
@@ -98,14 +114,15 @@ impl Element for Card {
                     font_size: TITLE_SIZE,
                     ..Default::default()
                 };
-                let m = mozui_text::measure_text(title, &style, max_text_width, font_system);
-                header_children.push(engine.new_leaf(Style {
+                let m = mozui_text::measure_text(title, &style, max_text_width, cx.font_system);
+                self.title_id = cx.new_leaf(Style {
                     size: Size {
                         width: length(m.width),
                         height: length(m.height),
                     },
                     ..Default::default()
-                }));
+                });
+                header_children.push(self.title_id);
             }
 
             if let Some(ref desc) = self.description {
@@ -113,17 +130,18 @@ impl Element for Card {
                     font_size: DESC_SIZE,
                     ..Default::default()
                 };
-                let m = mozui_text::measure_text(desc, &style, max_text_width, font_system);
-                header_children.push(engine.new_leaf(Style {
+                let m = mozui_text::measure_text(desc, &style, max_text_width, cx.font_system);
+                self.desc_id = cx.new_leaf(Style {
                     size: Size {
                         width: length(m.width),
                         height: length(m.height),
                     },
                     ..Default::default()
-                }));
+                });
+                header_children.push(self.desc_id);
             }
 
-            sections.push(engine.new_with_children(
+            let header_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
@@ -140,17 +158,17 @@ impl Element for Card {
                     ..Default::default()
                 },
                 &header_children,
-            ));
+            );
+            self.section_ids.push(header_id);
         }
 
         // Body section
         if !self.body.is_empty() {
-            let body_nodes: Vec<_> = self
-                .body
-                .iter()
-                .map(|child| child.layout(engine, font_system))
-                .collect();
-            sections.push(engine.new_with_children(
+            for i in 0..self.body.len() {
+                let child_id = self.body[i].layout(cx);
+                self.body_child_ids.push(child_id);
+            }
+            let body_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Column,
@@ -166,18 +184,18 @@ impl Element for Card {
                     },
                     ..Default::default()
                 },
-                &body_nodes,
-            ));
+                &self.body_child_ids,
+            );
+            self.section_ids.push(body_id);
         }
 
         // Footer section
         if self.has_footer() {
-            let footer_nodes: Vec<_> = self
-                .footer
-                .iter()
-                .map(|child| child.layout(engine, font_system))
-                .collect();
-            sections.push(engine.new_with_children(
+            for i in 0..self.footer.len() {
+                let child_id = self.footer[i].layout(cx);
+                self.footer_child_ids.push(child_id);
+            }
+            self.footer_section_id = cx.new_with_children(
                 Style {
                     display: Display::Flex,
                     flex_direction: FlexDirection::Row,
@@ -200,12 +218,13 @@ impl Element for Card {
                     },
                     ..Default::default()
                 },
-                &footer_nodes,
-            ));
+                &self.footer_child_ids,
+            );
+            self.section_ids.push(self.footer_section_id);
         }
 
         let width = self.width.map(length).unwrap_or(auto());
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
@@ -219,25 +238,13 @@ impl Element for Card {
                 },
                 ..Default::default()
             },
-            &sections,
-        )
+            &self.section_ids,
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        // Card container
-        let container = layouts[*index];
-        *index += 1;
-        let bounds =
-            mozui_style::Rect::new(container.x, container.y, container.width, container.height);
-
-        draw_list.push(DrawCommand::Rect {
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        cx.draw_list.push(DrawCommand::Rect {
             bounds,
             background: Fill::Solid(self.bg),
             corner_radii: Corners::uniform(self.corner_radius),
@@ -249,19 +256,15 @@ impl Element for Card {
         });
 
         // Clip content to card bounds
-        draw_list.push_clip(bounds);
+        cx.draw_list.push_clip(bounds);
 
         // Header
         if self.has_header() {
-            let _header = layouts[*index];
-            *index += 1;
-
             if let Some(ref title) = self.title {
-                let l = layouts[*index];
-                *index += 1;
-                draw_list.push(DrawCommand::Text {
+                let title_bounds = cx.bounds(self.title_id);
+                cx.draw_list.push(DrawCommand::Text {
                     text: title.clone(),
-                    bounds: mozui_style::Rect::new(l.x, l.y, l.width, l.height),
+                    bounds: title_bounds,
                     font_size: TITLE_SIZE,
                     color: self.fg,
                     weight: 600,
@@ -270,11 +273,10 @@ impl Element for Card {
             }
 
             if let Some(ref desc) = self.description {
-                let l = layouts[*index];
-                *index += 1;
-                draw_list.push(DrawCommand::Text {
+                let desc_bounds = cx.bounds(self.desc_id);
+                cx.draw_list.push(DrawCommand::Text {
                     text: desc.clone(),
-                    bounds: mozui_style::Rect::new(l.x, l.y, l.width, l.height),
+                    bounds: desc_bounds,
                     font_size: DESC_SIZE,
                     color: self.muted_fg,
                     weight: 400,
@@ -285,24 +287,22 @@ impl Element for Card {
 
         // Body
         if !self.body.is_empty() {
-            let _body = layouts[*index];
-            *index += 1;
-            for child in &self.body {
-                child.paint(layouts, index, draw_list, interactions, font_system);
+            for i in 0..self.body.len() {
+                let child_bounds = cx.bounds(self.body_child_ids[i]);
+                self.body[i].paint(child_bounds, cx);
             }
         }
 
         // Footer
         if self.has_footer() {
-            let footer_layout = layouts[*index];
-            *index += 1;
+            let footer_bounds = cx.bounds(self.footer_section_id);
 
             // Footer top border
-            draw_list.push(DrawCommand::Rect {
-                bounds: mozui_style::Rect::new(
-                    footer_layout.x,
-                    footer_layout.y,
-                    footer_layout.width,
+            cx.draw_list.push(DrawCommand::Rect {
+                bounds: Rect::new(
+                    footer_bounds.origin.x,
+                    footer_bounds.origin.y,
+                    footer_bounds.size.width,
                     1.0,
                 ),
                 background: Fill::Solid(self.border_color),
@@ -311,11 +311,12 @@ impl Element for Card {
                 shadow: None,
             });
 
-            for child in &self.footer {
-                child.paint(layouts, index, draw_list, interactions, font_system);
+            for i in 0..self.footer.len() {
+                let child_bounds = cx.bounds(self.footer_child_ids[i]);
+                self.footer[i].paint(child_bounds, cx);
             }
         }
 
-        draw_list.pop_clip();
+        cx.draw_list.pop_clip();
     }
 }

@@ -19,9 +19,6 @@ time = { workspace = true }
 name = "hello"
 path = "../../examples/hello.rs"
 
-[[example]]
-name = "form"
-path = "../../examples/form.rs"
 
 [[example]]
 name = "timer"

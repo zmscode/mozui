@@ -1,9 +1,8 @@
 use crate::styled::{ComponentSize, Sizable};
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -68,6 +67,8 @@ impl TagColors {
 }
 
 pub struct Tag {
+    layout_id: LayoutId,
+    text_id: LayoutId,
     label: String,
     colors: TagColors,
     outline: bool,
@@ -78,6 +79,8 @@ pub struct Tag {
 
 pub fn tag(label: impl Into<String>, theme: &Theme) -> Tag {
     Tag {
+        layout_id: LayoutId::NONE,
+        text_id: LayoutId::NONE,
         label: label.into(),
         colors: TagColors::from_variant(TagVariant::Default, theme),
         outline: false,
@@ -185,14 +188,14 @@ impl Sizable for Tag {
 }
 
 impl Element for Tag {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let text_style = mozui_text::TextStyle {
             font_size: self.text_size(),
             color: self.colors.fg,
             ..Default::default()
         };
-        let measured = mozui_text::measure_text(&self.label, &text_style, None, font_system);
-        let text_node = engine.new_leaf(Style {
+        let measured = mozui_text::measure_text(&self.label, &text_style, None, cx.font_system);
+        self.text_id = cx.new_leaf(Style {
             size: Size {
                 width: length(measured.width),
                 height: length(measured.height),
@@ -200,7 +203,7 @@ impl Element for Tag {
             ..Default::default()
         });
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -213,26 +216,16 @@ impl Element for Tag {
                 },
                 ..Default::default()
             },
-            &[text_node],
-        )
+            &[self.text_id],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let radius = self.radius();
 
         if self.outline {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds,
                 background: Fill::Solid(Color::TRANSPARENT),
                 corner_radii: Corners::uniform(radius),
@@ -240,10 +233,10 @@ impl Element for Tag {
                     width: 1.0,
                     color: self.colors.border,
                 }),
-                    shadow: None,
-                });
+                shadow: None,
+            });
         } else {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds,
                 background: Fill::Solid(self.colors.bg),
                 corner_radii: Corners::uniform(radius),
@@ -251,21 +244,15 @@ impl Element for Tag {
                     width: 1.0,
                     color: self.colors.border,
                 }),
-                    shadow: None,
-                });
+                shadow: None,
+            });
         }
 
         // Label
-        let text_layout = layouts[*index];
-        *index += 1;
-        draw_list.push(DrawCommand::Text {
+        let text_bounds = cx.bounds(self.text_id);
+        cx.draw_list.push(DrawCommand::Text {
             text: self.label.clone(),
-            bounds: mozui_style::Rect::new(
-                text_layout.x,
-                text_layout.y,
-                text_layout.width,
-                text_layout.height,
-            ),
+            bounds: text_bounds,
             font_size: self.text_size(),
             color: self.colors.fg,
             weight: 500,

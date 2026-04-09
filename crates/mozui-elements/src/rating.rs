@@ -1,10 +1,9 @@
 use crate::styled::{ComponentSize, Disableable, Sizable};
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct Rating {
@@ -15,6 +14,8 @@ pub struct Rating {
     color: Color,
     empty_color: Color,
     on_change: Option<Box<dyn Fn(f32, &mut dyn std::any::Any)>>,
+    layout_id: LayoutId,
+    star_ids: Vec<LayoutId>,
 }
 
 pub fn rating(theme: &Theme) -> Rating {
@@ -26,6 +27,8 @@ pub fn rating(theme: &Theme) -> Rating {
         color: Color::hex("#f9e2af"),
         empty_color: theme.muted,
         on_change: None,
+        layout_id: LayoutId::NONE,
+        star_ids: Vec::new(),
     }
 }
 
@@ -76,12 +79,12 @@ impl Disableable for Rating {
 }
 
 impl Element for Rating {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let star_sz = self.star_size();
-        let mut children = Vec::new();
+        self.star_ids.clear();
 
         for _ in 0..self.max {
-            children.push(engine.new_leaf(Style {
+            self.star_ids.push(cx.new_leaf(Style {
                 size: Size {
                     width: length(star_sz),
                     height: length(star_sz),
@@ -90,7 +93,7 @@ impl Element for Rating {
             }));
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -101,37 +104,20 @@ impl Element for Rating {
                 },
                 ..Default::default()
             },
-            &children,
-        )
+            &self.star_ids,
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let _outer = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         let alpha = if self.disabled { 0.5 } else { 1.0 };
         let star_sz = self.star_size();
 
         for i in 0..self.max {
-            let star_layout = layouts[*index];
-            *index += 1;
-
-            let star_bounds = mozui_style::Rect::new(
-                star_layout.x,
-                star_layout.y,
-                star_layout.width,
-                star_layout.height,
-            );
+            let star_bounds = cx.bounds(self.star_ids[i as usize]);
 
             let star_index = i as f32;
-            let hovered = !self.disabled && interactions.is_hovered(star_bounds);
+            let hovered = !self.disabled && cx.interactions.is_hovered(star_bounds);
 
             // Determine fill: full, half, or empty
             let (icon_weight, icon_color) = if self.value >= star_index + 1.0 {
@@ -161,7 +147,7 @@ impl Element for Rating {
                 IconName::Star
             };
 
-            draw_list.push(DrawCommand::Icon {
+            cx.draw_list.push(DrawCommand::Icon {
                 name: icon_name,
                 weight: icon_weight,
                 bounds: star_bounds,
@@ -175,7 +161,7 @@ impl Element for Rating {
                     let handler_ptr =
                         handler.as_ref() as *const dyn Fn(f32, &mut dyn std::any::Any);
                     let new_value = (i + 1) as f32;
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         star_bounds,
                         Box::new(move |cx| unsafe { (*handler_ptr)(new_value, cx) }),
                     );

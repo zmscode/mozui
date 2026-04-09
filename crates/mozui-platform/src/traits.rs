@@ -133,7 +133,9 @@ pub fn open_url(url: &str) {
     }
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("cmd").args(["/c", "start", url]).spawn();
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", url])
+            .spawn();
     }
 }
 
@@ -156,7 +158,7 @@ pub struct FileDialogOptions {
 pub fn open_file_dialog(options: FileDialogOptions) -> Vec<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        use objc2_app_kit::{NSOpenPanel, NSModalResponseOK};
+        use objc2_app_kit::{NSModalResponseOK, NSOpenPanel};
         use objc2_foundation::NSString;
 
         let mtm = objc2::MainThreadMarker::new()
@@ -194,7 +196,7 @@ pub fn open_file_dialog(options: FileDialogOptions) -> Vec<std::path::PathBuf> {
 pub fn save_file_dialog(options: FileDialogOptions) -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        use objc2_app_kit::{NSSavePanel, NSModalResponseOK};
+        use objc2_app_kit::{NSModalResponseOK, NSSavePanel};
         use objc2_foundation::NSString;
 
         let mtm = objc2::MainThreadMarker::new()

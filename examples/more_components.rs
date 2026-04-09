@@ -47,8 +47,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
     // Command palette visibility + animation
     let (palette_open, set_palette_open) = cx.use_signal(false);
     let palette_visible = *cx.get(palette_open);
-    let (palette_anim_sig, set_palette_anim_sig) =
-        cx.use_signal::<Option<Animated<f32>>>(None);
+    let (palette_anim_sig, set_palette_anim_sig) = cx.use_signal::<Option<Animated<f32>>>(None);
     let palette_anim_handle = cx.get(palette_anim_sig).clone();
     let anim_flag = cx.animation_flag();
 

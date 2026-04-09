@@ -1,8 +1,7 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Theme};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct Link {
@@ -13,6 +12,8 @@ pub struct Link {
     disabled: bool,
     font_size: f32,
     on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    layout_id: LayoutId,
+    text_id: LayoutId,
 }
 
 pub fn link(label: impl Into<String>, theme: &Theme) -> Link {
@@ -24,6 +25,8 @@ pub fn link(label: impl Into<String>, theme: &Theme) -> Link {
         disabled: false,
         font_size: 13.0,
         on_click: None,
+        layout_id: LayoutId::NONE,
+        text_id: LayoutId::NONE,
     }
 }
 
@@ -55,16 +58,15 @@ impl Link {
 }
 
 impl Element for Link {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let text_style = mozui_text::TextStyle {
             font_size: self.font_size,
             color: self.color,
             ..Default::default()
         };
-        let measured = mozui_text::measure_text(&self.label, &text_style, None, font_system);
+        let measured = mozui_text::measure_text(&self.label, &text_style, None, cx.font_system);
 
-        // Container with space for underline
-        let text_node = engine.new_leaf(Style {
+        self.text_id = cx.new_leaf(Style {
             size: Size {
                 width: length(measured.width),
                 height: length(measured.height),
@@ -72,38 +74,20 @@ impl Element for Link {
             ..Default::default()
         });
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 ..Default::default()
             },
-            &[text_node],
-        )
+            &[self.text_id],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
+        let text_bounds = cx.bounds(self.text_id);
 
-        let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
-
-        let text_layout = layouts[*index];
-        *index += 1;
-        let text_bounds = mozui_style::Rect::new(
-            text_layout.x,
-            text_layout.y,
-            text_layout.width,
-            text_layout.height,
-        );
-
-        let hovered = !self.disabled && interactions.is_hovered(bounds);
+        let hovered = !self.disabled && cx.interactions.is_hovered(bounds);
         let alpha = if self.disabled { 0.5 } else { 1.0 };
         let color = if hovered {
             self.hover_color.with_alpha(alpha)
@@ -112,7 +96,7 @@ impl Element for Link {
         };
 
         // Text
-        draw_list.push(DrawCommand::Text {
+        cx.draw_list.push(DrawCommand::Text {
             text: self.label.clone(),
             bounds: text_bounds,
             font_size: self.font_size,
@@ -123,8 +107,8 @@ impl Element for Link {
 
         // Underline (1px line at bottom of text)
         let underline_y = text_bounds.origin.y + text_bounds.size.height - 1.0;
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: Rect::new(
                 text_bounds.origin.x,
                 underline_y,
                 text_bounds.size.width,
@@ -133,18 +117,18 @@ impl Element for Link {
             background: mozui_style::Fill::Solid(color),
             corner_radii: mozui_style::Corners::uniform(0.0),
             border: None,
-                    shadow: None,
-                });
+            shadow: None,
+        });
 
         // Click handler
         if !self.disabled {
             if let Some(ref handler) = self.on_click {
                 let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                interactions
+                cx.interactions
                     .register_click(bounds, Box::new(move |cx| unsafe { (*handler_ptr)(cx) }));
             } else if let Some(ref url) = self.href {
                 let url = url.clone();
-                interactions.register_click(
+                cx.interactions.register_click(
                     bounds,
                     Box::new(move |_cx| {
                         mozui_platform::open_url(&url);

@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::{Border, DrawCommand};
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 const INPUT_HEIGHT: f32 = 34.0;
@@ -28,6 +27,11 @@ pub struct NumberInput {
     border_color: Color,
     hover_bg: Color,
     corner_radius: f32,
+    // Layout IDs
+    layout_id: LayoutId,
+    dec_id: LayoutId,
+    value_id: LayoutId,
+    inc_id: LayoutId,
 }
 
 pub fn number_input(theme: &Theme) -> NumberInput {
@@ -46,6 +50,10 @@ pub fn number_input(theme: &Theme) -> NumberInput {
         border_color: theme.border,
         hover_bg: theme.secondary,
         corner_radius: theme.radius_md,
+        layout_id: LayoutId::NONE,
+        dec_id: LayoutId::NONE,
+        value_id: LayoutId::NONE,
+        inc_id: LayoutId::NONE,
     }
 }
 
@@ -104,16 +112,16 @@ impl NumberInput {
 }
 
 impl Element for NumberInput {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         // [- button] [value text] [+ button]
-        let dec_btn = engine.new_leaf(Style {
+        self.dec_id = cx.new_leaf(Style {
             size: Size {
                 width: length(BTN_WIDTH),
                 height: length(INPUT_HEIGHT),
             },
             ..Default::default()
         });
-        let value_area = engine.new_leaf(Style {
+        self.value_id = cx.new_leaf(Style {
             flex_grow: 1.0,
             size: Size {
                 width: auto(),
@@ -121,7 +129,7 @@ impl Element for NumberInput {
             },
             ..Default::default()
         });
-        let inc_btn = engine.new_leaf(Style {
+        self.inc_id = cx.new_leaf(Style {
             size: Size {
                 width: length(BTN_WIDTH),
                 height: length(INPUT_HEIGHT),
@@ -129,7 +137,7 @@ impl Element for NumberInput {
             ..Default::default()
         });
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -140,27 +148,15 @@ impl Element for NumberInput {
                 },
                 ..Default::default()
             },
-            &[dec_btn, value_area, inc_btn],
-        )
+            &[self.dec_id, self.value_id, self.inc_id],
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        font_system: &FontSystem,
-    ) {
-        // Container
-        let container = layouts[*index];
-        *index += 1;
-        let container_bounds =
-            mozui_style::Rect::new(container.x, container.y, container.width, container.height);
-
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         // Overall background + border
-        draw_list.push(DrawCommand::Rect {
-            bounds: container_bounds,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds,
             background: Fill::Solid(self.bg),
             corner_radii: Corners::uniform(self.corner_radius),
             border: Some(Border {
@@ -173,13 +169,11 @@ impl Element for NumberInput {
         let alpha = if self.disabled { 0.5 } else { 1.0 };
 
         // Decrement button
-        let dec = layouts[*index];
-        *index += 1;
-        let dec_bounds = mozui_style::Rect::new(dec.x, dec.y, dec.width, dec.height);
+        let dec_bounds = cx.bounds(self.dec_id);
         let dec_hovered =
-            !self.disabled && self.can_decrement() && interactions.is_hovered(dec_bounds);
+            !self.disabled && self.can_decrement() && cx.interactions.is_hovered(dec_bounds);
         if dec_hovered {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: dec_bounds,
                 background: Fill::Solid(self.hover_bg),
                 corner_radii: Corners {
@@ -197,12 +191,12 @@ impl Element for NumberInput {
         } else {
             self.muted_fg.with_alpha(0.3)
         };
-        draw_list.push(DrawCommand::Icon {
+        cx.draw_list.push(DrawCommand::Icon {
             name: IconName::Minus,
             weight: IconWeight::Bold,
-            bounds: mozui_style::Rect::new(
-                dec.x + (BTN_WIDTH - ICON_SIZE) / 2.0,
-                dec.y + (INPUT_HEIGHT - ICON_SIZE) / 2.0,
+            bounds: Rect::new(
+                dec_bounds.origin.x + (BTN_WIDTH - ICON_SIZE) / 2.0,
+                dec_bounds.origin.y + (INPUT_HEIGHT - ICON_SIZE) / 2.0,
                 ICON_SIZE,
                 ICON_SIZE,
             ),
@@ -211,19 +205,18 @@ impl Element for NumberInput {
         });
 
         // Value area
-        let val = layouts[*index];
-        *index += 1;
+        let val_bounds = cx.bounds(self.value_id);
         let val_text = self.format_value();
         // Center the text
         let style = mozui_text::TextStyle {
             font_size: FONT_SIZE,
             ..Default::default()
         };
-        let measured = mozui_text::measure_text(&val_text, &style, None, font_system);
-        let text_x = val.x + (val.width - measured.width) / 2.0;
-        draw_list.push(DrawCommand::Text {
+        let measured = mozui_text::measure_text(&val_text, &style, None, cx.font_system);
+        let text_x = val_bounds.origin.x + (val_bounds.size.width - measured.width) / 2.0;
+        cx.draw_list.push(DrawCommand::Text {
             text: val_text,
-            bounds: mozui_style::Rect::new(text_x, val.y, measured.width, val.height),
+            bounds: Rect::new(text_x, val_bounds.origin.y, measured.width, val_bounds.size.height),
             font_size: FONT_SIZE,
             color: self.fg.with_alpha(alpha),
             weight: 500,
@@ -231,10 +224,10 @@ impl Element for NumberInput {
         });
 
         // Divider lines
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(
-                dec.x + dec.width,
-                dec.y + 6.0,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: Rect::new(
+                dec_bounds.origin.x + dec_bounds.size.width,
+                dec_bounds.origin.y + 6.0,
                 1.0,
                 INPUT_HEIGHT - 12.0,
             ),
@@ -243,10 +236,10 @@ impl Element for NumberInput {
             border: None,
             shadow: None,
         });
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(
-                val.x + val.width,
-                val.y + 6.0,
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: Rect::new(
+                val_bounds.origin.x + val_bounds.size.width,
+                val_bounds.origin.y + 6.0,
                 1.0,
                 INPUT_HEIGHT - 12.0,
             ),
@@ -257,13 +250,11 @@ impl Element for NumberInput {
         });
 
         // Increment button
-        let inc = layouts[*index];
-        *index += 1;
-        let inc_bounds = mozui_style::Rect::new(inc.x, inc.y, inc.width, inc.height);
+        let inc_bounds = cx.bounds(self.inc_id);
         let inc_hovered =
-            !self.disabled && self.can_increment() && interactions.is_hovered(inc_bounds);
+            !self.disabled && self.can_increment() && cx.interactions.is_hovered(inc_bounds);
         if inc_hovered {
-            draw_list.push(DrawCommand::Rect {
+            cx.draw_list.push(DrawCommand::Rect {
                 bounds: inc_bounds,
                 background: Fill::Solid(self.hover_bg),
                 corner_radii: Corners {
@@ -281,12 +272,12 @@ impl Element for NumberInput {
         } else {
             self.muted_fg.with_alpha(0.3)
         };
-        draw_list.push(DrawCommand::Icon {
+        cx.draw_list.push(DrawCommand::Icon {
             name: IconName::Plus,
             weight: IconWeight::Bold,
-            bounds: mozui_style::Rect::new(
-                inc.x + (BTN_WIDTH - ICON_SIZE) / 2.0,
-                inc.y + (INPUT_HEIGHT - ICON_SIZE) / 2.0,
+            bounds: Rect::new(
+                inc_bounds.origin.x + (BTN_WIDTH - ICON_SIZE) / 2.0,
+                inc_bounds.origin.y + (INPUT_HEIGHT - ICON_SIZE) / 2.0,
                 ICON_SIZE,
                 ICON_SIZE,
             ),
@@ -301,7 +292,7 @@ impl Element for NumberInput {
 
                 if self.can_decrement() {
                     let new_val = (self.value - self.step).max(self.min);
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         dec_bounds,
                         Box::new(move |cx| unsafe { (*ptr)(new_val, cx) }),
                     );
@@ -309,7 +300,7 @@ impl Element for NumberInput {
 
                 if self.can_increment() {
                     let new_val = (self.value + self.step).min(self.max);
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         inc_bounds,
                         Box::new(move |cx| unsafe { (*ptr)(new_val, cx) }),
                     );
@@ -317,7 +308,7 @@ impl Element for NumberInput {
             }
         }
 
-        interactions.register_hover_region(dec_bounds);
-        interactions.register_hover_region(inc_bounds);
+        cx.interactions.register_hover_region(dec_bounds);
+        cx.interactions.register_hover_region(inc_bounds);
     }
 }

@@ -1,9 +1,8 @@
 use crate::styled::{ComponentSize, Sizable};
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill, Theme};
-use mozui_text::FontSystem;
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Corners, Fill, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct DescriptionItem {
@@ -40,6 +39,11 @@ pub struct DescriptionList {
     label_color: Color,
     value_color: Color,
     border_color: Color,
+    layout_id: LayoutId,
+    row_ids: Vec<LayoutId>,
+    label_ids: Vec<LayoutId>,
+    value_ids: Vec<LayoutId>,
+    divider_ids: Vec<LayoutId>,
 }
 
 pub fn description_list(theme: &Theme) -> DescriptionList {
@@ -52,6 +56,11 @@ pub fn description_list(theme: &Theme) -> DescriptionList {
         label_color: theme.muted_foreground,
         value_color: theme.foreground,
         border_color: theme.border,
+        layout_id: LayoutId::NONE,
+        row_ids: Vec::new(),
+        label_ids: Vec::new(),
+        value_ids: Vec::new(),
+        divider_ids: Vec::new(),
     }
 }
 
@@ -109,10 +118,14 @@ impl Sizable for DescriptionList {
 }
 
 impl Element for DescriptionList {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let font_size = self.text_size();
         let row_py = self.row_padding();
         let mut row_nodes = Vec::new();
+        self.row_ids.clear();
+        self.label_ids.clear();
+        self.value_ids.clear();
+        self.divider_ids.clear();
 
         for item in &self.items {
             // Label
@@ -122,7 +135,7 @@ impl Element for DescriptionList {
                 ..Default::default()
             };
             let label_measured =
-                mozui_text::measure_text(&item.label, &label_style, None, font_system);
+                mozui_text::measure_text(&item.label, &label_style, None, cx.font_system);
 
             // Value
             let value_style = mozui_text::TextStyle {
@@ -131,18 +144,20 @@ impl Element for DescriptionList {
                 ..Default::default()
             };
             let value_measured =
-                mozui_text::measure_text(&item.value, &value_style, None, font_system);
+                mozui_text::measure_text(&item.value, &value_style, None, cx.font_system);
 
             match self.layout_mode {
                 DescriptionLayout::Horizontal => {
-                    let label_node = engine.new_leaf(Style {
+                    let label_id = cx.new_leaf(Style {
                         size: Size {
                             width: length(self.label_width),
                             height: length(label_measured.height),
                         },
                         ..Default::default()
                     });
-                    let value_node = engine.new_leaf(Style {
+                    self.label_ids.push(label_id);
+
+                    let value_id = cx.new_leaf(Style {
                         size: Size {
                             width: length(value_measured.width),
                             height: length(value_measured.height),
@@ -150,7 +165,9 @@ impl Element for DescriptionList {
                         flex_grow: 1.0,
                         ..Default::default()
                     });
-                    let row = engine.new_with_children(
+                    self.value_ids.push(value_id);
+
+                    let row = cx.new_with_children(
                         Style {
                             display: Display::Flex,
                             flex_direction: FlexDirection::Row,
@@ -167,26 +184,31 @@ impl Element for DescriptionList {
                             },
                             ..Default::default()
                         },
-                        &[label_node, value_node],
+                        &[label_id, value_id],
                     );
+                    self.row_ids.push(row);
                     row_nodes.push(row);
                 }
                 DescriptionLayout::Vertical => {
-                    let label_node = engine.new_leaf(Style {
+                    let label_id = cx.new_leaf(Style {
                         size: Size {
                             width: length(label_measured.width),
                             height: length(label_measured.height),
                         },
                         ..Default::default()
                     });
-                    let value_node = engine.new_leaf(Style {
+                    self.label_ids.push(label_id);
+
+                    let value_id = cx.new_leaf(Style {
                         size: Size {
                             width: length(value_measured.width),
                             height: length(value_measured.height),
                         },
                         ..Default::default()
                     });
-                    let row = engine.new_with_children(
+                    self.value_ids.push(value_id);
+
+                    let row = cx.new_with_children(
                         Style {
                             display: Display::Flex,
                             flex_direction: FlexDirection::Column,
@@ -202,63 +224,47 @@ impl Element for DescriptionList {
                             },
                             ..Default::default()
                         },
-                        &[label_node, value_node],
+                        &[label_id, value_id],
                     );
+                    self.row_ids.push(row);
                     row_nodes.push(row);
                 }
             }
 
-            // Divider leaf (1px height) — used if bordered
+            // Divider leaf (1px height) -- used if bordered
             if self.bordered {
-                row_nodes.push(engine.new_leaf(Style {
+                let div_id = cx.new_leaf(Style {
                     size: Size {
                         width: percent(1.0),
                         height: length(1.0),
                     },
                     ..Default::default()
-                }));
+                });
+                self.divider_ids.push(div_id);
+                row_nodes.push(div_id);
             }
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 ..Default::default()
             },
             &row_nodes,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let _outer = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         let font_size = self.text_size();
 
         for (i, item) in self.items.iter().enumerate() {
-            // Row container
-            let _row_layout = layouts[*index];
-            *index += 1;
-
             // Label
-            let label_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
+            let label_bounds = cx.bounds(self.label_ids[i]);
+            cx.draw_list.push(DrawCommand::Text {
                 text: item.label.clone(),
-                bounds: mozui_style::Rect::new(
-                    label_layout.x,
-                    label_layout.y,
-                    label_layout.width,
-                    label_layout.height,
-                ),
+                bounds: label_bounds,
                 font_size,
                 color: self.label_color,
                 weight: 500,
@@ -266,16 +272,10 @@ impl Element for DescriptionList {
             });
 
             // Value
-            let value_layout = layouts[*index];
-            *index += 1;
-            draw_list.push(DrawCommand::Text {
+            let value_bounds = cx.bounds(self.value_ids[i]);
+            cx.draw_list.push(DrawCommand::Text {
                 text: item.value.clone(),
-                bounds: mozui_style::Rect::new(
-                    value_layout.x,
-                    value_layout.y,
-                    value_layout.width,
-                    value_layout.height,
-                ),
+                bounds: value_bounds,
                 font_size,
                 color: self.value_color,
                 weight: 400,
@@ -284,23 +284,14 @@ impl Element for DescriptionList {
 
             // Bordered divider
             if self.bordered && i < self.items.len() - 1 {
-                let div_layout = layouts[*index];
-                *index += 1;
-                draw_list.push(DrawCommand::Rect {
-                    bounds: mozui_style::Rect::new(
-                        div_layout.x,
-                        div_layout.y,
-                        div_layout.width,
-                        div_layout.height,
-                    ),
+                let div_bounds = cx.bounds(self.divider_ids[i]);
+                cx.draw_list.push(DrawCommand::Rect {
+                    bounds: div_bounds,
                     background: Fill::Solid(self.border_color),
                     corner_radii: Corners::uniform(0.0),
                     border: None,
                     shadow: None,
                 });
-            } else if self.bordered {
-                // Last item still has a divider node — skip it
-                *index += 1;
             }
         }
     }

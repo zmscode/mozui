@@ -1,9 +1,8 @@
-use crate::{Element, InteractionMap};
+use crate::{Element, LayoutContext, PaintContext};
 use mozui_icons::{IconName, IconWeight};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList};
-use mozui_style::{Color, Theme};
-use mozui_text::FontSystem;
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::{Color, Rect, Theme};
 use taffy::prelude::*;
 
 pub struct BreadcrumbItem {
@@ -32,7 +31,17 @@ impl BreadcrumbItem {
     }
 }
 
+/// Tracks layout IDs for a single breadcrumb entry.
+struct BreadcrumbEntryLayout {
+    icon_id: Option<LayoutId>,
+    label_id: LayoutId,
+    separator_id: Option<LayoutId>,
+}
+
 pub struct Breadcrumb {
+    layout_id: LayoutId,
+    entry_layouts: Vec<BreadcrumbEntryLayout>,
+
     items: Vec<BreadcrumbItem>,
     font_size: f32,
     color: Color,
@@ -42,6 +51,9 @@ pub struct Breadcrumb {
 
 pub fn breadcrumb(theme: &Theme) -> Breadcrumb {
     Breadcrumb {
+        layout_id: LayoutId::NONE,
+        entry_layouts: Vec::new(),
+
         items: Vec::new(),
         font_size: 13.0,
         color: theme.muted_foreground,
@@ -68,20 +80,25 @@ impl Breadcrumb {
 }
 
 impl Element for Breadcrumb {
-    fn layout(&self, engine: &mut LayoutEngine, font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let mut row_children = Vec::new();
+        self.entry_layouts = Vec::new();
 
         for (i, item) in self.items.iter().enumerate() {
             // Optional icon
-            if let Some(_icon) = item.icon {
-                row_children.push(engine.new_leaf(Style {
+            let icon_id = if item.icon.is_some() {
+                let id = cx.new_leaf(Style {
                     size: Size {
                         width: length(14.0),
                         height: length(14.0),
                     },
                     ..Default::default()
-                }));
-            }
+                });
+                row_children.push(id);
+                Some(id)
+            } else {
+                None
+            };
 
             // Label text
             let is_last = i == self.items.len() - 1;
@@ -95,28 +112,39 @@ impl Element for Breadcrumb {
                 color,
                 ..Default::default()
             };
-            let measured = mozui_text::measure_text(&item.label, &text_style, None, font_system);
-            row_children.push(engine.new_leaf(Style {
+            let measured = mozui_text::measure_text(&item.label, &text_style, None, cx.font_system);
+            let label_id = cx.new_leaf(Style {
                 size: Size {
                     width: length(measured.width),
                     height: length(measured.height),
                 },
                 ..Default::default()
-            }));
+            });
+            row_children.push(label_id);
 
             // Separator (except after last)
-            if !is_last {
-                row_children.push(engine.new_leaf(Style {
+            let separator_id = if !is_last {
+                let id = cx.new_leaf(Style {
                     size: Size {
                         width: length(14.0),
                         height: length(14.0),
                     },
                     ..Default::default()
-                }));
-            }
+                });
+                row_children.push(id);
+                Some(id)
+            } else {
+                None
+            };
+
+            self.entry_layouts.push(BreadcrumbEntryLayout {
+                icon_id,
+                label_id,
+                separator_id,
+            });
         }
 
-        engine.new_with_children(
+        self.layout_id = cx.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -128,34 +156,19 @@ impl Element for Breadcrumb {
                 ..Default::default()
             },
             &row_children,
-        )
+        );
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let _outer = layouts[*index];
-        *index += 1;
-
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
         for (i, item) in self.items.iter().enumerate() {
+            let el = &self.entry_layouts[i];
             let is_last = i == self.items.len() - 1;
 
             // Icon
             if let Some(icon_name) = item.icon {
-                let icon_layout = layouts[*index];
-                *index += 1;
-                let icon_bounds = mozui_style::Rect::new(
-                    icon_layout.x,
-                    icon_layout.y,
-                    icon_layout.width,
-                    icon_layout.height,
-                );
-                draw_list.push(DrawCommand::Icon {
+                let icon_bounds = cx.bounds(el.icon_id.unwrap());
+                cx.draw_list.push(DrawCommand::Icon {
                     name: icon_name,
                     weight: IconWeight::Regular,
                     bounds: icon_bounds,
@@ -169,17 +182,10 @@ impl Element for Breadcrumb {
             }
 
             // Label
-            let text_layout = layouts[*index];
-            *index += 1;
-            let text_bounds = mozui_style::Rect::new(
-                text_layout.x,
-                text_layout.y,
-                text_layout.width,
-                text_layout.height,
-            );
+            let text_bounds = cx.bounds(el.label_id);
 
             let hovered =
-                !is_last && item.on_click.is_some() && interactions.is_hovered(text_bounds);
+                !is_last && item.on_click.is_some() && cx.interactions.is_hovered(text_bounds);
             let color = if is_last {
                 self.active_color
             } else if hovered {
@@ -188,7 +194,7 @@ impl Element for Breadcrumb {
                 self.color
             };
 
-            draw_list.push(DrawCommand::Text {
+            cx.draw_list.push(DrawCommand::Text {
                 text: item.label.clone(),
                 bounds: text_bounds,
                 font_size: self.font_size,
@@ -201,7 +207,7 @@ impl Element for Breadcrumb {
             if !is_last {
                 if let Some(ref handler) = item.on_click {
                     let handler_ptr = handler.as_ref() as *const dyn Fn(&mut dyn std::any::Any);
-                    interactions.register_click(
+                    cx.interactions.register_click(
                         text_bounds,
                         Box::new(move |cx| unsafe { (*handler_ptr)(cx) }),
                     );
@@ -209,18 +215,12 @@ impl Element for Breadcrumb {
             }
 
             // Separator chevron
-            if !is_last {
-                let sep_layout = layouts[*index];
-                *index += 1;
-                draw_list.push(DrawCommand::Icon {
+            if let Some(sep_id) = el.separator_id {
+                let sep_bounds = cx.bounds(sep_id);
+                cx.draw_list.push(DrawCommand::Icon {
                     name: IconName::CaretRight,
                     weight: IconWeight::Regular,
-                    bounds: mozui_style::Rect::new(
-                        sep_layout.x,
-                        sep_layout.y,
-                        sep_layout.width,
-                        sep_layout.height,
-                    ),
+                    bounds: sep_bounds,
                     color: self.separator_color,
                     size_px: 14.0,
                 });

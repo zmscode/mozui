@@ -13,6 +13,7 @@ members = [
     "crates/mozui-executor",
     "crates/mozui-text",
     "crates/mozui-icons",
+    "crates/mozui-devtools",
 ]
 
 [workspace.package]
@@ -33,6 +34,7 @@ mozui-reactive = { path = "crates/mozui-reactive" }
 mozui-executor = { path = "crates/mozui-executor" }
 mozui-text = { path = "crates/mozui-text" }
 mozui-icons = { path = "crates/mozui-icons" }
+mozui-devtools = { path = "crates/mozui-devtools" }
 
 # External
 wgpu = "25"

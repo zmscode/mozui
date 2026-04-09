@@ -1,8 +1,7 @@
-use crate::{Element, InteractionMap};
-use mozui_layout::LayoutEngine;
-use mozui_renderer::{DrawCommand, DrawList, ImageData, ObjectFit};
+use crate::{Element, LayoutContext, PaintContext};
+use mozui_layout::LayoutId;
+use mozui_renderer::{DrawCommand, ImageData, ObjectFit};
 use mozui_style::{Corners, Rect};
-use mozui_text::FontSystem;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use taffy::prelude::*;
@@ -29,8 +28,16 @@ pub fn decode_image_file(path: &str) -> Option<Arc<ImageData>> {
 pub fn decode_svg(svg: &str, width: u32, height: u32) -> Option<Arc<ImageData>> {
     let tree = usvg::Tree::from_str(svg, &usvg::Options::default()).ok()?;
     let svg_size = tree.size();
-    let w = if width > 0 { width } else { svg_size.width() as u32 };
-    let h = if height > 0 { height } else { svg_size.height() as u32 };
+    let w = if width > 0 {
+        width
+    } else {
+        svg_size.width() as u32
+    };
+    let h = if height > 0 {
+        height
+    } else {
+        svg_size.height() as u32
+    };
 
     let mut pixmap = tiny_skia::Pixmap::new(w, h)?;
     let scale_x = w as f32 / svg_size.width();
@@ -144,6 +151,7 @@ pub enum ImageSource {
 // ── Img element ──────────────────────────────────────────────────
 
 pub struct Img {
+    layout_id: LayoutId,
     source: ImageSource,
     width: Option<f32>,
     height: Option<f32>,
@@ -155,6 +163,7 @@ pub struct Img {
 /// Create an image element from pre-decoded image data.
 pub fn img(data: Arc<ImageData>) -> Img {
     Img {
+        layout_id: LayoutId::NONE,
         source: ImageSource::Data(data),
         width: None,
         height: None,
@@ -167,6 +176,7 @@ pub fn img(data: Arc<ImageData>) -> Img {
 /// Create an image element from an animated image handle.
 pub fn img_animated(anim: AnimatedImage) -> Img {
     Img {
+        layout_id: LayoutId::NONE,
         source: ImageSource::Animated(anim),
         width: None,
         height: None,
@@ -239,35 +249,25 @@ impl Img {
 }
 
 impl Element for Img {
-    fn layout(&self, engine: &mut LayoutEngine, _font_system: &FontSystem) -> taffy::NodeId {
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
         let data = self.current_data();
         let w = self.width.unwrap_or(data.width as f32);
         let h = self.height.unwrap_or(data.height as f32);
 
-        engine.new_leaf(Style {
+        self.layout_id = cx.new_leaf(Style {
             size: taffy::Size {
                 width: length(w),
                 height: length(h),
             },
             ..Default::default()
-        })
+        });
+        self.layout_id
     }
 
-    fn paint(
-        &self,
-        layouts: &[mozui_layout::ComputedLayout],
-        index: &mut usize,
-        draw_list: &mut DrawList,
-        _interactions: &mut InteractionMap,
-        _font_system: &FontSystem,
-    ) {
-        let layout = layouts[*index];
-        *index += 1;
-
-        let bounds = Rect::new(layout.x, layout.y, layout.width, layout.height);
+    fn paint(&mut self, bounds: Rect, cx: &mut PaintContext) {
         let data = self.current_data();
 
-        draw_list.push(DrawCommand::Image {
+        cx.draw_list.push(DrawCommand::Image {
             bounds,
             data: data.clone(),
             corner_radii: Corners::uniform(self.corner_radius),
