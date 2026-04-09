@@ -167,7 +167,8 @@ impl Element for Slider {
             background: Fill::Solid(self.track_color.with_alpha(alpha)),
             corner_radii: Corners::uniform(track_radius),
             border: None,
-        });
+                    shadow: None,
+                });
 
         // Filled portion
         if fill_w > 0.5 {
@@ -176,7 +177,8 @@ impl Element for Slider {
                 background: Fill::Solid(self.fill_color.with_alpha(alpha)),
                 corner_radii: Corners::uniform(track_radius),
                 border: None,
-            });
+                    shadow: None,
+                });
         }
 
         // Thumb
@@ -200,7 +202,8 @@ impl Element for Slider {
             background: Fill::Solid(thumb_color),
             corner_radii: Corners::uniform(thumb_sz / 2.0),
             border: None,
-        });
+                    shadow: None,
+                });
 
         // Register drag handler for value changes
         if !self.disabled {

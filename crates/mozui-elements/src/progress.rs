@@ -88,7 +88,8 @@ impl Element for Progress {
             background: Fill::Solid(self.track_color),
             corner_radii: Corners::uniform(radius),
             border: None,
-        });
+                    shadow: None,
+                });
 
         // Fill
         let ratio = self.value / 100.0;
@@ -99,7 +100,8 @@ impl Element for Progress {
                 background: Fill::Solid(self.fill_color),
                 corner_radii: Corners::uniform(radius),
                 border: None,
-            });
+                    shadow: None,
+                });
         }
     }
 }

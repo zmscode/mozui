@@ -164,7 +164,8 @@ impl Element for Checkbox {
                 background: Fill::Solid(bg),
                 corner_radii: Corners::uniform(radius),
                 border: None,
-            });
+                    shadow: None,
+                });
             // Check icon
             draw_list.push(DrawCommand::Icon {
                 name: IconName::Check,
@@ -187,7 +188,8 @@ impl Element for Checkbox {
                     width: 1.5,
                     color: border_c,
                 }),
-            });
+                    shadow: None,
+                });
         }
 
         // Label

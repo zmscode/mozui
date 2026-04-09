@@ -1,14 +1,125 @@
 use crate::context::Context;
 use crate::keybindings::KeybindingRegistry;
 use mozui_elements::{Element, InteractionMap};
-use mozui_events::PlatformEvent;
+use mozui_events::{PlatformEvent, WindowId};
 use mozui_layout::LayoutEngine;
 use mozui_platform::{WindowOptions, create_platform};
 use mozui_renderer::{DrawList, Renderer};
 use mozui_style::Theme;
+use std::collections::HashMap;
 use taffy::prelude::*;
 
 pub type ActionHandler = Box<dyn Fn(&dyn crate::Action, &mut Context)>;
+pub type RootBuilder = Box<dyn Fn(&mut Context) -> Box<dyn Element>>;
+
+/// Per-window rendering and interaction state.
+struct WindowState {
+    window: Box<dyn mozui_platform::PlatformWindow>,
+    renderer: Renderer,
+    layout_engine: LayoutEngine,
+    interactions: InteractionMap,
+    draw_list: DrawList,
+    cached_layouts: Vec<mozui_layout::ComputedLayout>,
+    element_tree: Option<Box<dyn Element>>,
+    root_builder: RootBuilder,
+    needs_render: bool,
+    needs_layout: bool,
+    last_size: mozui_style::Size,
+    last_scale: f32,
+    bg_color: mozui_style::Color,
+}
+
+impl WindowState {
+    fn new(
+        window: Box<dyn mozui_platform::PlatformWindow>,
+        root_builder: RootBuilder,
+        bg_color: mozui_style::Color,
+    ) -> Self {
+        let renderer = Renderer::new(window.as_ref());
+        let last_size = window.content_size();
+        let last_scale = window.scale_factor();
+        Self {
+            window,
+            renderer,
+            layout_engine: LayoutEngine::new(),
+            interactions: InteractionMap::new(),
+            draw_list: DrawList::new(),
+            cached_layouts: Vec::new(),
+            element_tree: None,
+            root_builder,
+            needs_render: true,
+            needs_layout: true,
+            last_size,
+            last_scale,
+            bg_color,
+        }
+    }
+
+    fn rebuild(&mut self, cx: &mut Context) {
+        cx.reset_hooks();
+        self.element_tree = Some((self.root_builder)(cx));
+        self.needs_layout = true;
+        self.needs_render = true;
+    }
+
+    fn rebuild_interactions(&mut self) {
+        let element_tree = self.element_tree.as_ref().unwrap();
+        let size = self.window.content_size();
+        self.layout_engine.clear();
+        let root_node = element_tree.layout(&mut self.layout_engine, self.renderer.font_system());
+        self.layout_engine.compute_layout(
+            root_node,
+            taffy::prelude::Size {
+                width: AvailableSpace::Definite(size.width),
+                height: AvailableSpace::Definite(size.height),
+            },
+        );
+        self.cached_layouts = self.layout_engine.collect_layouts(root_node);
+        self.draw_list.clear();
+        self.interactions.clear();
+        let mut index = 0;
+        element_tree.paint(
+            &self.cached_layouts,
+            &mut index,
+            &mut self.draw_list,
+            &mut self.interactions,
+            self.renderer.font_system(),
+        );
+    }
+
+    fn repaint_only(&mut self) {
+        let element_tree = self.element_tree.as_ref().unwrap();
+        self.draw_list.clear();
+        self.interactions.clear();
+        let mut index = 0;
+        element_tree.paint(
+            &self.cached_layouts,
+            &mut index,
+            &mut self.draw_list,
+            &mut self.interactions,
+            self.renderer.font_system(),
+        );
+    }
+
+    fn render(&mut self) {
+        if !self.needs_render {
+            return;
+        }
+        let size = self.window.content_size();
+        let scale = self.window.scale_factor();
+
+        if self.needs_layout {
+            self.rebuild_interactions();
+            self.needs_layout = false;
+        } else {
+            self.repaint_only();
+        }
+
+        self.renderer
+            .render(self.bg_color, &self.draw_list, size, scale);
+        self.needs_render = false;
+    }
+}
 
 pub struct App {
     theme: Theme,
@@ -57,296 +168,270 @@ impl App {
         F: Fn(&mut Context) -> Box<dyn Element> + 'static,
     {
         let mut platform = create_platform();
-        let window = platform.open_window(self.window_options);
+        let (main_id, window) = platform.open_window(self.window_options);
 
-        let mut renderer = Renderer::new(window.as_ref());
         let mut cx = Context::new(self.theme.clone());
 
-        // Set up clipboard access (uses platform-specific static APIs)
+        // Set up clipboard access
         cx.set_clipboard(
             || mozui_platform::clipboard_read(),
             |text| mozui_platform::clipboard_write(text),
         );
-        let mut layout_engine = LayoutEngine::new();
+
         let bg_color = self.theme.background;
 
-        let mut needs_render = true;
-        let mut interactions = InteractionMap::new();
+        // Create main window state
+        let mut windows: HashMap<WindowId, WindowState> = HashMap::new();
+        let mut ws = WindowState::new(window, Box::new(root), bg_color);
+        ws.rebuild(&mut cx);
+        windows.insert(main_id, ws);
+
         let keybindings = self.keybindings;
         let action_handler = self.action_handler;
-        let mut last_size = window.content_size();
-        let mut last_scale = window.scale_factor();
 
-        // Build initial element tree
-        cx.reset_hooks();
-        let mut element_tree: Box<dyn Element> = root(&mut cx);
+        // Track whether shared state changed (requires all-window rebuild)
+        let mut global_dirty = false;
+        // Counter for dynamically opened windows (starts after MAIN = 0)
+        let mut next_window_id: u64 = 1;
 
-        // Shared rebuild logic: after element tree changes, immediately
-        // re-layout and repaint so interaction handlers point to live closures.
-        let mut draw_list = DrawList::new();
-
-        let rebuild_interactions =
-            |element_tree: &Box<dyn Element>,
-             layout_engine: &mut LayoutEngine,
-             renderer: &Renderer,
-             interactions: &mut InteractionMap,
-             draw_list: &mut DrawList,
-             window: &dyn mozui_platform::PlatformWindow| {
-                let size = window.content_size();
-                layout_engine.clear();
-                let root_node = element_tree.layout(layout_engine, renderer.font_system());
-                layout_engine.compute_layout(
-                    root_node,
-                    taffy::prelude::Size {
-                        width: AvailableSpace::Definite(size.width),
-                        height: AvailableSpace::Definite(size.height),
-                    },
-                );
-                let layouts = layout_engine.collect_layouts(root_node);
-                draw_list.clear();
-                interactions.clear();
-                let mut index = 0;
-                element_tree.paint(
-                    &layouts,
-                    &mut index,
-                    draw_list,
-                    interactions,
-                    renderer.font_system(),
-                );
-            };
-
-        platform.run(Box::new(move |event| {
+        platform.run(Box::new(move |window_id, event| {
             match event {
                 PlatformEvent::RedrawRequested => {
-                    // Exit if the window was closed (e.g. traffic light close button)
-                    if !window.is_visible() {
-                        std::process::exit(0);
-                    }
-
-                    // Detect window resize (macOS doesn't send resize events for live resize)
-                    let current_size = window.content_size();
-                    let current_scale = window.scale_factor();
-                    if current_size != last_size || current_scale != last_scale {
-                        renderer.resize(current_size, current_scale);
-                        last_size = current_size;
-                        last_scale = current_scale;
-                        cx.reset_hooks();
-                        element_tree = root(&mut cx);
-                        needs_render = true;
-                    }
-
-                    // Fire expired timers — take timer manager out temporarily
-                    let mut timers =
-                        std::mem::replace(&mut cx.timers, mozui_executor::TimerManager::new());
-                    if timers.fire_expired(&mut cx) {
-                        needs_render = true;
-                    }
-                    cx.timers = timers;
-
-                    // Poll async tasks
-                    if cx.executor.poll_ready() {
-                        needs_render = true;
-                    }
-
-                    // Check if animations were running from last frame,
-                    // then clear the flag so this frame's get() calls re-set it.
-                    let animations_running = cx.has_active_animations();
-                    cx.clear_animation_flag();
-
-                    // Rebuild tree if signals changed OR animations need ticking
-                    if cx.is_dirty() || animations_running {
-                        cx.clear_dirty();
-                        cx.reset_hooks();
-                        element_tree = root(&mut cx);
-                        needs_render = true;
-                    }
-
-                    if needs_render {
-                        let size = window.content_size();
-                        let scale = window.scale_factor();
-
-                        rebuild_interactions(
-                            &element_tree,
-                            &mut layout_engine,
-                            &renderer,
-                            &mut interactions,
-                            &mut draw_list,
-                            window.as_ref(),
-                        );
-
-                        renderer.render(bg_color, &draw_list, size, scale);
-                        needs_render = false;
-                    }
-
-                    // If animations are still in progress, request another frame
-                    if cx.has_active_animations() {
-                        window.request_redraw();
-                    }
-                }
-                PlatformEvent::MouseDown {
-                    button: mozui_events::MouseButton::Left,
-                    position,
-                    ..
-                } => {
-                    interactions.set_mouse_pressed(position);
-                    // Check element drag handlers first (e.g. sliders)
-                    if interactions.dispatch_drag_start(position, &mut cx) {
-                        if cx.is_dirty() {
-                            cx.clear_dirty();
-                            cx.reset_hooks();
-                            element_tree = root(&mut cx);
-                            rebuild_interactions(
-                                &element_tree,
-                                &mut layout_engine,
-                                &renderer,
-                                &mut interactions,
-                                &mut draw_list,
-                                window.as_ref(),
-                            );
+                    // Handle global state changes first (timers, async, signals, animations)
+                    // We only check on the main window's redraw to avoid duplicate work.
+                    if window_id == WindowId::MAIN {
+                        // Process pending window-open requests
+                        let reqs = std::mem::take(&mut cx.window_requests);
+                        for req in reqs {
+                            let new_window = mozui_platform::create_window(req.options);
+                            let new_id = WindowId(next_window_id);
+                            next_window_id += 1;
+                            let mut new_ws =
+                                WindowState::new(new_window, req.root_builder, bg_color);
+                            new_ws.rebuild(&mut cx);
+                            windows.insert(new_id, new_ws);
                         }
-                    } else if interactions.is_drag_region(position) {
-                        window.begin_drag_move();
-                    }
-                    // Re-render for active state
-                    needs_render = true;
-                    window.request_redraw();
-                }
-                PlatformEvent::MouseUp {
-                    button: mozui_events::MouseButton::Left,
-                    position,
-                    ..
-                } => {
-                    interactions.set_mouse_released();
-                    interactions.clear_active_drag();
-                    if interactions.dispatch_click(position, &mut cx) {
-                        cx.clear_dirty();
-                        cx.reset_hooks();
-                        element_tree = root(&mut cx);
-                        // Immediately rebuild interactions so handlers point to live tree
-                        rebuild_interactions(
-                            &element_tree,
-                            &mut layout_engine,
-                            &renderer,
-                            &mut interactions,
-                            &mut draw_list,
-                            window.as_ref(),
-                        );
-                    }
-                    // Always re-render on mouse-up to clear active state visuals
-                    needs_render = true;
-                    window.request_redraw();
-                }
-                PlatformEvent::KeyDown { key, modifiers, .. } => {
-                    let mut handled = false;
 
-                    // 1. Check keybindings first
-                    if let Some(action) = keybindings.match_key(key, modifiers, &[]) {
-                        if let Some(ref handler) = action_handler {
-                            let action_clone = action.boxed_clone();
-                            handler(action_clone.as_ref(), &mut cx);
-                            handled = true;
-                        }
-                    }
-
-                    // 2. Tab cycles focus
-                    if !handled && key == mozui_events::Key::Tab {
-                        if interactions.cycle_focus(modifiers.shift, &mut cx) {
-                            handled = true;
-                        }
-                    }
-
-                    // 3. Dispatch to focused element + global key handlers
-                    if !handled {
-                        interactions.dispatch_key(key, modifiers, &mut cx);
-                    }
-
-                    // Rebuild if anything changed
-                    if cx.is_dirty() || handled {
-                        cx.clear_dirty();
-                        cx.reset_hooks();
-                        element_tree = root(&mut cx);
-                        rebuild_interactions(
-                            &element_tree,
-                            &mut layout_engine,
-                            &renderer,
-                            &mut interactions,
-                            &mut draw_list,
-                            window.as_ref(),
-                        );
-                        needs_render = true;
-                        window.request_redraw();
-                    }
-                }
-                PlatformEvent::ScrollWheel {
-                    delta, position, ..
-                } => {
-                    let (dx, dy) = match delta {
-                        mozui_events::ScrollDelta::Pixels(dx, dy) => (dx, dy),
-                        mozui_events::ScrollDelta::Lines(dx, dy) => (dx * 20.0, dy * 20.0),
-                    };
-                    if interactions.dispatch_scroll(position, dx, dy, &mut cx) {
-                        needs_render = true;
-                        window.request_redraw();
-                    }
-                }
-                PlatformEvent::MouseMove { position, .. } => {
-                    let old_pos = interactions.mouse_position();
-                    interactions.set_mouse_position(position);
-                    mozui_platform::set_cursor_style(interactions.cursor_at(position));
-
-                    // Dispatch drag-move if a drag is active
-                    if interactions.is_mouse_pressed() {
-                        if interactions.dispatch_drag_move(position, &mut cx) {
-                            if cx.is_dirty() {
-                                cx.clear_dirty();
-                                cx.reset_hooks();
-                                element_tree = root(&mut cx);
-                                rebuild_interactions(
-                                    &element_tree,
-                                    &mut layout_engine,
-                                    &renderer,
-                                    &mut interactions,
-                                    &mut draw_list,
-                                    window.as_ref(),
-                                );
+                        // Process pending window-close requests
+                        let close_reqs = std::mem::take(&mut cx.close_requests);
+                        for id in close_reqs {
+                            if let Some(mut ws) = windows.remove(&id) {
+                                ws.window.close();
                             }
-                            needs_render = true;
-                            window.request_redraw();
+                        }
+
+                        // Fire expired timers
+                        let mut timers =
+                            std::mem::replace(&mut cx.timers, mozui_executor::TimerManager::new());
+                        if timers.fire_expired(&mut cx) {
+                            global_dirty = true;
+                        }
+                        cx.timers = timers;
+
+                        // Poll async tasks
+                        if cx.executor.poll_ready() {
+                            global_dirty = true;
+                        }
+
+                        // Check animations
+                        let animations_running = cx.has_active_animations();
+                        cx.clear_animation_flag();
+
+                        if cx.is_dirty() || animations_running {
+                            global_dirty = true;
+                        }
+
+                        if global_dirty {
+                            cx.clear_dirty();
+                            for w in windows.values_mut() {
+                                w.rebuild(&mut cx);
+                            }
+                            global_dirty = false;
                         }
                     }
 
-                    // Re-render when over interactive elements (hover visuals need updating)
-                    // or when mouse is pressed (active state tracks cursor position)
-                    if old_pos != position
-                        && (interactions.has_handler_at(position)
-                            || interactions.has_handler_at(old_pos)
-                            || interactions.is_mouse_pressed())
-                    {
-                        needs_render = true;
-                        window.request_redraw();
+                    let Some(ws) = windows.get_mut(&window_id) else {
+                        return;
+                    };
+
+                    if !ws.window.is_visible() {
+                        if window_id == WindowId::MAIN {
+                            std::process::exit(0);
+                        }
+                        return;
                     }
-                }
-                PlatformEvent::WindowResize { size } => {
-                    let scale = window.scale_factor();
-                    renderer.resize(size, scale);
-                    cx.reset_hooks();
-                    element_tree = root(&mut cx);
-                    needs_render = true;
-                    window.request_redraw();
-                }
-                PlatformEvent::ScaleFactorChanged { scale } => {
-                    let size = window.content_size();
-                    renderer.resize(size, scale);
-                    needs_render = true;
-                    window.request_redraw();
-                }
-                PlatformEvent::WindowCloseRequested => {
-                    std::process::exit(0);
+
+                    // Detect window resize
+                    let current_size = ws.window.content_size();
+                    let current_scale = ws.window.scale_factor();
+                    if current_size != ws.last_size || current_scale != ws.last_scale {
+                        ws.renderer.resize(current_size, current_scale);
+                        ws.last_size = current_size;
+                        ws.last_scale = current_scale;
+                        ws.rebuild(&mut cx);
+                    }
+
+                    ws.render();
+
+                    if cx.has_active_animations() {
+                        ws.window.request_redraw();
+                    }
                 }
                 _ => {
-                    tracing::trace!(?event, "platform event");
+                    let Some(ws) = windows.get_mut(&window_id) else {
+                        return;
+                    };
+                    handle_input_event(ws, event, &mut cx, &keybindings, &action_handler);
                 }
             }
         }))
+    }
+}
+
+/// Handle non-redraw input events for a specific window.
+fn handle_input_event(
+    ws: &mut WindowState,
+    event: PlatformEvent,
+    cx: &mut Context,
+    keybindings: &KeybindingRegistry,
+    action_handler: &Option<ActionHandler>,
+) {
+    match event {
+        PlatformEvent::MouseDown {
+            button: mozui_events::MouseButton::Left,
+            position,
+            ..
+        } => {
+            ws.interactions.set_mouse_pressed(position);
+            if ws.interactions.dispatch_drag_start(position, cx) {
+                if cx.is_dirty() {
+                    cx.clear_dirty();
+                    ws.rebuild(cx);
+                    ws.rebuild_interactions();
+                }
+            } else if ws.interactions.dnd_mouse_down(position) {
+                // DnD source found
+            } else if ws.interactions.is_drag_region(position) {
+                ws.window.begin_drag_move();
+            }
+            ws.needs_render = true;
+            ws.window.request_redraw();
+        }
+        PlatformEvent::MouseUp {
+            button: mozui_events::MouseButton::Left,
+            position,
+            ..
+        } => {
+            ws.interactions.set_mouse_released();
+            ws.interactions.clear_active_drag();
+            let dnd_dropped = ws.interactions.dnd_mouse_up(position, cx);
+            if dnd_dropped {
+                if cx.is_dirty() {
+                    cx.clear_dirty();
+                    ws.rebuild(cx);
+                    ws.rebuild_interactions();
+                }
+            } else {
+                ws.interactions.dnd_cancel();
+                if ws.interactions.dispatch_click(position, cx) {
+                    cx.clear_dirty();
+                    ws.rebuild(cx);
+                    ws.rebuild_interactions();
+                }
+            }
+            ws.needs_render = true;
+            ws.window.request_redraw();
+        }
+        PlatformEvent::KeyDown { key, modifiers, .. } => {
+            let mut handled = false;
+
+            if let Some(action) = keybindings.match_key(key, modifiers, &[]) {
+                if let Some(handler) = action_handler {
+                    let action_clone = action.boxed_clone();
+                    handler(action_clone.as_ref(), cx);
+                    handled = true;
+                }
+            }
+
+            if !handled && key == mozui_events::Key::Tab {
+                if ws.interactions.cycle_focus(modifiers.shift, cx) {
+                    handled = true;
+                }
+            }
+
+            if !handled {
+                ws.interactions.dispatch_key(key, modifiers, cx);
+            }
+
+            if cx.is_dirty() || handled {
+                cx.clear_dirty();
+                ws.rebuild(cx);
+                ws.rebuild_interactions();
+                ws.needs_render = true;
+                ws.window.request_redraw();
+            }
+        }
+        PlatformEvent::ScrollWheel {
+            delta, position, ..
+        } => {
+            let (dx, dy) = match delta {
+                mozui_events::ScrollDelta::Pixels(dx, dy) => (dx, dy),
+                mozui_events::ScrollDelta::Lines(dx, dy) => (dx * 20.0, dy * 20.0),
+            };
+            if ws.interactions.dispatch_scroll(position, dx, dy, cx) {
+                ws.needs_render = true;
+                ws.window.request_redraw();
+            }
+        }
+        PlatformEvent::MouseMove { position, .. } => {
+            let old_pos = ws.interactions.mouse_position();
+            ws.interactions.set_mouse_position(position);
+            mozui_platform::set_cursor_style(ws.interactions.cursor_at(position));
+
+            if ws.interactions.is_mouse_pressed() {
+                if ws.interactions.dispatch_drag_move(position, cx) {
+                    if cx.is_dirty() {
+                        cx.clear_dirty();
+                        ws.rebuild(cx);
+                        ws.rebuild_interactions();
+                    }
+                    ws.needs_render = true;
+                    ws.window.request_redraw();
+                }
+
+                if ws.interactions.dnd_mouse_move(position) {
+                    ws.needs_render = true;
+                    ws.window.request_redraw();
+                }
+            }
+
+            if old_pos != position
+                && (ws.interactions.has_handler_at(position)
+                    || ws.interactions.has_handler_at(old_pos)
+                    || ws.interactions.is_mouse_pressed())
+            {
+                ws.needs_render = true;
+                ws.window.request_redraw();
+            }
+        }
+        PlatformEvent::WindowResize { size } => {
+            let scale = ws.window.scale_factor();
+            ws.renderer.resize(size, scale);
+            ws.rebuild(cx);
+            ws.window.request_redraw();
+        }
+        PlatformEvent::ScaleFactorChanged { scale } => {
+            let size = ws.window.content_size();
+            ws.renderer.resize(size, scale);
+            ws.needs_layout = true;
+            ws.needs_render = true;
+            ws.window.request_redraw();
+        }
+        PlatformEvent::WindowCloseRequested => {
+            std::process::exit(0);
+        }
+        _ => {
+            tracing::trace!(?event, "platform event");
+        }
     }
 }

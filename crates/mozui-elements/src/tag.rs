@@ -240,7 +240,8 @@ impl Element for Tag {
                     width: 1.0,
                     color: self.colors.border,
                 }),
-            });
+                    shadow: None,
+                });
         } else {
             draw_list.push(DrawCommand::Rect {
                 bounds,
@@ -250,7 +251,8 @@ impl Element for Tag {
                     width: 1.0,
                     color: self.colors.border,
                 }),
-            });
+                    shadow: None,
+                });
         }
 
         // Label

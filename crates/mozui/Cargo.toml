@@ -41,3 +41,7 @@ path = "../../examples/data_display.rs"
 [[example]]
 name = "animations"
 path = "../../examples/animations.rs"
+
+[[example]]
+name = "overlays"
+path = "../../examples/overlays.rs"

@@ -1,4 +1,4 @@
 mod app;
-mod window;
+pub(crate) mod window;
 
 pub use app::MacPlatform;

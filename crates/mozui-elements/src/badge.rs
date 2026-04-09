@@ -161,6 +161,7 @@ impl Element for Badge {
                     background: Fill::Solid(self.color),
                     corner_radii: Corners::uniform(dot_size / 2.0),
                     border: None,
+                    shadow: None,
                 });
             }
             BadgeContent::Count(n) => {
@@ -179,7 +180,8 @@ impl Element for Badge {
                         background: Fill::Solid(self.color),
                         corner_radii: Corners::uniform(bounds.size.height / 2.0),
                         border: None,
-                    });
+                    shadow: None,
+                });
 
                     // Centered text
                     let text_style = mozui_text::TextStyle {

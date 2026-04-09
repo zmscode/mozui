@@ -7,26 +7,40 @@ use mozui_style::{Color, Corners, Fill, Theme};
 use mozui_text::FontSystem;
 use taffy::prelude::*;
 
+/// Visual style variant for the tab bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TabBarVariant {
+    /// Default: bottom border indicator on selected tab.
+    #[default]
+    Underline,
+    /// Pill/capsule: selected tab gets a rounded filled background.
+    Pill,
+    /// Outlined: all tabs get a subtle border, selected tab gets filled bg.
+    Outline,
+    /// Segmented control: unified background with selected segment highlighted.
+    Segmented,
+}
+
 /// Resolved tab colors from theme.
 #[derive(Debug, Clone, Copy)]
 struct TabColors {
-    bg: Color,
-    active_bg: Color,
     fg: Color,
     active_fg: Color,
     indicator: Color,
     hover_bg: Color,
+    border: Color,
+    surface: Color,
 }
 
 impl TabColors {
     fn from_theme(theme: &Theme) -> Self {
         Self {
-            bg: Color::TRANSPARENT,
-            active_bg: Color::TRANSPARENT,
             fg: theme.tab_foreground,
             active_fg: theme.tab_active_foreground,
             indicator: theme.primary,
             hover_bg: theme.secondary,
+            border: theme.border,
+            surface: theme.surface,
         }
     }
 }
@@ -39,6 +53,7 @@ pub struct Tab {
     size: ComponentSize,
     colors: TabColors,
     on_click: Option<Box<dyn Fn(&mut dyn std::any::Any)>>,
+    variant: TabBarVariant,
 }
 
 pub fn tab(label: impl Into<String>, theme: &Theme) -> Tab {
@@ -50,6 +65,7 @@ pub fn tab(label: impl Into<String>, theme: &Theme) -> Tab {
         size: ComponentSize::Medium,
         colors: TabColors::from_theme(theme),
         on_click: None,
+        variant: TabBarVariant::Underline,
     }
 }
 
@@ -189,22 +205,85 @@ impl Element for Tab {
         let alpha = if self.disabled { 0.5 } else { 1.0 };
         let hovered = !self.disabled && !self.selected && interactions.is_hovered(bounds);
 
-        // Background (hover only when not selected)
-        let bg = if hovered {
-            self.colors.hover_bg
-        } else if self.selected {
-            self.colors.active_bg
-        } else {
-            self.colors.bg
-        };
-
-        if bg.a > 0.0 {
-            draw_list.push(DrawCommand::Rect {
-                bounds,
-                background: Fill::Solid(bg.with_alpha(bg.a * alpha)),
-                corner_radii: Corners::uniform(4.0),
-                border: None,
-            });
+        // Variant-specific background and decoration
+        match self.variant {
+            TabBarVariant::Underline => {
+                // Hover bg only
+                if hovered {
+                    draw_list.push(DrawCommand::Rect {
+                        bounds,
+                        background: Fill::Solid(self.colors.hover_bg.with_alpha(self.colors.hover_bg.a * alpha)),
+                        corner_radii: Corners::uniform(4.0),
+                        border: None,
+                        shadow: None,
+                    });
+                }
+            }
+            TabBarVariant::Pill => {
+                let bg = if self.selected {
+                    self.colors.surface
+                } else if hovered {
+                    self.colors.hover_bg
+                } else {
+                    Color::TRANSPARENT
+                };
+                if bg.a > 0.0 {
+                    draw_list.push(DrawCommand::Rect {
+                        bounds,
+                        background: Fill::Solid(bg.with_alpha(bg.a * alpha)),
+                        corner_radii: Corners::uniform(bounds.size.height / 2.0),
+                        border: None,
+                        shadow: None,
+                    });
+                }
+            }
+            TabBarVariant::Outline => {
+                let bg = if self.selected {
+                    self.colors.surface
+                } else if hovered {
+                    self.colors.hover_bg
+                } else {
+                    Color::TRANSPARENT
+                };
+                let border = if self.selected || hovered {
+                    Some(mozui_renderer::Border {
+                        width: 1.0,
+                        color: self.colors.border.with_alpha(self.colors.border.a * alpha),
+                    })
+                } else {
+                    None
+                };
+                draw_list.push(DrawCommand::Rect {
+                    bounds,
+                    background: Fill::Solid(bg.with_alpha(bg.a * alpha)),
+                    corner_radii: Corners::uniform(6.0),
+                    border,
+                    shadow: None,
+                });
+            }
+            TabBarVariant::Segmented => {
+                // Individual segment highlight (bar draws the container bg)
+                if self.selected {
+                    draw_list.push(DrawCommand::Rect {
+                        bounds,
+                        background: Fill::Solid(self.colors.surface.with_alpha(alpha)),
+                        corner_radii: Corners::uniform(5.0),
+                        border: Some(mozui_renderer::Border {
+                            width: 1.0,
+                            color: self.colors.border.with_alpha(self.colors.border.a * 0.5 * alpha),
+                        }),
+                        shadow: None,
+                    });
+                } else if hovered {
+                    draw_list.push(DrawCommand::Rect {
+                        bounds,
+                        background: Fill::Solid(self.colors.hover_bg.with_alpha(self.colors.hover_bg.a * 0.5 * alpha)),
+                        corner_radii: Corners::uniform(5.0),
+                        border: None,
+                        shadow: None,
+                    });
+                }
+            }
         }
 
         let fg = if self.selected {
@@ -248,8 +327,8 @@ impl Element for Tab {
             italic: false,
         });
 
-        // Bottom indicator line when selected
-        if self.selected {
+        // Bottom indicator line — Underline variant only
+        if self.variant == TabBarVariant::Underline && self.selected {
             let indicator_h = 2.0;
             draw_list.push(DrawCommand::Rect {
                 bounds: mozui_style::Rect::new(
@@ -261,6 +340,7 @@ impl Element for Tab {
                 background: Fill::Solid(self.colors.indicator.with_alpha(alpha)),
                 corner_radii: Corners::uniform(1.0),
                 border: None,
+                shadow: None,
             });
         }
 
@@ -281,6 +361,8 @@ pub struct TabBar {
     tabs: Vec<Tab>,
     bar_color: Color,
     border_color: Color,
+    variant: TabBarVariant,
+    _surface_color: Color,
 }
 
 pub fn tab_bar(theme: &Theme) -> TabBar {
@@ -288,17 +370,33 @@ pub fn tab_bar(theme: &Theme) -> TabBar {
         tabs: Vec::new(),
         bar_color: theme.tab_bar,
         border_color: theme.border,
+        variant: TabBarVariant::Underline,
+        _surface_color: theme.surface,
     }
 }
 
 impl TabBar {
-    pub fn child(mut self, tab: Tab) -> Self {
+    pub fn child(mut self, mut tab: Tab) -> Self {
+        tab.variant = self.variant;
         self.tabs.push(tab);
         self
     }
 
     pub fn children(mut self, tabs: impl IntoIterator<Item = Tab>) -> Self {
-        self.tabs.extend(tabs);
+        let variant = self.variant;
+        self.tabs.extend(tabs.into_iter().map(|mut t| {
+            t.variant = variant;
+            t
+        }));
+        self
+    }
+
+    pub fn variant(mut self, variant: TabBarVariant) -> Self {
+        self.variant = variant;
+        // Update any already-added tabs
+        for tab in &mut self.tabs {
+            tab.variant = variant;
+        }
         self
     }
 }
@@ -311,11 +409,42 @@ impl Element for TabBar {
             .map(|t| t.layout(engine, font_system))
             .collect();
 
+        let (padding, gap, radius) = match self.variant {
+            TabBarVariant::Segmented => (
+                taffy::Rect {
+                    left: length(3.0),
+                    right: length(3.0),
+                    top: length(3.0),
+                    bottom: length(3.0),
+                },
+                Size { width: length(2.0), height: zero() },
+                6.0,
+            ),
+            TabBarVariant::Pill => (
+                taffy::Rect { left: zero(), right: zero(), top: zero(), bottom: zero() },
+                Size { width: length(4.0), height: zero() },
+                0.0,
+            ),
+            TabBarVariant::Outline => (
+                taffy::Rect { left: zero(), right: zero(), top: zero(), bottom: zero() },
+                Size { width: length(4.0), height: zero() },
+                0.0,
+            ),
+            TabBarVariant::Underline => (
+                taffy::Rect { left: zero(), right: zero(), top: zero(), bottom: zero() },
+                Size { width: zero(), height: zero() },
+                0.0,
+            ),
+        };
+        let _ = radius; // used in paint, not layout
+
         engine.new_with_children(
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
                 align_items: Some(AlignItems::Stretch),
+                padding,
+                gap,
                 ..Default::default()
             },
             &child_nodes,
@@ -335,28 +464,49 @@ impl Element for TabBar {
 
         let bounds = mozui_style::Rect::new(layout.x, layout.y, layout.width, layout.height);
 
-        // Bar background
-        if self.bar_color.a > 0.0 {
-            draw_list.push(DrawCommand::Rect {
-                bounds,
-                background: Fill::Solid(self.bar_color),
-                corner_radii: Corners::uniform(0.0),
-                border: None,
-            });
+        match self.variant {
+            TabBarVariant::Segmented => {
+                // Segmented: rounded container background with muted fill
+                draw_list.push(DrawCommand::Rect {
+                    bounds,
+                    background: Fill::Solid(self.bar_color),
+                    corner_radii: Corners::uniform(8.0),
+                    border: Some(mozui_renderer::Border {
+                        width: 1.0,
+                        color: self.border_color,
+                    }),
+                    shadow: None,
+                });
+            }
+            TabBarVariant::Underline => {
+                // Bar background
+                if self.bar_color.a > 0.0 {
+                    draw_list.push(DrawCommand::Rect {
+                        bounds,
+                        background: Fill::Solid(self.bar_color),
+                        corner_radii: Corners::ZERO,
+                        border: None,
+                        shadow: None,
+                    });
+                }
+                // Bottom border
+                draw_list.push(DrawCommand::Rect {
+                    bounds: mozui_style::Rect::new(
+                        bounds.origin.x,
+                        bounds.origin.y + bounds.size.height - 1.0,
+                        bounds.size.width,
+                        1.0,
+                    ),
+                    background: Fill::Solid(self.border_color),
+                    corner_radii: Corners::ZERO,
+                    border: None,
+                    shadow: None,
+                });
+            }
+            TabBarVariant::Pill | TabBarVariant::Outline => {
+                // No bar chrome — tabs style themselves
+            }
         }
-
-        // Bottom border
-        draw_list.push(DrawCommand::Rect {
-            bounds: mozui_style::Rect::new(
-                bounds.origin.x,
-                bounds.origin.y + bounds.size.height - 1.0,
-                bounds.size.width,
-                1.0,
-            ),
-            background: Fill::Solid(self.border_color),
-            corner_radii: Corners::uniform(0.0),
-            border: None,
-        });
 
         for tab in &self.tabs {
             tab.paint(layouts, index, draw_list, interactions, font_system);

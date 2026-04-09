@@ -325,6 +325,7 @@ impl Element for Accordion {
                     background: Fill::Solid(self.hover_bg.with_alpha(alpha)),
                     corner_radii: Corners::uniform(4.0),
                     border: None,
+                    shadow: None,
                 });
             }
 
@@ -434,7 +435,8 @@ impl Element for Accordion {
                         background: Fill::Solid(self.border_color),
                         corner_radii: Corners::uniform(0.0),
                         border: None,
-                    });
+                    shadow: None,
+                });
                 }
             }
         }

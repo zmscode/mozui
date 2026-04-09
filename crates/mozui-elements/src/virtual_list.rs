@@ -176,7 +176,8 @@ impl Element for VirtualList {
                 background: bg.clone(),
                 corner_radii: self.corner_radii,
                 border: None,
-            });
+                    shadow: None,
+                });
         }
 
         // Paint visible items

@@ -1,31 +1,98 @@
-use crate::{Element, InteractionMap};
+use crate::{DragId, Element, InteractionMap};
 use mozui_events;
 use mozui_layout::LayoutEngine;
 use mozui_renderer::{Border, DrawCommand, DrawList};
-use mozui_style::{Color, Corners, Fill};
+use mozui_style::{Color, Corners, Fill, Point as StylePoint, Shadow};
 use mozui_text::FontSystem;
 use std::cell::Cell;
 use std::rc::Rc;
 use taffy::prelude::*;
 use taffy::{Overflow, Point as TaffyPoint};
 
-/// Shared scroll offset that persists across rebuilds.
-/// Create with `ScrollOffset::new()` in a `use_signal`-like scope,
-/// or store in your app state.
+/// Shared scroll state with momentum physics.
+///
+/// Tracks scroll offset, velocity, and deceleration for smooth inertial scrolling.
+/// Create via `cx.use_scroll()`.
 #[derive(Clone)]
-pub struct ScrollOffset(Rc<Cell<f32>>);
+pub struct ScrollOffset {
+    offset: Rc<Cell<f32>>,
+    velocity: Rc<Cell<f32>>,
+    /// Shared flag with the animation system — when true, the app loop keeps rendering.
+    animations_active: Option<Rc<Cell<bool>>>,
+}
+
+/// Deceleration factor per frame (applied at ~60fps). Higher = more momentum.
+const SCROLL_FRICTION: f32 = 0.92;
+/// Stop momentum when velocity drops below this threshold (pixels/frame).
+const SCROLL_VELOCITY_THRESHOLD: f32 = 0.3;
 
 impl ScrollOffset {
     pub fn new() -> Self {
-        Self(Rc::new(Cell::new(0.0)))
+        Self {
+            offset: Rc::new(Cell::new(0.0)),
+            velocity: Rc::new(Cell::new(0.0)),
+            animations_active: None,
+        }
+    }
+
+    /// Attach the animation flag so momentum can request continuous redraws.
+    pub fn with_animation_flag(mut self, flag: Rc<Cell<bool>>) -> Self {
+        self.animations_active = Some(flag);
+        self
     }
 
     pub fn get(&self) -> f32 {
-        self.0.get()
+        self.offset.get()
     }
 
     pub fn set(&self, v: f32) {
-        self.0.set(v);
+        self.offset.set(v);
+    }
+
+    /// Apply a scroll delta (from user input). Tracks velocity for momentum.
+    pub fn scroll_by(&self, dy: f32, max_scroll: f32) {
+        let current = self.offset.get();
+        let new_val = (current - dy).clamp(0.0, max_scroll);
+        self.offset.set(new_val);
+        // Track velocity for momentum (negative because scroll direction is inverted)
+        self.velocity.set(-dy);
+    }
+
+    /// Tick momentum physics. Returns true if still animating.
+    /// Called each frame by the app loop / scroll container.
+    pub fn tick_momentum(&self, max_scroll: f32) -> bool {
+        let vel = self.velocity.get();
+        if vel.abs() < SCROLL_VELOCITY_THRESHOLD {
+            self.velocity.set(0.0);
+            return false;
+        }
+
+        // Apply deceleration
+        let new_vel = vel * SCROLL_FRICTION;
+        self.velocity.set(new_vel);
+
+        // Update offset
+        let current = self.offset.get();
+        let new_val = (current + new_vel).clamp(0.0, max_scroll);
+        self.offset.set(new_val);
+
+        // Stop if we hit the edge
+        if new_val == 0.0 || new_val == max_scroll {
+            self.velocity.set(0.0);
+            return false;
+        }
+
+        // Signal the animation system to keep rendering
+        if let Some(ref flag) = self.animations_active {
+            flag.set(true);
+        }
+
+        true
+    }
+
+    /// Returns true if momentum is currently active.
+    pub fn has_momentum(&self) -> bool {
+        self.velocity.get().abs() >= SCROLL_VELOCITY_THRESHOLD
     }
 }
 
@@ -36,6 +103,7 @@ pub struct Div {
     border_width: f32,
     border_color: Color,
     opacity: f32,
+    shadow: Option<Shadow>,
 
     // Taffy layout style
     taffy_style: Style,
@@ -55,6 +123,10 @@ pub struct Div {
     scroll_y: Option<ScrollOffset>,
     /// Content height computed during layout, used for scroll clamping.
     content_height: Cell<f32>,
+
+    // Drag-and-drop
+    dnd_source: Option<DragId>,
+    dnd_target: Option<(DragId, Box<dyn Fn(DragId, StylePoint, &mut dyn std::any::Any)>)>,
 }
 
 pub fn div() -> Div {
@@ -64,6 +136,7 @@ pub fn div() -> Div {
         border_width: 0.0,
         border_color: Color::TRANSPARENT,
         opacity: 1.0,
+        shadow: None,
         taffy_style: Style::default(),
         children: Vec::new(),
         on_click: None,
@@ -71,6 +144,8 @@ pub fn div() -> Div {
         is_drag_region: false,
         scroll_y: None,
         content_height: Cell::new(0.0),
+        dnd_source: None,
+        dnd_target: None,
     }
 }
 
@@ -364,6 +439,11 @@ impl Div {
         self
     }
 
+    pub fn shadow(mut self, shadow: Shadow) -> Self {
+        self.shadow = Some(shadow);
+        self
+    }
+
     // --- Window integration ---
     /// Mark this element as a window drag region (for custom title bars).
     pub fn drag_region(mut self) -> Self {
@@ -382,6 +462,26 @@ impl Div {
         handler: impl Fn(mozui_events::Key, mozui_events::Modifiers, &mut dyn std::any::Any) + 'static,
     ) -> Self {
         self.on_key_down = Some(Box::new(handler));
+        self
+    }
+
+    // --- Drag-and-drop ---
+
+    /// Make this div a drag source. When the user drags from this element,
+    /// compatible drop targets (registered with the same `DragId`) will accept it.
+    pub fn draggable(mut self, id: DragId) -> Self {
+        self.dnd_source = Some(id);
+        self
+    }
+
+    /// Make this div a drop target. When a draggable with `id` is released over
+    /// this element, the handler fires with `(source_id, mouse_position, cx)`.
+    pub fn drop_target(
+        mut self,
+        id: DragId,
+        handler: impl Fn(DragId, StylePoint, &mut dyn std::any::Any) + 'static,
+    ) -> Self {
+        self.dnd_target = Some((id, Box::new(handler)));
         self
     }
 
@@ -443,6 +543,7 @@ impl Element for Div {
                 background: bg.clone(),
                 corner_radii: self.corner_radii,
                 border,
+                shadow: self.shadow,
             });
         }
 
@@ -468,6 +569,20 @@ impl Element for Div {
             interactions.register_key_handler(Box::new(move |key, mods, cx| unsafe {
                 (*handler_ptr)(key, mods, cx)
             }));
+        }
+
+        // Register DnD source
+        if let Some(id) = self.dnd_source {
+            interactions.register_dnd_source(id, bounds);
+        }
+
+        // Register DnD target
+        if let Some((id, ref handler)) = self.dnd_target {
+            let handler_ptr = handler.as_ref()
+                as *const dyn Fn(DragId, StylePoint, &mut dyn std::any::Any);
+            interactions.register_drop_target(id, bounds, move |source_id, pos, cx| unsafe {
+                (*handler_ptr)(source_id, pos, cx)
+            });
         }
 
         // Scroll handling
@@ -512,13 +627,14 @@ impl Element for Div {
                 scroll.set(clamped);
             }
 
+            // Tick momentum physics each frame
+            scroll.tick_momentum(max_scroll);
+
             let scroll_clone = scroll.clone();
             interactions.register_scroll_region(
                 bounds,
                 Box::new(move |_dx, dy, _cx| {
-                    let current = scroll_clone.get();
-                    let new_val = (current - dy).clamp(0.0, max_scroll);
-                    scroll_clone.set(new_val);
+                    scroll_clone.scroll_by(dy, max_scroll);
                 }),
             );
         }

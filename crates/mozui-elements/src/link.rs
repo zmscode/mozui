@@ -133,7 +133,8 @@ impl Element for Link {
             background: mozui_style::Fill::Solid(color),
             corner_radii: mozui_style::Corners::uniform(0.0),
             border: None,
-        });
+                    shadow: None,
+                });
 
         // Click handler
         if !self.disabled {

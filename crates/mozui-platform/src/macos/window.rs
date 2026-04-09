@@ -11,7 +11,7 @@ use raw_window_handle::{
 };
 use std::ptr::NonNull;
 
-pub struct MacWindow {
+pub(crate) struct MacWindow {
     ns_window: Retained<NSWindow>,
     ns_view: Retained<objc2_app_kit::NSView>,
     scale_factor: f32,
@@ -120,6 +120,11 @@ impl MacWindow {
             titlebar_height,
             titlebar_style,
         }
+    }
+
+    /// Return the raw NSWindow pointer address for event routing.
+    pub fn ns_window_ptr(&self) -> usize {
+        Retained::as_ptr(&self.ns_window) as usize
     }
 }
 

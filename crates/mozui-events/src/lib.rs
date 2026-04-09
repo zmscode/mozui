@@ -1,5 +1,14 @@
 use mozui_style::{Point, Size};
 
+/// Unique identifier for a window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WindowId(pub u64);
+
+impl WindowId {
+    /// The main (first) window.
+    pub const MAIN: WindowId = WindowId(0);
+}
+
 #[derive(Debug, Clone)]
 pub enum PlatformEvent {
     MouseMove {

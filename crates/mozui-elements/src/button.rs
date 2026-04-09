@@ -373,6 +373,7 @@ impl Element for Button {
                 background: Fill::Solid(bg),
                 corner_radii: Corners::uniform(self.corner_radius),
                 border,
+                shadow: None,
             });
         } else if let Some(border_color) = self.colors.border {
             // Outline-only: transparent bg but visible border
@@ -388,6 +389,7 @@ impl Element for Button {
                         border_color
                     },
                 }),
+                shadow: None,
             });
         }
 

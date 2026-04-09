@@ -148,7 +148,8 @@ impl Element for GroupBox {
                 width: 1.0,
                 color: self.border_color,
             }),
-        });
+                    shadow: None,
+                });
 
         // Title
         let title_layout = layouts[*index];
@@ -166,7 +167,8 @@ impl Element for GroupBox {
             background: Fill::Solid(self.title_bg),
             corner_radii: Corners::uniform(0.0),
             border: None,
-        });
+                    shadow: None,
+                });
 
         draw_list.push(DrawCommand::Text {
             text: self.title.clone(),

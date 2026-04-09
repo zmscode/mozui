@@ -140,7 +140,8 @@ impl Element for Kbd {
                 width: 1.0,
                 color: self.border_color,
             }),
-        });
+                    shadow: None,
+                });
 
         // Text centered within the badge
         let px = 5.0_f32;

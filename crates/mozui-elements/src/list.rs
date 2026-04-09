@@ -303,6 +303,7 @@ impl Element for List {
                     background: Fill::Solid(self.divider_color),
                     corner_radii: Corners::uniform(0.0),
                     border: None,
+                    shadow: None,
                 });
                 continue;
             }
@@ -333,6 +334,7 @@ impl Element for List {
                     background: Fill::Solid(bg),
                     corner_radii: Corners::uniform(6.0),
                     border: None,
+                    shadow: None,
                 });
             }
 

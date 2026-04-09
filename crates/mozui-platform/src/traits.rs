@@ -1,4 +1,4 @@
-use mozui_events::PlatformEvent;
+use mozui_events::{PlatformEvent, WindowId};
 use mozui_style::{Point, Rect, Size};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
@@ -53,13 +53,13 @@ pub struct Screen {
     pub scale_factor: f32,
 }
 
-/// Callback that receives platform events.
-pub type EventCallback = Box<dyn FnMut(PlatformEvent)>;
+/// Callback that receives platform events tagged with the target window.
+pub type EventCallback = Box<dyn FnMut(WindowId, PlatformEvent)>;
 
 /// Platform abstraction for OS-specific window management.
 pub trait Platform {
     fn run(&mut self, callback: EventCallback) -> !;
-    fn open_window(&mut self, options: WindowOptions) -> Box<dyn PlatformWindow>;
+    fn open_window(&mut self, options: WindowOptions) -> (WindowId, Box<dyn PlatformWindow>);
     fn screens(&self) -> Vec<Screen>;
     fn set_cursor(&self, cursor: mozui_events::CursorStyle);
     fn clipboard_read(&self) -> Option<String>;
@@ -134,6 +134,19 @@ pub fn open_url(url: &str) {
     #[cfg(target_os = "windows")]
     {
         let _ = std::process::Command::new("cmd").args(["/c", "start", url]).spawn();
+    }
+}
+
+/// Create a new platform window (can be called from the event loop).
+pub fn create_window(options: WindowOptions) -> Box<dyn PlatformWindow> {
+    #[cfg(target_os = "macos")]
+    {
+        let mtm = objc2::MainThreadMarker::new().expect("Must be called from the main thread");
+        Box::new(crate::macos::window::MacWindow::new(mtm, options))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        panic!("Unsupported platform");
     }
 }
 

@@ -151,7 +151,8 @@ impl Element for Radio {
                 background: Fill::Solid(bg),
                 corner_radii: Corners::uniform(radius),
                 border: None,
-            });
+                    shadow: None,
+                });
             // Inner white dot
             let inner_size = self.circle_size() * 0.4;
             let offset = (self.circle_size() - inner_size) / 2.0;
@@ -165,7 +166,8 @@ impl Element for Radio {
                 background: Fill::Solid(Color::WHITE.with_alpha(alpha)),
                 corner_radii: Corners::uniform(inner_size / 2.0),
                 border: None,
-            });
+                    shadow: None,
+                });
         } else {
             let border_c = if hovered {
                 self.active_color.with_alpha(alpha)
@@ -180,7 +182,8 @@ impl Element for Radio {
                     width: 1.5,
                     color: border_c,
                 }),
-            });
+                    shadow: None,
+                });
         }
 
         // Label

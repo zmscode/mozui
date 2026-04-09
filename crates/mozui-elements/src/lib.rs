@@ -5,6 +5,7 @@ mod button;
 mod checkbox;
 pub(crate) mod collapsible;
 mod description_list;
+mod dialog;
 mod div;
 mod divider;
 mod group_box;
@@ -13,6 +14,8 @@ mod kbd;
 mod label;
 mod link;
 mod list;
+mod menu;
+mod notification;
 mod pagination;
 mod popover;
 mod progress;
@@ -27,6 +30,7 @@ mod tab;
 mod tag;
 mod text;
 mod text_input;
+mod tooltip;
 mod virtual_list;
 
 pub use accordion::{Accordion, AccordionItem, accordion, accordion_item};
@@ -36,14 +40,17 @@ pub use button::{Button, ButtonGroup, ButtonVariant, button, button_group, icon_
 pub use checkbox::{Checkbox, checkbox};
 pub use collapsible::{CollapsibleContainer, collapsible};
 pub use description_list::{DescriptionItem, DescriptionList, description_item, description_list};
+pub use dialog::{DIALOG_ANIM_MS, Dialog, dialog, dialog_anim};
 pub use div::{Div, ScrollOffset, div};
-pub use divider::{Divider, DividerDirection, divider};
+pub use divider::{Divider, DividerDirection, DividerVariant, divider};
 pub use group_box::{GroupBox, group_box};
 pub use icon::{Icon, icon};
 pub use kbd::{Kbd, kbd};
 pub use label::{Label, LabelHighlight, LabelHighlightMode, label};
 pub use link::{Link, link};
 pub use list::{List, ListItem, list, list_item};
+pub use menu::{Menu, MenuItem, menu, menu_item, menu_separator};
+pub use notification::{NOTIFICATION_ANIM_MS, Notification, NotificationType, STACK_GAP as NOTIFICATION_STACK_GAP, notification, notification_anim};
 pub use pagination::{Pagination, pagination};
 pub use popover::{FitMode, Popover};
 pub use progress::{Progress, progress};
@@ -54,10 +61,11 @@ pub use slider::{Slider, slider};
 pub use stepper::{Stepper, StepperItem, stepper};
 pub use styled::{Collapsible, ComponentSize, Disableable, Selectable, Sizable};
 pub use switch::{Switch, switch};
-pub use tab::{Tab, TabBar, tab, tab_bar};
+pub use tab::{Tab, TabBar, TabBarVariant, tab, tab_bar};
 pub use tag::{Tag, TagVariant, tag};
 pub use text::{Text, text};
 pub use text_input::{TextInput, TextInputState, text_input};
+pub use tooltip::{Tooltip, tooltip};
 pub use virtual_list::{VirtualList, VirtualListDirection};
 
 use mozui_layout::LayoutEngine;
@@ -90,6 +98,12 @@ type KeyHandler = Box<dyn Fn(mozui_events::Key, mozui_events::Modifiers, &mut dy
 type DragHandler = Box<dyn Fn(Point, &mut dyn std::any::Any)>;
 /// Scroll handler receives (delta_x, delta_y) in pixels.
 type ScrollHandler = Box<dyn Fn(f32, f32, &mut dyn std::any::Any)>;
+/// Drop handler receives (source_id, mouse position) when an item is dropped.
+type DropHandler = Box<dyn Fn(DragId, Point, &mut dyn std::any::Any)>;
+
+/// Unique identifier for a drag source, used to match sources with compatible targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DragId(pub usize);
 
 /// An interactive region with its handler.
 struct InteractionEntry {
@@ -125,6 +139,29 @@ struct FocusTrap {
     focusable_ids: Vec<usize>,
 }
 
+/// A draggable source — can be picked up and dropped onto a DropTarget.
+struct DndSource {
+    id: DragId,
+    bounds: Rect,
+}
+
+/// A drop target — accepts items dropped onto it.
+struct DndTarget {
+    id: DragId,
+    bounds: Rect,
+    on_drop: DropHandler,
+}
+
+/// State of an active drag-and-drop operation.
+struct ActiveDnd {
+    source_id: DragId,
+    source_bounds: Rect,
+    /// Where the mouse was when the drag started.
+    start_position: Point,
+    /// Whether the drag has moved far enough from the origin to be considered active.
+    activated: bool,
+}
+
 /// Collects interactive regions during paint, hit-tests on events.
 pub struct InteractionMap {
     entries: Vec<InteractionEntry>,
@@ -151,6 +188,13 @@ pub struct InteractionMap {
     /// so that layout coordinates are converted to screen coordinates for hit-testing.
     scroll_offset_stack: Vec<f32>,
     current_scroll_offset_y: f32,
+    // ── Hover regions ──────────────────────────────────────────────
+    /// Bounds that trigger re-render on hover (e.g. tooltip anchors).
+    hover_regions: Vec<Rect>,
+    // ── Drag-and-drop ─────────────────────────────────────────────
+    dnd_sources: Vec<DndSource>,
+    dnd_targets: Vec<DndTarget>,
+    active_dnd: Option<ActiveDnd>,
 }
 
 impl InteractionMap {
@@ -173,6 +217,10 @@ impl InteractionMap {
             press_origin_bounds: None,
             scroll_offset_stack: Vec::new(),
             current_scroll_offset_y: 0.0,
+            hover_regions: Vec::new(),
+            dnd_sources: Vec::new(),
+            dnd_targets: Vec::new(),
+            active_dnd: None,
         }
     }
 
@@ -190,6 +238,10 @@ impl InteractionMap {
         self.active_trap_id = None;
         self.scroll_offset_stack.clear();
         self.current_scroll_offset_y = 0.0;
+        self.hover_regions.clear();
+        self.dnd_sources.clear();
+        self.dnd_targets.clear();
+        // Note: active_dnd persists across clears (drag spans rebuilds)
         // Note: mouse_position, mouse_pressed, press_origin_bounds persist across clears
     }
 
@@ -258,6 +310,12 @@ impl InteractionMap {
             && self.press_origin_bounds.map_or(false, |origin| {
                 origin == adjusted
             })
+    }
+
+    /// Register a hover-sensitive region. When the mouse is over any hover region,
+    /// the app loop will trigger a re-render (needed for tooltips, etc.).
+    pub fn register_hover_region(&mut self, bounds: Rect) {
+        self.hover_regions.push(self.adjust_bounds(bounds));
     }
 
     // ── Scroll offset transform ───────────────────────────────
@@ -335,6 +393,129 @@ impl InteractionMap {
     /// Clear the active drag state (called on MouseUp).
     pub fn clear_active_drag(&mut self) {
         self.active_drag_bounds = None;
+    }
+
+    // ── Drag-and-drop (DnD) ──────────────────────────────────────
+
+    /// Register a drag source. When the user presses and drags from this region,
+    /// a DnD session starts with the given `id`. Drop targets with the same `id`
+    /// will accept the drop.
+    pub fn register_dnd_source(&mut self, id: DragId, bounds: Rect) {
+        self.dnd_sources.push(DndSource {
+            id,
+            bounds: self.adjust_bounds(bounds),
+        });
+    }
+
+    /// Register a drop target. When a drag source with a matching `id` is released
+    /// over this region, `on_drop` fires with `(source_id, mouse_position, cx)`.
+    pub fn register_drop_target(
+        &mut self,
+        id: DragId,
+        bounds: Rect,
+        on_drop: impl Fn(DragId, Point, &mut dyn std::any::Any) + 'static,
+    ) {
+        self.dnd_targets.push(DndTarget {
+            id,
+            bounds: self.adjust_bounds(bounds),
+            on_drop: Box::new(on_drop),
+        });
+    }
+
+    /// Called on MouseDown — checks if the press is on a DnD source and begins
+    /// a pending drag session. The drag doesn't activate until the mouse moves
+    /// beyond a small threshold (to distinguish from clicks).
+    /// Returns true if a DnD source was found.
+    pub fn dnd_mouse_down(&mut self, position: Point) -> bool {
+        for source in self.dnd_sources.iter().rev() {
+            if source.bounds.contains(position) {
+                self.active_dnd = Some(ActiveDnd {
+                    source_id: source.id,
+                    source_bounds: source.bounds,
+                    start_position: position,
+                    activated: false,
+                });
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Called on MouseMove while pressed — activates the drag if the mouse has
+    /// moved far enough from the origin. Returns true if a DnD is active
+    /// (caller should re-render for visual feedback).
+    pub fn dnd_mouse_move(&mut self, position: Point) -> bool {
+        if let Some(ref mut dnd) = self.active_dnd {
+            if !dnd.activated {
+                let dx = position.x - dnd.start_position.x;
+                let dy = position.y - dnd.start_position.y;
+                if dx * dx + dy * dy > 25.0 {
+                    // 5px threshold
+                    dnd.activated = true;
+                }
+            }
+            return dnd.activated;
+        }
+        false
+    }
+
+    /// Called on MouseUp — if a DnD is active and the mouse is over a compatible
+    /// drop target, fires the on_drop handler. Returns true if a drop was dispatched.
+    pub fn dnd_mouse_up(&mut self, position: Point, cx: &mut dyn std::any::Any) -> bool {
+        let dnd = match self.active_dnd.take() {
+            Some(d) if d.activated => d,
+            other => {
+                self.active_dnd = other;
+                return false;
+            }
+        };
+
+        for target in self.dnd_targets.iter().rev() {
+            if target.id == dnd.source_id && target.bounds.contains(position) {
+                (target.on_drop)(dnd.source_id, position, cx);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Cancel any active DnD session without dropping.
+    pub fn dnd_cancel(&mut self) {
+        self.active_dnd = None;
+    }
+
+    /// Returns true if a DnD drag is in progress (mouse has moved past threshold).
+    pub fn is_dnd_active(&self) -> bool {
+        self.active_dnd
+            .as_ref()
+            .map_or(false, |d| d.activated)
+    }
+
+    /// Get the source ID of the active DnD session, if any.
+    pub fn dnd_source_id(&self) -> Option<DragId> {
+        self.active_dnd
+            .as_ref()
+            .filter(|d| d.activated)
+            .map(|d| d.source_id)
+    }
+
+    /// Get the source bounds of the active DnD session (for ghost rendering).
+    pub fn dnd_source_bounds(&self) -> Option<Rect> {
+        self.active_dnd
+            .as_ref()
+            .filter(|d| d.activated)
+            .map(|d| d.source_bounds)
+    }
+
+    /// Check if a drop target region is currently being hovered by an active DnD
+    /// with the given ID. Call during paint for visual feedback (highlight drop zones).
+    pub fn is_drop_hovered(&self, id: DragId, bounds: Rect) -> bool {
+        match &self.active_dnd {
+            Some(dnd) if dnd.activated && dnd.source_id == id => {
+                self.adjust_bounds(bounds).contains(self.mouse_position)
+            }
+            _ => false,
+        }
     }
 
     /// Check if a point is in a drag region (and not over a clickable/focusable element).
@@ -479,7 +660,7 @@ impl InteractionMap {
         handled
     }
 
-    /// Check if a point is over any interactive element (including focusables).
+    /// Check if a point is over any interactive element (including focusables and hover regions).
     pub fn has_handler_at(&self, position: Point) -> bool {
         self.focusables
             .iter()
@@ -490,6 +671,10 @@ impl InteractionMap {
                 .iter()
                 .rev()
                 .any(|e| e.bounds.contains(position))
+            || self
+                .hover_regions
+                .iter()
+                .any(|r| r.contains(position))
     }
 
     /// Get the appropriate cursor style for a position.

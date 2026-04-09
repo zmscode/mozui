@@ -277,6 +277,7 @@ impl Element for Pagination {
                     background: Fill::Solid(bg),
                     corner_radii: Corners::uniform(radius),
                     border: None,
+                    shadow: None,
                 });
             } else {
                 draw_list.push(DrawCommand::Rect {
@@ -287,6 +288,7 @@ impl Element for Pagination {
                         width: 1.0,
                         color: self.border_color.with_alpha(alpha * 0.5),
                     }),
+                    shadow: None,
                 });
             }
 

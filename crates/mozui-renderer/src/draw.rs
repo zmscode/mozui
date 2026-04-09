@@ -1,5 +1,5 @@
 use mozui_icons::{IconName, IconWeight};
-use mozui_style::{Color, Corners, Fill, Rect};
+use mozui_style::{Color, Corners, Fill, Rect, Shadow};
 
 #[derive(Debug, Clone)]
 pub struct Border {
@@ -14,6 +14,7 @@ pub enum DrawCommand {
         background: Fill,
         corner_radii: Corners,
         border: Option<Border>,
+        shadow: Option<Shadow>,
     },
     Text {
         text: String,

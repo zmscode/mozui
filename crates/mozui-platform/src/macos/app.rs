@@ -1,25 +1,37 @@
 use crate::traits::{EventCallback, Platform, PlatformWindow, Screen, WindowOptions};
-use mozui_events::{CursorStyle, Modifiers, MouseButton, PlatformEvent, ScrollDelta};
+use mozui_events::{CursorStyle, Modifiers, MouseButton, PlatformEvent, ScrollDelta, WindowId};
 use mozui_style::{Point, Rect};
 
 use objc2::MainThreadMarker;
+use objc2::rc::Retained;
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSCursor, NSEventModifierFlags, NSEventType,
     NSPasteboard, NSPasteboardTypeString, NSScreen,
 };
 use objc2_foundation::NSString;
 
+use std::collections::HashMap;
+
 use super::window::MacWindow;
 
 pub struct MacPlatform {
-    _marker: std::marker::PhantomData<*const ()>,
+    next_window_id: u64,
+    /// Maps NSWindow pointer address to WindowId for event routing.
+    window_map: HashMap<usize, WindowId>,
 }
 
 impl MacPlatform {
     pub fn new() -> Self {
         Self {
-            _marker: std::marker::PhantomData,
+            next_window_id: 0,
+            window_map: HashMap::new(),
         }
+    }
+
+    fn allocate_window_id(&mut self) -> WindowId {
+        let id = WindowId(self.next_window_id);
+        self.next_window_id += 1;
+        id
     }
 }
 
@@ -36,8 +48,14 @@ impl Platform for MacPlatform {
         // Manual event loop: pump events and call our callback
         let distant_past = objc2_foundation::NSDate::distantPast();
 
-        // Initial draw
-        callback(PlatformEvent::RedrawRequested);
+        // Take ownership of window map for event routing
+        let window_map = std::mem::take(&mut self.window_map);
+
+        // Initial draw — send to all windows
+        let window_ids: Vec<WindowId> = window_map.values().copied().collect();
+        for &wid in &window_ids {
+            callback(wid, PlatformEvent::RedrawRequested);
+        }
 
         loop {
             // Process all pending events
@@ -51,9 +69,10 @@ impl Platform for MacPlatform {
 
                 match event {
                     Some(event) => {
-                        // Convert NSEvent to PlatformEvent
+                        // Convert NSEvent to PlatformEvent and route to correct window
                         if let Some(platform_event) = ns_event_to_platform_event(&event) {
-                            callback(platform_event);
+                            let wid = resolve_window_id(&event, &window_map, mtm);
+                            callback(wid, platform_event);
                         }
                         // Let NSApp handle the event (for window management etc.)
                         app.sendEvent(&event);
@@ -62,8 +81,10 @@ impl Platform for MacPlatform {
                 }
             }
 
-            // Request a redraw each frame
-            callback(PlatformEvent::RedrawRequested);
+            // Request a redraw each frame — send to all windows
+            for &wid in &window_ids {
+                callback(wid, PlatformEvent::RedrawRequested);
+            }
 
             // Wait for the next event (blocks until one arrives, with a small timeout for animation)
             let timeout = objc2_foundation::NSDate::dateWithTimeIntervalSinceNow(1.0 / 60.0);
@@ -76,17 +97,22 @@ impl Platform for MacPlatform {
 
             if let Some(event) = event {
                 if let Some(platform_event) = ns_event_to_platform_event(&event) {
-                    callback(platform_event);
+                    let wid = resolve_window_id(&event, &window_map, mtm);
+                    callback(wid, platform_event);
                 }
                 app.sendEvent(&event);
             }
         }
     }
 
-    fn open_window(&mut self, options: WindowOptions) -> Box<dyn PlatformWindow> {
+    fn open_window(&mut self, options: WindowOptions) -> (WindowId, Box<dyn PlatformWindow>) {
         let mtm = MainThreadMarker::new().expect("Must be called from the main thread");
         let window = MacWindow::new(mtm, options);
-        Box::new(window)
+        let id = self.allocate_window_id();
+        // Register the NSWindow pointer for event routing
+        let ns_window_ptr = window.ns_window_ptr();
+        self.window_map.insert(ns_window_ptr, id);
+        (id, Box::new(window))
     }
 
     fn screens(&self) -> Vec<Screen> {
@@ -136,6 +162,22 @@ impl Platform for MacPlatform {
         let nstype = unsafe { NSPasteboardTypeString };
         let _ = pasteboard.setString_forType(&ns_string, nstype);
     }
+}
+
+/// Resolve which window an NSEvent belongs to, returning its WindowId.
+/// Falls back to MAIN if the event has no associated window.
+fn resolve_window_id(
+    event: &objc2_app_kit::NSEvent,
+    window_map: &HashMap<usize, WindowId>,
+    mtm: MainThreadMarker,
+) -> WindowId {
+    if let Some(ns_window) = event.window(mtm) {
+        let ptr = Retained::as_ptr(&ns_window) as usize;
+        if let Some(&id) = window_map.get(&ptr) {
+            return id;
+        }
+    }
+    WindowId::MAIN
 }
 
 /// Convert an NSEvent into a PlatformEvent, if applicable.

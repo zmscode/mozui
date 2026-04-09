@@ -6,7 +6,7 @@ mod rect_pipeline;
 
 pub use draw::{Border, DrawCommand, DrawList};
 pub use gpu::GpuContext;
-pub use rect_pipeline::RectInstance;
+pub use rect_pipeline::{FILL_LINEAR_GRADIENT, FILL_RADIAL_GRADIENT, FILL_SOLID, RectInstance};
 
 use atlas::{GlyphKey, IconKey, TextureAtlas};
 use glyph_pipeline::{GlyphInstance, GlyphPipeline};
@@ -107,22 +107,79 @@ impl Renderer {
                 label: Some("mozui_encoder"),
             });
 
-        // Collect rect instances and glyph instances from draw list
+        // Collect rect and glyph instances, tracking interleaved batches
+        // to preserve paint order (critical for overlays like dialogs).
         let mut rects: Vec<RectInstance> = Vec::new();
         let mut glyph_instances: Vec<GlyphInstance> = Vec::new();
+        // Each batch: (is_glyphs, start_index, count) into the respective vec
+        let mut batches: Vec<(bool, usize, usize)> = Vec::new();
+        let mut current_is_glyphs: Option<bool> = None;
 
         for cmd in draw_list.commands() {
+            let rect_start = rects.len();
+            let glyph_start = glyph_instances.len();
+
             match cmd {
                 DrawCommand::Rect {
                     bounds,
                     background,
                     corner_radii,
                     border,
+                    shadow,
                 } => {
-                    let color = match background {
-                        mozui_style::Fill::Solid(c) => c.to_array(),
-                        _ => [1.0, 1.0, 1.0, 1.0],
-                    };
+                    // Emit shadow instance before the main rect (Gaussian blur via erf)
+                    if let Some(shadow) = shadow {
+                        let blur_px = shadow.blur * scale;
+                        let spread_px = shadow.spread * scale;
+                        // Shadow bounds = original rect + offset, dilated by spread
+                        let sx = (bounds.origin.x + shadow.offset_x) * scale - spread_px;
+                        let sy = (bounds.origin.y + shadow.offset_y) * scale - spread_px;
+                        let sw = bounds.size.width * scale + spread_px * 2.0;
+                        let sh = bounds.size.height * scale + spread_px * 2.0;
+                        rects.push(RectInstance {
+                            bounds: [sx, sy, sw, sh],
+                            color: shadow.color.to_array(),
+                            corner_radii: [
+                                corner_radii.top_left * scale,
+                                corner_radii.top_right * scale,
+                                corner_radii.bottom_right * scale,
+                                corner_radii.bottom_left * scale,
+                            ],
+                            border_width: 0.0,
+                            border_color: [0.0; 4],
+                            fill_mode: FILL_SOLID,
+                            gradient_angle: 0.0,
+                            gradient_stop1_color: [0.0; 4],
+                            gradient_stop0_pos: 0.0,
+                            gradient_stop1_pos: 1.0,
+                            shadow_blur: blur_px,
+                            _padding: 0.0,
+                        });
+                    }
+
+                    let (fill_mode, color, gradient_angle, stop1_color, stop0_pos, stop1_pos) =
+                        match background {
+                            mozui_style::Fill::Solid(c) => {
+                                (FILL_SOLID, c.to_array(), 0.0, [0.0; 4], 0.0, 1.0)
+                            }
+                            mozui_style::Fill::LinearGradient { angle, stops } => {
+                                let c0 =
+                                    stops.first().map(|(_, c)| c.to_array()).unwrap_or([1.0; 4]);
+                                let c1 = stops.get(1).map(|(_, c)| c.to_array()).unwrap_or(c0);
+                                let p0 = stops.first().map(|(p, _)| *p).unwrap_or(0.0);
+                                let p1 = stops.get(1).map(|(p, _)| *p).unwrap_or(1.0);
+                                (FILL_LINEAR_GRADIENT, c0, *angle, c1, p0, p1)
+                            }
+                            mozui_style::Fill::RadialGradient { stops, .. } => {
+                                let c0 =
+                                    stops.first().map(|(_, c)| c.to_array()).unwrap_or([1.0; 4]);
+                                let c1 = stops.get(1).map(|(_, c)| c.to_array()).unwrap_or(c0);
+                                let p0 = stops.first().map(|(p, _)| *p).unwrap_or(0.0);
+                                let p1 = stops.get(1).map(|(p, _)| *p).unwrap_or(1.0);
+                                (FILL_RADIAL_GRADIENT, c0, 0.0, c1, p0, p1)
+                            }
+                        };
+
                     let (border_width, border_color) = border
                         .as_ref()
                         .map(|b| (b.width, b.color.to_array()))
@@ -144,7 +201,13 @@ impl Renderer {
                         ],
                         border_width: border_width * scale,
                         border_color,
-                        _padding: [0.0; 3],
+                        fill_mode,
+                        gradient_angle,
+                        gradient_stop1_color: stop1_color,
+                        gradient_stop0_pos: stop0_pos,
+                        gradient_stop1_pos: stop1_pos,
+                        shadow_blur: 0.0,
+                        _padding: 0.0,
                     });
                 }
                 DrawCommand::Icon {
@@ -361,6 +424,24 @@ impl Renderer {
                     }
                 }
             }
+
+            // Track interleaved batches for correct z-ordering
+            let rect_count = rects.len() - rect_start;
+            let glyph_count = glyph_instances.len() - glyph_start;
+            if rect_count > 0 {
+                if current_is_glyphs != Some(false) {
+                    batches.push((false, rect_start, 0));
+                    current_is_glyphs = Some(false);
+                }
+                batches.last_mut().unwrap().2 += rect_count;
+            }
+            if glyph_count > 0 {
+                if current_is_glyphs != Some(true) {
+                    batches.push((true, glyph_start, 0));
+                    current_is_glyphs = Some(true);
+                }
+                batches.last_mut().unwrap().2 += glyph_count;
+            }
         }
 
         // Update atlas bind group if dirty
@@ -391,26 +472,29 @@ impl Renderer {
                 occlusion_query_set: None,
             });
 
-            if !rects.is_empty() {
-                self.rect_pipeline.draw(
-                    &self.gpu.device,
-                    &self.gpu.queue,
-                    &mut pass,
-                    &rects,
-                    self.surface_config.width as f32,
-                    self.surface_config.height as f32,
-                );
-            }
-
-            if !glyph_instances.is_empty() {
-                self.glyph_pipeline.draw(
-                    &self.gpu.device,
-                    &self.gpu.queue,
-                    &mut pass,
-                    &glyph_instances,
-                    self.surface_config.width as f32,
-                    self.surface_config.height as f32,
-                );
+            // Draw interleaved batches to preserve paint order
+            let vw = self.surface_config.width as f32;
+            let vh = self.surface_config.height as f32;
+            for &(is_glyphs, start, count) in &batches {
+                if is_glyphs {
+                    self.glyph_pipeline.draw(
+                        &self.gpu.device,
+                        &self.gpu.queue,
+                        &mut pass,
+                        &glyph_instances[start..start + count],
+                        vw,
+                        vh,
+                    );
+                } else {
+                    self.rect_pipeline.draw(
+                        &self.gpu.device,
+                        &self.gpu.queue,
+                        &mut pass,
+                        &rects[start..start + count],
+                        vw,
+                        vh,
+                    );
+                }
             }
         }
 

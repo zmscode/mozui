@@ -177,7 +177,8 @@ impl Element for TextInput {
                 width: self.border_width,
                 color: border_color,
             }),
-        });
+                    shadow: None,
+                });
 
         // Text area (inset by padding)
         let pad_left = 10.0f32;
@@ -236,7 +237,8 @@ impl Element for TextInput {
                 background: Fill::Solid(self.text_color),
                 corner_radii: Corners::ZERO,
                 border: None,
-            });
+                    shadow: None,
+                });
         }
 
         // Register as focusable for click-to-focus and key input

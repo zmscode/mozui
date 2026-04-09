@@ -296,6 +296,7 @@ impl Element for DescriptionList {
                     background: Fill::Solid(self.border_color),
                     corner_radii: Corners::uniform(0.0),
                     border: None,
+                    shadow: None,
                 });
             } else if self.bordered {
                 // Last item still has a divider node — skip it

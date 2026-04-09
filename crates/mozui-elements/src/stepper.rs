@@ -256,7 +256,8 @@ impl Element for Stepper {
                 background: Fill::Solid(circle_bg),
                 corner_radii: Corners::uniform(circle_sz / 2.0),
                 border: None,
-            });
+                    shadow: None,
+                });
 
             // Circle content: check icon for completed, number for others
             if is_completed {
@@ -352,6 +353,7 @@ impl Element for Stepper {
                     background: Fill::Solid(line_color.with_alpha(alpha)),
                     corner_radii: Corners::uniform(1.0),
                     border: None,
+                    shadow: None,
                 });
             }
         }

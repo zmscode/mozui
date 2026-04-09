@@ -1,11 +1,21 @@
 use mozui_elements::ScrollOffset;
+use mozui_events::WindowId;
 use mozui_executor::{Executor, TimerId, TimerManager};
+use mozui_platform::WindowOptions;
 use mozui_reactive::{SetSignal, Signal, SignalStore};
 use mozui_style::Theme;
 use mozui_style::animation::{Animated, Lerp, SpringHandle, Transition};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
+
+use crate::app::RootBuilder;
+
+/// A pending request to open a new window.
+pub(crate) struct WindowRequest {
+    pub options: WindowOptions,
+    pub root_builder: RootBuilder,
+}
 
 pub struct Context {
     theme: Theme,
@@ -17,6 +27,10 @@ pub struct Context {
     pub(crate) timers: TimerManager,
     /// Shared flag set by animations when they're still in progress.
     animations_active: Rc<Cell<bool>>,
+    /// Pending window-open requests (drained by the app loop).
+    pub(crate) window_requests: Vec<WindowRequest>,
+    /// Pending window-close requests.
+    pub(crate) close_requests: Vec<WindowId>,
 }
 
 impl Context {
@@ -30,6 +44,8 @@ impl Context {
             executor: Executor::new(),
             timers: TimerManager::new(),
             animations_active: Rc::new(Cell::new(false)),
+            window_requests: Vec::new(),
+            close_requests: Vec::new(),
         }
     }
 
@@ -125,10 +141,12 @@ impl Context {
         self.timers.cancel(id);
     }
 
-    /// Create or retrieve a persistent scroll offset for a scrollable container.
+    /// Create or retrieve a persistent scroll state for a scrollable container.
+    /// Includes momentum physics — scroll continues with deceleration after input stops.
     /// Call this once per scrollable element, in a stable order (like `use_signal`).
     pub fn use_scroll(&mut self) -> ScrollOffset {
-        let (signal, _) = self.use_signal(ScrollOffset::new());
+        let flag = self.animations_active.clone();
+        let (signal, _) = self.use_signal(ScrollOffset::new().with_animation_flag(flag));
         self.get(signal).clone()
     }
 
@@ -162,6 +180,30 @@ impl Context {
         let flag = self.animations_active.clone();
         let (signal, _) = self.use_signal(SpringHandle::new(initial, flag));
         self.get(signal).clone()
+    }
+
+    /// Open a new window with the given options and root builder.
+    /// The window is created on the next frame.
+    pub fn open_window(
+        &mut self,
+        options: WindowOptions,
+        root: impl Fn(&mut Context) -> Box<dyn mozui_elements::Element> + 'static,
+    ) {
+        self.window_requests.push(WindowRequest {
+            options,
+            root_builder: Box::new(root),
+        });
+    }
+
+    /// Close a window by its ID.
+    pub fn close_window(&mut self, id: WindowId) {
+        self.close_requests.push(id);
+    }
+
+    /// Get the shared animation flag. Pass this to `Animated::new()` when creating
+    /// animations outside of `use_animated()` (e.g. in dynamically-sized collections).
+    pub fn animation_flag(&self) -> Rc<Cell<bool>> {
+        self.animations_active.clone()
     }
 
     /// Returns true if any animations are currently in progress.

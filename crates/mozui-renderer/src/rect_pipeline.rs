@@ -1,14 +1,27 @@
 use bytemuck::{Pod, Zeroable};
 
+/// Fill mode flags passed in the instance data.
+/// 0 = solid color, 1 = linear gradient, 2 = radial gradient
+pub const FILL_SOLID: u32 = 0;
+pub const FILL_LINEAR_GRADIENT: u32 = 1;
+pub const FILL_RADIAL_GRADIENT: u32 = 2;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct RectInstance {
     pub bounds: [f32; 4],       // x, y, width, height
-    pub color: [f32; 4],        // RGBA
+    pub color: [f32; 4],        // RGBA (solid fill or gradient stop 0)
     pub corner_radii: [f32; 4], // TL, TR, BR, BL
     pub border_width: f32,
     pub border_color: [f32; 4],
-    pub _padding: [f32; 3], // Align to 16 bytes
+    // Gradient fields
+    pub fill_mode: u32,                 // 0=solid, 1=linear, 2=radial
+    pub gradient_angle: f32,            // radians for linear gradient
+    pub gradient_stop1_color: [f32; 4], // second gradient stop color
+    pub gradient_stop0_pos: f32,        // position of first stop [0,1]
+    pub gradient_stop1_pos: f32,        // position of second stop [0,1]
+    pub shadow_blur: f32,               // SDF blur radius in physical pixels (0 = no blur)
+    pub _padding: f32,
 }
 
 #[repr(C)]
@@ -42,7 +55,7 @@ impl RectPipeline {
             label: Some("rect_bind_group_layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -100,6 +113,42 @@ impl RectPipeline {
                     format: wgpu::VertexFormat::Float32x4,
                     offset: 52,
                     shader_location: 4,
+                },
+                // fill_mode: u32
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Uint32,
+                    offset: 68,
+                    shader_location: 5,
+                },
+                // gradient_angle: f32
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32,
+                    offset: 72,
+                    shader_location: 6,
+                },
+                // gradient_stop1_color: vec4<f32>
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: 76,
+                    shader_location: 7,
+                },
+                // gradient_stop0_pos: f32
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32,
+                    offset: 92,
+                    shader_location: 8,
+                },
+                // gradient_stop1_pos: f32
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32,
+                    offset: 96,
+                    shader_location: 9,
+                },
+                // shadow_blur: f32
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32,
+                    offset: 100,
+                    shader_location: 10,
                 },
             ],
         };

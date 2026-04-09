@@ -184,7 +184,8 @@ impl Element for Switch {
             background: Fill::Solid(track_color.with_alpha(alpha)),
             corner_radii: Corners::uniform(track_radius),
             border: None,
-        });
+                    shadow: None,
+                });
 
         // Thumb
         let thumb_sz = self.thumb_size();
@@ -200,7 +201,8 @@ impl Element for Switch {
             background: Fill::Solid(Color::WHITE.with_alpha(alpha)),
             corner_radii: Corners::uniform(thumb_sz / 2.0),
             border: None,
-        });
+                    shadow: None,
+                });
 
         // Label
         if let Some(ref label_text) = self.label {
