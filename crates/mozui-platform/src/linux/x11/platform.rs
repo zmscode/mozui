@@ -21,6 +21,7 @@ pub struct X11Platform {
     next_window_id: u64,
     window_map: HashMap<u32, WindowId>,
     wm_delete_window: u32,
+    cursor_font: u32,
 }
 
 impl X11Platform {
@@ -34,12 +35,19 @@ impl X11Platform {
             .expect("Failed to get WM_DELETE_WINDOW reply")
             .atom;
 
+        // Open the X cursor font for set_cursor support
+        let cursor_font = conn.generate_id().expect("Failed to generate cursor font ID");
+        xproto::open_font(&*conn, cursor_font, b"cursor")
+            .expect("Failed to open cursor font");
+        conn.flush().expect("Failed to flush after opening cursor font");
+
         Self {
             conn,
             screen_num,
             next_window_id: 0,
             window_map: HashMap::new(),
             wm_delete_window,
+            cursor_font,
         }
     }
 
@@ -118,18 +126,35 @@ impl Platform for X11Platform {
     }
 
     fn set_cursor(&self, cursor: CursorStyle) {
-        let cursor_font_glyph = match cursor {
-            CursorStyle::Arrow => 68,
-            CursorStyle::Hand => 60,
-            CursorStyle::Text => 152,
-            CursorStyle::Crosshair => 34,
-            CursorStyle::NotAllowed => 0,
-            CursorStyle::ResizeNS => 116,
-            CursorStyle::ResizeEW => 108,
-            CursorStyle::ResizeNESW => 12,
-            CursorStyle::ResizeNWSE => 14,
+        let glyph: u16 = match cursor {
+            CursorStyle::Arrow => 68,      // XC_left_ptr
+            CursorStyle::Hand => 60,       // XC_hand2
+            CursorStyle::Text => 152,      // XC_xterm
+            CursorStyle::Crosshair => 34,  // XC_crosshair
+            CursorStyle::NotAllowed => 0,  // XC_X_cursor (closest match)
+            CursorStyle::ResizeNS => 116,  // XC_sb_v_double_arrow
+            CursorStyle::ResizeEW => 108,  // XC_sb_h_double_arrow
+            CursorStyle::ResizeNESW => 12, // XC_bottom_left_corner
+            CursorStyle::ResizeNWSE => 14, // XC_bottom_right_corner
         };
-        let _ = cursor_font_glyph;
+        if let Ok(cursor_id) = self.conn.generate_id() {
+            let _ = xproto::create_glyph_cursor(
+                &*self.conn,
+                cursor_id,
+                self.cursor_font,
+                self.cursor_font,
+                glyph,
+                glyph + 1,
+                0, 0, 0,           // foreground: black
+                0xFFFF, 0xFFFF, 0xFFFF, // background: white
+            );
+            for &x11_win in self.window_map.keys() {
+                let values = xproto::ChangeWindowAttributesAux::new().cursor(cursor_id);
+                let _ = xproto::change_window_attributes(&*self.conn, x11_win, &values);
+            }
+            let _ = self.conn.flush();
+            let _ = xproto::free_cursor(&*self.conn, cursor_id);
+        }
     }
 
     fn clipboard_read(&self) -> Option<String> {

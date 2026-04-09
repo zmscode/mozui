@@ -1,5 +1,6 @@
 use crate::traits::{
-    EventCallback, FileDialogOptions, Platform, PlatformWindow, Screen, WindowOptions,
+    EventCallback, FileDialogOptions, Platform, PlatformWindow, Screen, TitlebarStyle,
+    WindowOptions,
 };
 use mozui_events::{
     CursorStyle, Key, Modifiers, MouseButton, PlatformEvent, ScrollDelta, WindowId,
@@ -10,11 +11,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Graphics::Dwm::{DwmExtendFrameIntoClientArea, MARGINS};
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
+use windows::Win32::UI::HiDpi::{GetDpiForMonitor, GetDpiForWindow, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     MapVirtualKeyW, MAPVK_VK_TO_CHAR, VIRTUAL_KEY, VK_BACK, VK_DELETE, VK_DOWN, VK_END,
     VK_ESCAPE, VK_F1, VK_F10, VK_F11, VK_F12, VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8,
@@ -24,11 +26,20 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 
 use super::window::WinWindow;
 
+/// Per-window config accessible from WndProc via thread-local state.
+#[derive(Clone)]
+struct WindowConfig {
+    min_size: Option<Size>,
+    max_size: Option<Size>,
+    titlebar_style: TitlebarStyle,
+}
+
 /// Thread-local storage for the event callback and window map.
 /// WndProc is a C callback that can't capture Rust state, so we use thread-locals.
 struct WndProcState {
     callback: EventCallback,
     window_map: HashMap<isize, WindowId>,
+    window_configs: HashMap<isize, WindowConfig>,
 }
 
 thread_local! {
@@ -38,6 +49,7 @@ thread_local! {
 pub struct WinPlatform {
     next_window_id: u64,
     window_map: HashMap<isize, WindowId>,
+    window_configs: HashMap<isize, WindowConfig>,
 }
 
 impl WinPlatform {
@@ -45,6 +57,7 @@ impl WinPlatform {
         Self {
             next_window_id: 0,
             window_map: HashMap::new(),
+            window_configs: HashMap::new(),
         }
     }
 
@@ -57,14 +70,16 @@ impl WinPlatform {
 
 impl Platform for WinPlatform {
     fn run(&mut self, callback: EventCallback) -> ! {
-        // Move window map into thread-local state for WndProc access
+        // Move window map and configs into thread-local state for WndProc access
         let window_map = std::mem::take(&mut self.window_map);
+        let window_configs = std::mem::take(&mut self.window_configs);
         let window_ids: Vec<WindowId> = window_map.values().copied().collect();
 
         WNDPROC_STATE.with(|cell| {
             *cell.borrow_mut() = Some(WndProcState {
                 callback,
                 window_map,
+                window_configs,
             });
         });
 
@@ -101,8 +116,17 @@ impl Platform for WinPlatform {
 
     fn open_window(&mut self, options: WindowOptions) -> (WindowId, Box<dyn PlatformWindow>) {
         let hwnd = create_win32_window(&options);
+        let key = hwnd.0 as isize;
         let id = self.allocate_window_id();
-        self.window_map.insert(hwnd.0 as isize, id);
+        self.window_map.insert(key, id);
+        self.window_configs.insert(
+            key,
+            WindowConfig {
+                min_size: options.min_size,
+                max_size: options.max_size,
+                titlebar_style: options.titlebar,
+            },
+        );
         let window = WinWindow::new(hwnd, &options);
         (id, Box::new(window))
     }
@@ -214,7 +238,7 @@ fn create_win32_window(options: &WindowOptions) -> HWND {
         crate::traits::TitlebarStyle::Hidden => WS_POPUP | WS_THICKFRAME | WS_SYSMENU,
     };
 
-    unsafe {
+    let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             class_name,
@@ -235,7 +259,24 @@ fn create_win32_window(options: &WindowOptions) -> HWND {
             None,
         )
         .expect("CreateWindowExW failed")
+    };
+
+    // For Transparent titlebar, extend DWM frame into client area so content
+    // renders behind the caption. A 1px top margin is enough to activate DWM
+    // composition while WM_NCCALCSIZE removes the standard non-client area.
+    if options.titlebar == crate::traits::TitlebarStyle::Transparent {
+        let margins = MARGINS {
+            cxLeftWidth: 0,
+            cxRightWidth: 0,
+            cyTopHeight: 1,
+            cyBottomHeight: 0,
+        };
+        unsafe {
+            let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+        }
     }
+
+    hwnd
 }
 
 // ── WndProc ────────────────────────────────────────────────────
@@ -448,6 +489,53 @@ unsafe extern "system" fn wnd_proc(
             dispatch_hwnd_event(hwnd, PlatformEvent::ScaleFactorChanged { scale });
             LRESULT(0)
         }
+        WM_NCCALCSIZE => {
+            if wparam.0 != 0 {
+                let is_transparent = WNDPROC_STATE.with(|cell| {
+                    if let Ok(state) = cell.try_borrow() {
+                        if let Some(ref s) = *state {
+                            let key = hwnd.0 as isize;
+                            return s
+                                .window_configs
+                                .get(&key)
+                                .map(|c| c.titlebar_style == TitlebarStyle::Transparent)
+                                .unwrap_or(false);
+                        }
+                    }
+                    false
+                });
+                if is_transparent {
+                    // Return 0 to remove the standard non-client area (caption + borders).
+                    // DwmExtendFrameIntoClientArea preserves the DWM shadow.
+                    return LRESULT(0);
+                }
+            }
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        WM_GETMINMAXINFO => {
+            let config = WNDPROC_STATE.with(|cell| {
+                if let Ok(state) = cell.try_borrow() {
+                    if let Some(ref s) = *state {
+                        let key = hwnd.0 as isize;
+                        return s.window_configs.get(&key).cloned();
+                    }
+                }
+                None
+            });
+            if let Some(config) = config {
+                let info = unsafe { &mut *(lparam.0 as *mut MINMAXINFO) };
+                let dpi = unsafe { GetDpiForWindow(hwnd) as f32 / 96.0 };
+                if let Some(min) = config.min_size {
+                    info.ptMinTrackSize.x = (min.width * dpi) as i32;
+                    info.ptMinTrackSize.y = (min.height * dpi) as i32;
+                }
+                if let Some(max) = config.max_size {
+                    info.ptMaxTrackSize.x = (max.width * dpi) as i32;
+                    info.ptMaxTrackSize.y = (max.height * dpi) as i32;
+                }
+            }
+            LRESULT(0)
+        }
         WM_DESTROY => {
             unsafe {
                 PostQuitMessage(0);
@@ -561,10 +649,13 @@ unsafe extern "system" fn monitor_enum_proc(
     if unsafe { GetMonitorInfoW(hmonitor, &mut info).as_bool() } {
         let bounds = rect_to_rect(info.rcMonitor);
         let work_area = rect_to_rect(info.rcWork);
+        let mut dpi_x: u32 = 96;
+        let mut dpi_y: u32 = 96;
+        let _ = unsafe { GetDpiForMonitor(hmonitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) };
         screens.push(Screen {
             bounds,
             work_area,
-            scale_factor: 1.0, // Per-monitor DPI requires GetDpiForMonitor (Phase 3)
+            scale_factor: dpi_x as f32 / 96.0,
         });
     }
     true.into()

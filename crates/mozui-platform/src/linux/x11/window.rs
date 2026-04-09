@@ -113,6 +113,34 @@ impl X11Window {
             }
         }
 
+        // Set min/max size hints via WM_NORMAL_HINTS
+        if options.min_size.is_some() || options.max_size.is_some() {
+            // WM_NORMAL_HINTS format: 18 × i32 (flags + geometry hints)
+            // Flags: PMinSize = 1<<4 (16), PMaxSize = 1<<5 (32)
+            let mut hints = [0i32; 18];
+            if let Some(min) = options.min_size {
+                hints[0] |= 16; // PMinSize
+                hints[5] = min.width as i32;
+                hints[6] = min.height as i32;
+            }
+            if let Some(max) = options.max_size {
+                hints[0] |= 32; // PMaxSize
+                hints[7] = max.width as i32;
+                hints[8] = max.height as i32;
+            }
+            let hints_bytes: Vec<u8> = hints.iter().flat_map(|v| v.to_ne_bytes()).collect();
+            let _ = xproto::change_property(
+                &*conn,
+                xproto::PropMode::REPLACE,
+                window_id,
+                xproto::AtomEnum::WM_NORMAL_HINTS,
+                xproto::AtomEnum::WM_SIZE_HINTS,
+                32,
+                18,
+                &hints_bytes,
+            );
+        }
+
         // Map (show) the window
         if options.visible {
             xproto::map_window(&*conn, window_id).expect("Failed to map window");

@@ -178,6 +178,12 @@ impl Platform for WaylandPlatform {
         let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
         let toplevel = xdg_surface.get_toplevel(&qh, ());
         toplevel.set_title(options.title.clone());
+        if let Some(min) = options.min_size {
+            toplevel.set_min_size(min.width as i32, min.height as i32);
+        }
+        if let Some(max) = options.max_size {
+            toplevel.set_max_size(max.width as i32, max.height as i32);
+        }
         surface.commit();
 
         event_queue
@@ -209,6 +215,12 @@ impl Platform for WaylandPlatform {
         let xdg_surface = wm_base.get_xdg_surface(&surface, &qh, ());
         let toplevel = xdg_surface.get_toplevel(&qh, ());
         toplevel.set_title(options.title.clone());
+        if let Some(min) = options.min_size {
+            toplevel.set_min_size(min.width as i32, min.height as i32);
+        }
+        if let Some(max) = options.max_size {
+            toplevel.set_max_size(max.width as i32, max.height as i32);
+        }
         surface.commit();
 
         event_queue
