@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::time::Instant;
+use web_time::Instant;
 
 /// Record of a single signal mutation.
 #[derive(Debug, Clone)]

@@ -7,16 +7,37 @@ use mozui_style::Color;
 const PANEL_WIDTH: f32 = 320.0;
 const MAX_LOG_ENTRIES: usize = 20;
 
-/// Shorten a fully-qualified type name to its last path segment.
-/// e.g. "std::string::String" -> "String", "alloc::vec::Vec<Tab>" -> "Vec<Tab>"
-fn short_type_name(name: &str) -> &str {
-    // Find the last `::`  before any `<` (to preserve generic args).
-    let before_generic = name.find('<').unwrap_or(name.len());
-    let prefix = &name[..before_generic];
-    match prefix.rfind("::") {
-        Some(pos) => &name[pos + 2..],
-        None => name,
+/// Shorten a fully-qualified type name, including paths inside generics.
+/// e.g. "alloc::string::String" -> "String"
+///      "core::option::Option<mozui_style::animation::Animated<f32>>" -> "Option<Animated<f32>>"
+fn short_type_name(name: &str) -> String {
+    let mut result = String::new();
+    let mut i = 0;
+    let bytes = name.as_bytes();
+    while i < bytes.len() {
+        if bytes[i] == b'<' || bytes[i] == b'>' || bytes[i] == b',' || bytes[i] == b' ' {
+            result.push(bytes[i] as char);
+            i += 1;
+        } else {
+            // Read a path segment until we hit <, >, comma, space, or end
+            let start = i;
+            while i < bytes.len()
+                && bytes[i] != b'<'
+                && bytes[i] != b'>'
+                && bytes[i] != b','
+                && bytes[i] != b' '
+            {
+                i += 1;
+            }
+            let segment = &name[start..i];
+            // Take just the last :: component
+            match segment.rfind("::") {
+                Some(pos) => result.push_str(&segment[pos + 2..]),
+                None => result.push_str(segment),
+            }
+        }
     }
+    result
 }
 
 /// Build the signal debugger panel overlay.
@@ -24,7 +45,7 @@ pub fn signal_panel(
     signal_log: &SignalLog,
     signal_summary: &[(usize, &'static str)],
 ) -> Box<dyn Element> {
-    let bg = Color::new(0.0, 0.0, 0.0, 0.85);
+    let bg = Color::new(0.1, 0.1, 0.1, 0.95);
     let dim = Color::new(1.0, 1.0, 1.0, 0.5);
     let bright = Color::new(1.0, 1.0, 1.0, 0.9);
     let header_color = Color::new(1.0, 1.0, 1.0, 1.0);

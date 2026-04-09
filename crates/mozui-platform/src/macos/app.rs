@@ -1,6 +1,7 @@
-use crate::traits::{EventCallback, Platform, PlatformWindow, Screen, WindowOptions};
+use crate::traits::{EventCallback, FileDialogOptions, Platform, PlatformWindow, Screen, WindowOptions};
 use mozui_events::{CursorStyle, Modifiers, MouseButton, PlatformEvent, ScrollDelta, WindowId};
 use mozui_style::{Point, Rect};
+use std::path::PathBuf;
 
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
@@ -161,6 +162,73 @@ impl Platform for MacPlatform {
         let ns_string = NSString::from_str(text);
         let nstype = unsafe { NSPasteboardTypeString };
         let _ = pasteboard.setString_forType(&ns_string, nstype);
+    }
+
+    fn create_window(&self, options: WindowOptions) -> Box<dyn PlatformWindow> {
+        let mtm = MainThreadMarker::new().expect("Must be called from the main thread");
+        Box::new(MacWindow::new(mtm, options))
+    }
+
+    fn open_url(&self, url: &str) {
+        use objc2_foundation::NSURL;
+        let ns_string = NSString::from_str(url);
+        if let Some(ns_url) = NSURL::URLWithString(&ns_string) {
+            let workspace = objc2_app_kit::NSWorkspace::sharedWorkspace();
+            workspace.openURL(&ns_url);
+        }
+    }
+
+    fn open_file_dialog(&self, options: FileDialogOptions) -> Vec<PathBuf> {
+        use objc2_app_kit::{NSModalResponseOK, NSOpenPanel};
+
+        let mtm = MainThreadMarker::new()
+            .expect("File dialogs must be called from the main thread");
+        let panel = NSOpenPanel::openPanel(mtm);
+        panel.setCanChooseFiles(!options.directories);
+        panel.setCanChooseDirectories(options.directories);
+        panel.setAllowsMultipleSelection(options.multiple);
+
+        if let Some(title) = &options.title {
+            panel.setTitle(Some(&NSString::from_str(title)));
+        }
+
+        let response = panel.runModal();
+        if response == NSModalResponseOK {
+            let urls = panel.URLs();
+            let mut paths = Vec::new();
+            for i in 0..urls.len() {
+                if let Some(path) = urls.objectAtIndex(i).path() {
+                    paths.push(PathBuf::from(path.to_string()));
+                }
+            }
+            return paths;
+        }
+        Vec::new()
+    }
+
+    fn save_file_dialog(&self, options: FileDialogOptions) -> Option<PathBuf> {
+        use objc2_app_kit::{NSModalResponseOK, NSSavePanel};
+
+        let mtm = MainThreadMarker::new()
+            .expect("File dialogs must be called from the main thread");
+        let panel = NSSavePanel::savePanel(mtm);
+
+        if let Some(title) = &options.title {
+            panel.setTitle(Some(&NSString::from_str(title)));
+        }
+        if let Some(name) = &options.default_name {
+            panel.setNameFieldStringValue(&NSString::from_str(name));
+        }
+
+        let response = panel.runModal();
+        if response == NSModalResponseOK {
+            if let Some(url) = panel.URL() {
+                if let Some(path) = url.path() {
+                    return Some(PathBuf::from(path.to_string()));
+                }
+            }
+        }
+        None
     }
 }
 

@@ -11,7 +11,7 @@ use mozui_platform::{WindowOptions, create_platform};
 use mozui_renderer::{DrawList, Renderer};
 use mozui_style::{Size, Theme};
 use std::collections::HashMap;
-use std::time::Instant;
+use web_time::Instant;
 use taffy::prelude::*;
 
 pub type ActionHandler = Box<dyn Fn(&dyn crate::Action, &mut Context)>;
@@ -40,10 +40,10 @@ struct WindowState {
 impl WindowState {
     fn new(
         window: Box<dyn mozui_platform::PlatformWindow>,
+        renderer: Renderer,
         root_builder: RootBuilder,
         bg_color: mozui_style::Color,
     ) -> Self {
-        let renderer = Renderer::new(window.as_ref());
         let last_size = window.content_size();
         let last_scale = window.scale_factor();
         Self {
@@ -229,6 +229,22 @@ impl WindowState {
         cx.reset_hooks();
         self.element_tree = Some((self.root_builder)(cx));
 
+        // Drain mutation buffer and push to signal log
+        {
+            let mut buf = cx.mutation_buffer.borrow_mut();
+            for (slot_id, type_name) in buf.drain(..) {
+                self.devtools.signal_log.push(mozui_devtools::SignalMutation {
+                    slot_id,
+                    type_name,
+                    old_debug: String::new(),
+                    new_debug: String::new(),
+                    frame: self.frame_count,
+                    timestamp: Instant::now(),
+                });
+            }
+        }
+        self.devtools.signal_log.current_frame = self.frame_count;
+
         // Capture signal summary for devtools before layout
         if self.devtools.signal_debugger_active {
             self.signal_summary_cache = cx.signal_summary();
@@ -288,53 +304,110 @@ impl App {
         self
     }
 
+    /// Run the application (native targets).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn run<F>(self, root: F) -> !
     where
         F: Fn(&mut Context) -> Box<dyn Element> + 'static,
     {
         let mut platform = create_platform();
+        mozui_platform::install_services(platform.as_ref());
         let (main_id, window) = platform.open_window(self.window_options);
+        let renderer = Renderer::new(window.as_ref());
+        Self::run_event_loop(platform, main_id, window, renderer, root, self.theme, self.keybindings, self.action_handler)
+    }
 
-        let mut cx = Context::new(self.theme.clone());
+    /// Run the application (WASM target).
+    ///
+    /// GPU initialization is async on the web, so this method is async.
+    /// Call it from a `wasm_bindgen_futures::spawn_local` block.
+    #[cfg(target_arch = "wasm32")]
+    pub async fn start<F>(self, root: F)
+    where
+        F: Fn(&mut Context) -> Box<dyn Element> + 'static,
+    {
+        use wasm_bindgen::JsCast;
 
-        // Set up clipboard access
+        use mozui_platform::Platform;
+
+        let mut platform = mozui_platform::web::WebPlatform::new();
+        mozui_platform::install_services(&platform);
+        let (main_id, window): (WindowId, Box<dyn mozui_platform::PlatformWindow>) =
+            platform.open_window(self.window_options);
+
+        // Get the canvas element that open_window created/found
+        let canvas: web_sys::HtmlCanvasElement = web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.get_element_by_id("mozui-canvas"))
+            .and_then(|el| el.dyn_into().ok())
+            .expect("mozui-canvas element not found in DOM");
+
+        // Async GPU initialization
+        let (gpu, surface) = mozui_renderer::GpuContext::new_with_canvas(canvas).await;
+        let size = window.content_size();
+        let scale = window.scale_factor();
+        let renderer = Renderer::from_gpu(gpu, surface, size, scale);
+
+        // Build event callback and start the RAF loop (returns normally)
+        let callback = Self::build_event_callback(
+            main_id, window, renderer, root, self.theme, self.keybindings, self.action_handler,
+        );
+        platform.start_event_loop(callback);
+    }
+
+    /// Build the event callback that drives the app each frame.
+    fn build_event_callback<F>(
+        main_id: WindowId,
+        window: Box<dyn mozui_platform::PlatformWindow>,
+        renderer: Renderer,
+        root: F,
+        theme: Theme,
+        keybindings: KeybindingRegistry,
+        action_handler: Option<ActionHandler>,
+    ) -> mozui_platform::EventCallback
+    where
+        F: Fn(&mut Context) -> Box<dyn Element> + 'static,
+    {
+        let mut cx = Context::new(theme.clone());
+
+        // Set up clipboard access via platform services
         cx.set_clipboard(
             || mozui_platform::clipboard_read(),
             |text| mozui_platform::clipboard_write(text),
         );
 
-        let bg_color = self.theme.background;
+        let bg_color = theme.background;
 
         // Create main window state
         let mut windows: HashMap<WindowId, WindowState> = HashMap::new();
-        let mut ws = WindowState::new(window, Box::new(root), bg_color);
+        let mut ws = WindowState::new(window, renderer, Box::new(root), bg_color);
         ws.rebuild(&mut cx);
         windows.insert(main_id, ws);
-
-        let keybindings = self.keybindings;
-        let action_handler = self.action_handler;
 
         // Track whether shared state changed (requires all-window rebuild)
         let mut global_dirty = false;
         // Counter for dynamically opened windows (starts after MAIN = 0)
+        #[allow(unused_mut, unused_variables)]
         let mut next_window_id: u64 = 1;
 
-        platform.run(Box::new(move |window_id, event| {
+        Box::new(move |window_id, event| {
             match event {
                 PlatformEvent::RedrawRequested => {
-                    // Handle global state changes first (timers, async, signals, animations)
-                    // We only check on the main window's redraw to avoid duplicate work.
                     if window_id == WindowId::MAIN {
-                        // Process pending window-open requests
-                        let reqs = std::mem::take(&mut cx.window_requests);
-                        for req in reqs {
-                            let new_window = mozui_platform::create_window(req.options);
-                            let new_id = WindowId(next_window_id);
-                            next_window_id += 1;
-                            let mut new_ws =
-                                WindowState::new(new_window, req.root_builder, bg_color);
-                            new_ws.rebuild(&mut cx);
-                            windows.insert(new_id, new_ws);
+                        // Process pending window-open requests (native only)
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let reqs = std::mem::take(&mut cx.window_requests);
+                            for req in reqs {
+                                let new_window = mozui_platform::create_window(req.options);
+                                let new_id = WindowId(next_window_id);
+                                next_window_id += 1;
+                                let new_renderer = Renderer::new(new_window.as_ref());
+                                let mut new_ws =
+                                    WindowState::new(new_window, new_renderer, req.root_builder, bg_color);
+                                new_ws.rebuild(&mut cx);
+                                windows.insert(new_id, new_ws);
+                            }
                         }
 
                         // Process pending window-close requests
@@ -380,6 +453,7 @@ impl App {
                     };
 
                     if !ws.window.is_visible() {
+                        #[cfg(not(target_arch = "wasm32"))]
                         if window_id == WindowId::MAIN {
                             std::process::exit(0);
                         }
@@ -414,7 +488,26 @@ impl App {
                     handle_input_event(ws, event, &mut cx, &keybindings, &action_handler);
                 }
             }
-        }))
+        })
+    }
+
+    /// Run the event loop (native path). Calls Platform::run which never returns.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn run_event_loop<F>(
+        mut platform: Box<dyn mozui_platform::Platform>,
+        main_id: WindowId,
+        window: Box<dyn mozui_platform::PlatformWindow>,
+        renderer: Renderer,
+        root: F,
+        theme: Theme,
+        keybindings: KeybindingRegistry,
+        action_handler: Option<ActionHandler>,
+    ) -> !
+    where
+        F: Fn(&mut Context) -> Box<dyn Element> + 'static,
+    {
+        let callback = Self::build_event_callback(main_id, window, renderer, root, theme, keybindings, action_handler);
+        platform.run(callback)
     }
 }
 

@@ -5,7 +5,7 @@ use mozui_platform::WindowOptions;
 use mozui_reactive::{SetSignal, Signal, SignalStore};
 use mozui_style::Theme;
 use mozui_style::animation::{Animated, Lerp, SpringHandle, Transition};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Duration;
@@ -32,11 +32,13 @@ pub struct Context {
     pub(crate) window_requests: Vec<WindowRequest>,
     /// Pending window-close requests.
     pub(crate) close_requests: Vec<WindowId>,
+    /// Shared buffer for signal mutations (drained by devtools each frame).
+    pub(crate) mutation_buffer: Rc<RefCell<Vec<(usize, &'static str)>>>,
 }
 
 impl Context {
     pub fn new(theme: Theme) -> Self {
-        Self {
+        let mut ctx = Self {
             theme,
             signals: SignalStore::new(),
             hook_index: 0,
@@ -47,7 +49,14 @@ impl Context {
             animations_active: Rc::new(Cell::new(false)),
             window_requests: Vec::new(),
             close_requests: Vec::new(),
-        }
+            mutation_buffer: Rc::new(RefCell::new(Vec::new())),
+        };
+        // Install signal mutation callback that buffers mutations for devtools
+        let buf = ctx.mutation_buffer.clone();
+        ctx.signals.set_mutation_callback(Box::new(move |slot_id, type_name| {
+            buf.borrow_mut().push((slot_id, type_name));
+        }));
+        ctx
     }
 
     /// Set clipboard functions (called by App during setup).

@@ -6,7 +6,7 @@ use mozui_style::Color;
 pub fn inspector_overlay(inspector: &InspectorState) -> Box<dyn Element> {
     let highlight_color_bg = Color::rgba(66, 135, 245, 0.25);
     let highlight_color_border = Color::rgba(66, 135, 245, 0.8);
-    let panel_bg = Color::new(0.0, 0.0, 0.0, 0.85);
+    let panel_bg = Color::new(0.1, 0.1, 0.1, 0.95);
     let white = Color::new(1.0, 1.0, 1.0, 1.0);
     let dim = Color::new(0.6, 0.6, 0.6, 1.0);
     let label_bg = Color::new(0.1, 0.1, 0.1, 0.9);

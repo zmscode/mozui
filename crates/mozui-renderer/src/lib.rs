@@ -12,6 +12,7 @@ pub use rect_pipeline::{FILL_LINEAR_GRADIENT, FILL_RADIAL_GRADIENT, FILL_SOLID, 
 use atlas::{IconKey, TextureAtlas};
 use glyph_pipeline::{GlyphInstance, GlyphPipeline};
 use image_pipeline::{ImageInstance, ImagePipeline};
+#[cfg(not(target_arch = "wasm32"))]
 use mozui_platform::PlatformWindow;
 use mozui_style::{Color, Size};
 use mozui_text::{FontSystem, TextStyle};
@@ -30,11 +31,23 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    /// Create a renderer from a platform window (native path).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(window: &dyn PlatformWindow) -> Self {
         let (gpu, surface) = GpuContext::new_with_surface(window);
-
         let size = window.content_size();
         let scale = window.scale_factor();
+        Self::from_gpu(gpu, surface, size, scale)
+    }
+
+    /// Create a renderer from a pre-built GPU context and surface.
+    /// Used by the WASM path where GPU initialization is async.
+    pub fn from_gpu(
+        gpu: GpuContext,
+        surface: wgpu::Surface<'static>,
+        size: Size,
+        scale: f32,
+    ) -> Self {
         let physical_width = (size.width * scale) as u32;
         let physical_height = (size.height * scale) as u32;
 

@@ -32,7 +32,7 @@ struct VertexOutput {
     @location(3) corner_radii: vec4<f32>,
     @location(4) border_width: f32,
     @location(5) border_color: vec4<f32>,
-    @location(6) fill_mode: u32,
+    @location(6) @interpolate(flat) fill_mode: u32,
     @location(7) gradient_angle: f32,
     @location(8) gradient_stop1_color: vec4<f32>,
     @location(9) gradient_stop0_pos: f32,

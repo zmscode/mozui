@@ -15,6 +15,9 @@ members = [
     "crates/mozui-icons",
     "crates/mozui-devtools",
 ]
+exclude = [
+    "web",
+]
 
 [workspace.package]
 version = "0.1.0"

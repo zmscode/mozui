@@ -1,6 +1,7 @@
 use mozui_events::{PlatformEvent, WindowId};
 use mozui_style::{Point, Rect, Size};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use std::cell::RefCell;
 
 /// Title bar style for a window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -56,89 +57,6 @@ pub struct Screen {
 /// Callback that receives platform events tagged with the target window.
 pub type EventCallback = Box<dyn FnMut(WindowId, PlatformEvent)>;
 
-/// Platform abstraction for OS-specific window management.
-pub trait Platform {
-    fn run(&mut self, callback: EventCallback) -> !;
-    fn open_window(&mut self, options: WindowOptions) -> (WindowId, Box<dyn PlatformWindow>);
-    fn screens(&self) -> Vec<Screen>;
-    fn set_cursor(&self, cursor: mozui_events::CursorStyle);
-    fn clipboard_read(&self) -> Option<String>;
-    fn clipboard_write(&self, text: &str);
-}
-
-/// Read text from the system clipboard.
-pub fn clipboard_read() -> Option<String> {
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
-        let pasteboard = NSPasteboard::generalPasteboard();
-        let nstype = unsafe { NSPasteboardTypeString };
-        return pasteboard.stringForType(nstype).map(|s| s.to_string());
-    }
-    #[cfg(not(target_os = "macos"))]
-    None
-}
-
-/// Write text to the system clipboard.
-pub fn clipboard_write(text: &str) {
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
-        use objc2_foundation::NSString;
-        let pasteboard = NSPasteboard::generalPasteboard();
-        pasteboard.clearContents();
-        let ns_string = NSString::from_str(text);
-        let nstype = unsafe { NSPasteboardTypeString };
-        let _ = pasteboard.setString_forType(&ns_string, nstype);
-    }
-}
-
-/// Set the cursor globally (can be called from anywhere on macOS).
-pub fn set_cursor_style(cursor: mozui_events::CursorStyle) {
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::NSCursor;
-        let ns_cursor = match cursor {
-            mozui_events::CursorStyle::Arrow => NSCursor::arrowCursor(),
-            mozui_events::CursorStyle::Hand => NSCursor::pointingHandCursor(),
-            mozui_events::CursorStyle::Text => NSCursor::IBeamCursor(),
-            mozui_events::CursorStyle::Crosshair => NSCursor::crosshairCursor(),
-            mozui_events::CursorStyle::NotAllowed => NSCursor::operationNotAllowedCursor(),
-            #[allow(deprecated)]
-            mozui_events::CursorStyle::ResizeNS => NSCursor::resizeUpDownCursor(),
-            #[allow(deprecated)]
-            mozui_events::CursorStyle::ResizeEW => NSCursor::resizeLeftRightCursor(),
-            mozui_events::CursorStyle::ResizeNESW | mozui_events::CursorStyle::ResizeNWSE => {
-                NSCursor::crosshairCursor()
-            }
-        };
-        ns_cursor.set();
-    }
-}
-
-/// Open a URL in the default browser.
-pub fn open_url(url: &str) {
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_foundation::{NSString, NSURL};
-        let ns_string = NSString::from_str(url);
-        if let Some(ns_url) = NSURL::URLWithString(&ns_string) {
-            let workspace = objc2_app_kit::NSWorkspace::sharedWorkspace();
-            workspace.openURL(&ns_url);
-        }
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("cmd")
-            .args(["/c", "start", url])
-            .spawn();
-    }
-}
-
 /// Options for a file dialog.
 #[derive(Debug, Clone, Default)]
 pub struct FileDialogOptions {
@@ -154,90 +72,18 @@ pub struct FileDialogOptions {
     pub default_name: Option<String>,
 }
 
-/// Show a native open file dialog. Returns selected file path(s), or empty if cancelled.
-pub fn open_file_dialog(options: FileDialogOptions) -> Vec<std::path::PathBuf> {
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::{NSModalResponseOK, NSOpenPanel};
-        use objc2_foundation::NSString;
-
-        let mtm = objc2::MainThreadMarker::new()
-            .expect("File dialogs must be called from the main thread");
-        let panel = NSOpenPanel::openPanel(mtm);
-        panel.setCanChooseFiles(!options.directories);
-        panel.setCanChooseDirectories(options.directories);
-        panel.setAllowsMultipleSelection(options.multiple);
-
-        if let Some(title) = &options.title {
-            panel.setTitle(Some(&NSString::from_str(title)));
-        }
-
-        let response = panel.runModal();
-        if response == NSModalResponseOK {
-            let urls = panel.URLs();
-            let mut paths = Vec::new();
-            for i in 0..urls.len() {
-                if let Some(path) = urls.objectAtIndex(i).path() {
-                    paths.push(std::path::PathBuf::from(path.to_string()));
-                }
-            }
-            return paths;
-        }
-        Vec::new()
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = options;
-        Vec::new()
-    }
-}
-
-/// Show a native save file dialog. Returns the selected path, or None if cancelled.
-pub fn save_file_dialog(options: FileDialogOptions) -> Option<std::path::PathBuf> {
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::{NSModalResponseOK, NSSavePanel};
-        use objc2_foundation::NSString;
-
-        let mtm = objc2::MainThreadMarker::new()
-            .expect("File dialogs must be called from the main thread");
-        let panel = NSSavePanel::savePanel(mtm);
-
-        if let Some(title) = &options.title {
-            panel.setTitle(Some(&NSString::from_str(title)));
-        }
-        if let Some(name) = &options.default_name {
-            panel.setNameFieldStringValue(&NSString::from_str(name));
-        }
-
-        let response = panel.runModal();
-        if response == NSModalResponseOK {
-            if let Some(url) = panel.URL() {
-                if let Some(path) = url.path() {
-                    return Some(std::path::PathBuf::from(path.to_string()));
-                }
-            }
-        }
-        None
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = options;
-        None
-    }
-}
-
-/// Create a new platform window (can be called from the event loop).
-pub fn create_window(options: WindowOptions) -> Box<dyn PlatformWindow> {
-    #[cfg(target_os = "macos")]
-    {
-        let mtm = objc2::MainThreadMarker::new().expect("Must be called from the main thread");
-        Box::new(crate::macos::window::MacWindow::new(mtm, options))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        panic!("Unsupported platform");
-    }
+/// Platform abstraction for OS-specific window management and services.
+pub trait Platform {
+    fn run(&mut self, callback: EventCallback) -> !;
+    fn open_window(&mut self, options: WindowOptions) -> (WindowId, Box<dyn PlatformWindow>);
+    fn create_window(&self, options: WindowOptions) -> Box<dyn PlatformWindow>;
+    fn screens(&self) -> Vec<Screen>;
+    fn set_cursor(&self, cursor: mozui_events::CursorStyle);
+    fn clipboard_read(&self) -> Option<String>;
+    fn clipboard_write(&self, text: &str);
+    fn open_url(&self, url: &str);
+    fn open_file_dialog(&self, options: FileDialogOptions) -> Vec<std::path::PathBuf>;
+    fn save_file_dialog(&self, options: FileDialogOptions) -> Option<std::path::PathBuf>;
 }
 
 /// Handle to a platform-native window.
@@ -260,4 +106,96 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn titlebar_height(&self) -> f32;
     /// The titlebar style this window was created with.
     fn titlebar_style(&self) -> TitlebarStyle;
+}
+
+// ── Thread-local platform services ──────────────────────────────
+//
+// Elements (text_input, link, etc.) need platform services during event
+// dispatch but don't have access to the Platform instance. These thread-local
+// service functions are installed once during App::run() and provide a stable
+// interface for any code on the main thread.
+
+struct PlatformServices {
+    clipboard_read: Box<dyn Fn() -> Option<String>>,
+    clipboard_write: Box<dyn Fn(&str)>,
+    set_cursor: Box<dyn Fn(mozui_events::CursorStyle)>,
+    open_url: Box<dyn Fn(&str)>,
+    open_file_dialog: Box<dyn Fn(FileDialogOptions) -> Vec<std::path::PathBuf>>,
+    save_file_dialog: Box<dyn Fn(FileDialogOptions) -> Option<std::path::PathBuf>>,
+    create_window: Box<dyn Fn(WindowOptions) -> Box<dyn PlatformWindow>>,
+}
+
+thread_local! {
+    static SERVICES: RefCell<Option<PlatformServices>> = const { RefCell::new(None) };
+}
+
+/// Install platform services for the current thread. Called once by App::run().
+///
+/// # Safety
+/// The `platform` reference must outlive all subsequent calls to the free
+/// functions (`clipboard_read`, `open_url`, etc.). In practice, the platform
+/// is owned by `App::run()` which never returns.
+pub fn install_services(platform: &dyn Platform) {
+    // Erase the borrow lifetime to create 'static closures. This is safe
+    // because the platform is owned by App::run() which never returns (-> !),
+    // so it outlives all service calls.
+    let platform: &'static dyn Platform = unsafe { std::mem::transmute(platform) };
+    SERVICES.with(|cell| {
+        *cell.borrow_mut() = Some(PlatformServices {
+            clipboard_read: Box::new(move || platform.clipboard_read()),
+            clipboard_write: Box::new(move |text| platform.clipboard_write(text)),
+            set_cursor: Box::new(move |cursor| platform.set_cursor(cursor)),
+            open_url: Box::new(move |url| platform.open_url(url)),
+            open_file_dialog: Box::new(move |opts| platform.open_file_dialog(opts)),
+            save_file_dialog: Box::new(move |opts| platform.save_file_dialog(opts)),
+            create_window: Box::new(move |opts| platform.create_window(opts)),
+        });
+    });
+}
+
+fn with_services<R>(f: impl FnOnce(&PlatformServices) -> R) -> R {
+    SERVICES.with(|cell| {
+        let guard = cell.borrow();
+        let services = guard
+            .as_ref()
+            .expect("Platform services not installed. Call install_services() first.");
+        f(services)
+    })
+}
+
+// ── Public free functions (delegate to thread-local services) ───
+
+/// Read text from the system clipboard.
+pub fn clipboard_read() -> Option<String> {
+    with_services(|s| (s.clipboard_read)())
+}
+
+/// Write text to the system clipboard.
+pub fn clipboard_write(text: &str) {
+    with_services(|s| (s.clipboard_write)(text))
+}
+
+/// Set the mouse cursor style.
+pub fn set_cursor_style(cursor: mozui_events::CursorStyle) {
+    with_services(|s| (s.set_cursor)(cursor))
+}
+
+/// Open a URL in the default browser.
+pub fn open_url(url: &str) {
+    with_services(|s| (s.open_url)(url))
+}
+
+/// Show a native open file dialog. Returns selected file path(s), or empty if cancelled.
+pub fn open_file_dialog(options: FileDialogOptions) -> Vec<std::path::PathBuf> {
+    with_services(|s| (s.open_file_dialog)(options))
+}
+
+/// Show a native save file dialog. Returns the selected path, or None if cancelled.
+pub fn save_file_dialog(options: FileDialogOptions) -> Option<std::path::PathBuf> {
+    with_services(|s| (s.save_file_dialog)(options))
+}
+
+/// Create a new platform window.
+pub fn create_window(options: WindowOptions) -> Box<dyn PlatformWindow> {
+    with_services(|s| (s.create_window)(options))
 }

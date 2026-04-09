@@ -1,15 +1,15 @@
 - DEVTOOLS:
-	- [ ] Element Inspector:
+	- [x] Element Inspector:
 		- Toggle with `Cmd+Shift+I`
 		- Overlay that highlights hovered elements with their bounds
 		- Side panel showing: element type, computed layout (x, y, width, height), style properties, signal values
 		- Implemented as mozui elements themselves (dogfooding!)
-	- [ ] Signal Debugger:
+	- [x] Signal Debugger:
 		- Shows all active signals with current values
 		- Highlights signals that changed in the last frame
 		- Shows subscriber count for each signal
 		- Shows dependency graph (which views depend on which signals)
-	- [ ] Performance Overlay:
+	- [x] Performance Overlay:
 		- Frame time graph
 		- Layout time, render time, paint time breakdown
 		- Draw call count
