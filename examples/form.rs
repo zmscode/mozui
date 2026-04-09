@@ -28,6 +28,7 @@ fn main() {
 }
 
 fn app(cx: &mut Context) -> Box<dyn Element> {
+    let theme = cx.theme().clone();
     let (name_state, set_name) = cx.use_signal(TextInputState::new());
     let (email_state, set_email) = cx.use_signal(TextInputState::new());
     let (msg_state, set_msg) = cx.use_signal(TextInputState::new());
@@ -60,9 +61,9 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .w_full()
             .h_full()
             .flex_col()
-            .bg(Color::hex("#1e1e2e"))
+            .bg(theme.background)
             // Custom title bar
-            .child(title_bar("Contact Form"))
+            .child(title_bar("Contact Form", &theme))
             // Content area
             .child(
                 div()
@@ -75,7 +76,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                         text("Contact Form")
                             .font_size(28.0)
                             .bold()
-                            .color(Color::hex("#cdd6f4")),
+                            .color(theme.foreground),
                     )
                     .child(
                         div()
@@ -104,33 +105,33 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                         div()
                             .w(340.0)
                             .p(12.0)
-                            .bg(Color::hex("#181825"))
+                            .bg(theme.surface)
                             .rounded(8.0)
-                            .child(text(preview).font_size(12.0).color(Color::hex("#a6adc8"))),
+                            .child(text(preview).font_size(12.0).color(theme.text_secondary)),
                     )
                     .child(
                         text("Tab/Shift+Tab to switch | Cmd+C/V/X clipboard | Esc to quit")
                             .font_size(11.0)
-                            .color(Color::hex("#6c7086")),
+                            .color(theme.muted_foreground),
                     ),
             ),
     )
 }
 
 /// Custom title bar with drag region and window title.
-fn title_bar(title: &str) -> Div {
+fn title_bar(title: &str, theme: &Theme) -> Div {
     div()
         .w_full()
         .h(38.0)
         .flex_row()
         .items_center()
         .justify_center()
-        .bg(Color::hex("#181825"))
+        .bg(theme.surface)
         .drag_region()
         // macOS traffic lights take ~70px on the left
         .pl(70.0)
         .pr(70.0)
-        .child(text(title).font_size(13.0).color(Color::hex("#6c7086")))
+        .child(text(title).font_size(13.0).color(theme.muted_foreground))
 }
 
 fn label_and_input(
@@ -138,15 +139,12 @@ fn label_and_input(
     state: TextInputState,
     setter: SetSignal<TextInputState>,
     placeholder_text: &str,
+    theme: &Theme,
 ) -> Div {
     div()
         .flex_col()
         .gap(4.0)
-        .child(
-            text(label_text)
-                .font_size(13.0)
-                .color(Color::hex("#bac2de")),
-        )
+        .child(text(label_text).font_size(13.0).color(theme.text_secondary))
         .child(
             text_input(state)
                 .w(320.0)

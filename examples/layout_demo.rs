@@ -19,8 +19,6 @@ fn main() {
 
 fn app(cx: &mut Context) -> Box<dyn Element> {
     let theme = cx.theme().clone();
-    let heading = Color::hex("#cdd6f4");
-    let muted = Color::hex("#6c7086");
 
     // Sidebar state
     let (active_page, set_active_page) = cx.use_signal("dashboard".to_string());
@@ -46,7 +44,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
         .w_full()
         .h_full()
         .flex_col()
-        .bg(Color::hex("#1e1e2e"))
+        .bg(theme.background)
         .on_key_down({
             let sa = sidebar_anim.clone();
             let flag = anim_flag.clone();
@@ -88,7 +86,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                 .items_center()
                 .justify_center()
                 .drag_region()
-                .child(label("Layout Demo").font_size(13.0).color(muted)),
+                .child(label("Layout Demo").font_size(13.0).color(theme.muted_foreground)),
         )
         // Main content: sidebar + resizable panels
         .child(
@@ -195,9 +193,9 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                         .flex_col()
                                         .gap(16.0)
                                         .p(24.0)
-                                        .child(label(&format!("Page: {}", current_page)).font_size(20.0).bold().color(heading))
-                                        .child(label("Drag the divider to resize panels.").font_size(13.0).color(muted))
-                                        .child(label("Cmd+B toggles sidebar. Cmd+. opens sheet.").font_size(13.0).color(muted))
+                                        .child(label(&format!("Page: {}", current_page)).font_size(20.0).bold().color(theme.foreground))
+                                        .child(label("Drag the divider to resize panels.").font_size(13.0).color(theme.muted_foreground))
+                                        .child(label("Cmd+B toggles sidebar. Cmd+. opens sheet.").font_size(13.0).color(theme.muted_foreground))
                                         .child(
                                             button("Open Sheet", &theme)
                                                 .with_variant(ButtonVariant::Primary, &theme)
@@ -222,12 +220,12 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                         .flex_col()
                                         .gap(12.0)
                                         .p(24.0)
-                                        .child(label("Details").font_size(16.0).bold().color(heading))
-                                        .child(label("Secondary panel — resizable.").font_size(13.0).color(muted))
+                                        .child(label("Details").font_size(16.0).bold().color(theme.foreground))
+                                        .child(label("Secondary panel — resizable.").font_size(13.0).color(theme.muted_foreground))
                                         .child(divider())
-                                        .child(label("Status: Active").font_size(13.0).color(Color::hex("#a6e3a1")))
-                                        .child(label("Priority: High").font_size(13.0).color(Color::hex("#f38ba8")))
-                                        .child(label("Assigned: Zac").font_size(13.0).color(heading))
+                                        .child(label("Status: Active").font_size(13.0).color(theme.success))
+                                        .child(label("Priority: High").font_size(13.0).color(theme.danger))
+                                        .child(label("Assigned: Zac").font_size(13.0).color(theme.foreground))
                                 )
                         )
                         .on_resize(move |sizes, cx| {
@@ -262,12 +260,12 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                     .flex_row()
                     .items_center()
                     .p(16.0)
-                    .child(label("Sheet Panel").font_size(16.0).bold().color(heading))
+                    .child(label("Sheet Panel").font_size(16.0).bold().color(theme.foreground))
             )
             .child(
                 div().flex_col().gap(12.0)
-                    .child(label("Slide-in sheet from the right edge.").font_size(13.0).color(muted))
-                    .child(label("Click overlay or Cmd+. to close.").font_size(13.0).color(muted))
+                    .child(label("Slide-in sheet from the right edge.").font_size(13.0).color(theme.muted_foreground))
+                    .child(label("Click overlay or Cmd+. to close.").font_size(13.0).color(theme.muted_foreground))
                     .child(divider())
                     .child(progress(&theme).value(0.65))
             );

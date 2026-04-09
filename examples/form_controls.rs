@@ -19,8 +19,8 @@ fn main() {
 fn app(cx: &mut Context) -> Box<dyn Element> {
     let theme = cx.theme().clone();
     let scroll = cx.use_scroll();
-    let heading = Color::hex("#cdd6f4");
-    let muted = Color::hex("#6c7086");
+    let heading = theme.foreground;
+    let muted = theme.muted_foreground;
 
     // Checkbox state
     let (check1, set_check1) = cx.use_signal(false);
@@ -53,7 +53,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .w_full()
             .h_full()
             .flex_col()
-            .bg(Color::hex("#1e1e2e"))
+            .bg(theme.background)
             .on_key_down(|key, _mods, _cx| {
                 if key == Key::Escape {
                     std::process::exit(0);
@@ -124,7 +124,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .child(button("Large", &theme).primary(&theme).large()),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Checkboxes ──────────────────────────────
                     .child(label("Checkboxes").font_size(20.0).bold().color(heading))
                     .child(
@@ -156,7 +156,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .disabled(true),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Radio ───────────────────────────────────
                     .child(label("Radio").font_size(20.0).bold().color(heading))
                     .child(
@@ -181,7 +181,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .disabled(true),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Switches ────────────────────────────────
                     .child(label("Switches").font_size(20.0).bold().color(heading))
                     .child(
@@ -210,7 +210,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .disabled(true),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Sliders ─────────────────────────────────
                     .child(label("Sliders").font_size(20.0).bold().color(heading))
                     .child(
@@ -261,7 +261,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .disabled(true),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Stepper ─────────────────────────────────
                     .child(label("Stepper").font_size(20.0).bold().color(heading))
                     .child(

@@ -20,8 +20,8 @@ fn main() {
 fn app(cx: &mut Context) -> Box<dyn Element> {
     let theme = cx.theme().clone();
     let scroll = cx.use_scroll();
-    let heading = Color::hex("#cdd6f4");
-    let muted = Color::hex("#6c7086");
+    let heading = theme.foreground;
+    let muted = theme.muted_foreground;
 
     // ── Animated values ──────────────────────────────────────────
     let transition = Transition::new(theme.transition_normal);
@@ -31,15 +31,15 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
     let (color_idx, set_color_idx) = cx.use_signal(0usize);
     let ci = *cx.get(color_idx);
     let color_anim = cx.use_animated(
-        Color::hex("#cba6f7"),
+        theme.accent,
         Transition::new(Duration::from_millis(500)),
     );
     let colors = [
-        Color::hex("#cba6f7"), // mauve
-        Color::hex("#89b4fa"), // blue
-        Color::hex("#a6e3a1"), // green
-        Color::hex("#f9e2af"), // yellow
-        Color::hex("#f38ba8"), // red
+        theme.accent,   // magenta
+        theme.primary,  // cyan
+        theme.success,  // green
+        theme.warning,  // orange
+        theme.danger,   // red
     ];
     color_anim.set(colors[ci % colors.len()]);
 
@@ -86,7 +86,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .w_full()
             .h_full()
             .flex_col()
-            .bg(Color::hex("#1e1e2e"))
+            .bg(theme.background)
             .on_key_down(|key, _mods, _cx| {
                 if key == Key::Escape {
                     std::process::exit(0);
@@ -140,7 +140,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     }),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Opacity ────────────────────────────────────
                     .child(label("Opacity Transition").font_size(20.0).bold().color(heading))
                     .child(
@@ -153,7 +153,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .w(80.0)
                                     .h(80.0)
                                     .rounded(12.0)
-                                    .bg(Color::hex("#89b4fa").with_alpha(current_opacity)),
+                                    .bg(theme.primary.with_alpha(current_opacity)),
                             )
                             .child(
                                 button(
@@ -171,7 +171,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .color(muted),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Width / Size ───────────────────────────────
                     .child(label("Size Transition").font_size(20.0).bold().color(heading))
                     .child(
@@ -183,7 +183,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .w(current_width)
                                     .h(40.0)
                                     .rounded(8.0)
-                                    .bg(Color::hex("#a6e3a1")),
+                                    .bg(theme.success),
                             )
                             .child(
                                 button(
@@ -196,7 +196,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                 }),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Spring ─────────────────────────────────────
                     .child(label("Spring Animation").font_size(20.0).bold().color(heading))
                     .child(
@@ -209,7 +209,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .w(60.0 * spring_val)
                                     .h(60.0 * spring_val)
                                     .rounded(30.0 * spring_val)
-                                    .bg(Color::hex("#f9e2af")),
+                                    .bg(theme.warning),
                             )
                             .child({
                                 let s = spring.clone();
@@ -238,7 +238,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .color(muted),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Collapsible ────────────────────────────────
                     .child(label("Collapsible").font_size(20.0).bold().color(heading))
                     .child(
@@ -286,7 +286,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                 ),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Accordion ──────────────────────────────────
                     .child(label("Accordion").font_size(20.0).bold().color(heading))
                     .child(

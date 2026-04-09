@@ -17,6 +17,7 @@ fn main() {
 }
 
 fn app(cx: &mut Context) -> Box<dyn Element> {
+    let theme = cx.theme().clone();
     let (count, set_count) = cx.use_signal(0i32);
     let current = *cx.get(count);
 
@@ -28,7 +29,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .items_center()
             .justify_center()
             .gap(16.0)
-            .bg(Color::hex("#1e1e2e"))
+            .bg(theme.background)
             .on_key_down(move |key, _mods, cx_any| {
                 let cx = cx_any.downcast_mut::<Context>().unwrap();
                 match key {
@@ -42,17 +43,17 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                 text("Hello, mozui!")
                     .font_size(32.0)
                     .bold()
-                    .color(Color::hex("#cdd6f4")),
+                    .color(theme.foreground),
             )
             .child(
                 text(format!("Count: {current}"))
                     .font_size(24.0)
-                    .color(Color::hex("#a6e3a1")),
+                    .color(theme.success),
             )
             .child(
                 text("↑/↓ keys or click buttons")
                     .font_size(12.0)
-                    .color(Color::hex("#6c7086")),
+                    .color(theme.muted_foreground),
             )
             .child(
                 div()
@@ -62,7 +63,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                         div()
                             .w(120.0)
                             .h(40.0)
-                            .bg(Color::hex("#3b82f6"))
+                            .bg(theme.primary)
                             .rounded(8.0)
                             .items_center()
                             .justify_center()
@@ -76,7 +77,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                         div()
                             .w(120.0)
                             .h(40.0)
-                            .bg(Color::hex("#ef4444"))
+                            .bg(theme.danger)
                             .rounded(8.0)
                             .items_center()
                             .justify_center()

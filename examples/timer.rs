@@ -29,6 +29,7 @@ fn main() {
 }
 
 fn app(cx: &mut Context) -> Box<dyn Element> {
+    let theme = cx.theme().clone();
     let (seconds, set_seconds) = cx.use_signal(0u32);
     let (running, set_running) = cx.use_signal(false);
     let (timer_id, set_timer_id) = cx.use_signal(None::<TimerId>);
@@ -43,9 +44,9 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
 
     let button_label = if is_running { "Pause" } else { "Start" };
     let button_color = if is_running {
-        Color::hex("#f38ba8")
+        theme.danger
     } else {
-        Color::hex("#a6e3a1")
+        theme.success
     };
 
     Box::new(
@@ -56,18 +57,18 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .items_center()
             .justify_center()
             .gap(24.0)
-            .bg(Color::hex("#1e1e2e"))
+            .bg(theme.background)
             .child(
                 text("Stopwatch")
                     .font_size(20.0)
                     .bold()
-                    .color(Color::hex("#cdd6f4")),
+                    .color(theme.foreground),
             )
             .child(
                 text(time_str)
                     .font_size(64.0)
                     .bold()
-                    .color(Color::hex("#cdd6f4")),
+                    .color(theme.foreground),
             )
             .child(
                 div()
@@ -105,14 +106,14 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .child(
                                 text(button_label)
                                     .font_size(14.0)
-                                    .color(Color::hex("#1e1e2e")),
+                                    .color(theme.background),
                             ),
                     )
                     .child(
                         div()
                             .w(100.0)
                             .h(40.0)
-                            .bg(Color::hex("#585b70"))
+                            .bg(theme.secondary_hover)
                             .rounded(8.0)
                             .items_center()
                             .justify_center()
@@ -126,13 +127,13 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                 cx.set(set_running, false);
                                 cx.set(set_seconds, 0);
                             })
-                            .child(text("Reset").font_size(14.0).color(Color::hex("#cdd6f4"))),
+                            .child(text("Reset").font_size(14.0).color(theme.foreground)),
                     ),
             )
             .child(
                 text("Esc to quit")
                     .font_size(11.0)
-                    .color(Color::hex("#6c7086")),
+                    .color(theme.muted_foreground),
             ),
     )
 }

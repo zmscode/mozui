@@ -19,8 +19,8 @@ fn main() {
 fn app(cx: &mut Context) -> Box<dyn Element> {
     let theme = cx.theme().clone();
     let scroll = cx.use_scroll();
-    let heading = Color::hex("#cdd6f4");
-    let muted = Color::hex("#6c7086");
+    let heading = theme.foreground;
+    let muted = theme.muted_foreground;
 
     // Tab state
     let (tab_idx, set_tab_idx) = cx.use_signal(0usize);
@@ -47,7 +47,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .w_full()
             .h_full()
             .flex_col()
-            .bg(Color::hex("#1e1e2e"))
+            .bg(theme.background)
             .on_key_down(|key, _mods, _cx| {
                 if key == Key::Escape {
                     std::process::exit(0);
@@ -101,7 +101,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .child(tag("Pill", &theme).success(&theme).pill())
                             .child(tag("Outline Pill", &theme).danger(&theme).outline().pill()),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Progress ───────────────────────────────────
                     .child(label("Progress").font_size(20.0).bold().color(heading))
                     .child(
@@ -118,7 +118,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .child(progress(&theme).value(80.0).color(theme.warning))
                             .child(progress(&theme).value(100.0).color(theme.danger).large()),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Links ──────────────────────────────────────
                     .child(label("Links").font_size(20.0).bold().color(heading))
                     .child(
@@ -134,7 +134,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             )
                             .child(link("Disabled", &theme).disabled(true)),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Badges ─────────────────────────────────────
                     .child(label("Badges").font_size(20.0).bold().color(heading))
                     .child(
@@ -159,7 +159,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .child(icon(IconName::Bell).color(theme.foreground)),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Tabs ───────────────────────────────────────
                     .child(label("Tabs").font_size(20.0).bold().color(heading))
                     .child(
@@ -203,7 +203,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .color(theme.foreground),
                         ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Breadcrumb ─────────────────────────────────
                     .child(label("Breadcrumb").font_size(20.0).bold().color(heading))
                     .child(
@@ -216,7 +216,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .child(breadcrumb_item("Settings").on_click(|_| {}))
                             .child(breadcrumb_item("Profile")),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Rating ─────────────────────────────────────
                     .child(label("Rating").font_size(20.0).bold().color(heading))
                     .child(
@@ -251,7 +251,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .child(rating(&theme).value(2.5).large()),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Pagination ─────────────────────────────────
                     .child(label("Pagination").font_size(20.0).bold().color(heading))
                     .child(
@@ -278,7 +278,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     }),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Description List ──────────────────────────
                     .child(label("Description List").font_size(20.0).bold().color(heading))
                     .child(
@@ -289,7 +289,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             .child(description_item("Role").value("Administrator"))
                             .child(description_item("Status").value("Active")),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Group Box ─────────────────────────────────
                     .child(label("Group Box").font_size(20.0).bold().color(heading))
                     .child(
@@ -308,7 +308,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .child(label("Language: English").color(theme.foreground)),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── List ──────────────────────────────────────
                     .child(label("List").font_size(20.0).bold().color(heading))
                     .child(

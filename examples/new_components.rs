@@ -19,11 +19,11 @@ fn main() {
 fn app(cx: &mut Context) -> Box<dyn Element> {
     let theme = cx.theme().clone();
     let scroll = cx.use_scroll();
-    let heading = Color::hex("#cdd6f4");
-    let muted = Color::hex("#6c7086");
+    let heading = theme.foreground;
+    let muted = theme.muted_foreground;
 
     // Color picker state
-    let (color_sig, set_color_sig) = cx.use_signal(Color::hex("#3b82f6"));
+    let (color_sig, set_color_sig) = cx.use_signal(theme.primary);
     let current_color = *cx.get(color_sig);
 
     Box::new(
@@ -31,7 +31,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .w_full()
             .h_full()
             .flex_col()
-            .bg(Color::hex("#1e1e2e"))
+            .bg(theme.background)
             .on_key_down(|key, _mods, _cx| {
                 if key == Key::Escape {
                     std::process::exit(0);
@@ -107,7 +107,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             // Large content skeleton
                             .child(skeleton(&theme).w(400.0).h(120.0).radius(8.0)),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Avatar ────────────────────────────────────
                     .child(label("Avatar").font_size(20.0).bold().color(heading))
                     .child(label("User avatar with image, initials fallback, and status indicator.").font_size(13.0).color(muted))
@@ -209,7 +209,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .child(avatar(&theme).size(72.0).initials("XL")),
                             ),
                     )
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Color Picker ─────────────────────────────
                     .child(label("Color Picker").font_size(20.0).bold().color(heading))
                     .child(label("Interactive HSV color picker with hue, saturation, brightness, and alpha.").font_size(13.0).color(muted))

@@ -20,8 +20,8 @@ fn main() {
 fn app(cx: &mut Context) -> Box<dyn Element> {
     let theme = cx.theme().clone();
     let scroll = cx.use_scroll();
-    let heading = Color::hex("#cdd6f4");
-    let muted = Color::hex("#6c7086");
+    let heading = theme.foreground;
+    let muted = theme.muted_foreground;
 
     // Date picker state
     let (selected, set_selected) = cx.use_signal::<Option<Date>>(None);
@@ -109,7 +109,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
             .w_full()
             .h_full()
             .flex_col()
-            .bg(Color::hex("#1e1e2e"))
+            .bg(theme.background)
             .on_key_down(|key, _mods, _cx| {
                 if key == Key::Escape {
                     std::process::exit(0);

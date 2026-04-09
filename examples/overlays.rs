@@ -121,8 +121,8 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                 Fill::LinearGradient {
                                     angle: 0.0,
                                     stops: vec![
-                                        (0.0, Color::hex("#cba6f7")),
-                                        (1.0, Color::hex("#89b4fa")),
+                                        (0.0, Color::hex("#A093E2")),
+                                        (1.0, Color::hex("#49CAE4")),
                                     ],
                                 },
                                 &theme,
@@ -132,8 +132,8 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                 Fill::LinearGradient {
                                     angle: std::f32::consts::FRAC_PI_2,
                                     stops: vec![
-                                        (0.0, Color::hex("#f38ba8")),
-                                        (1.0, Color::hex("#f9e2af")),
+                                        (0.0, Color::hex("#FF7272")),
+                                        (1.0, Color::hex("#FFCA58")),
                                     ],
                                 },
                                 &theme,
@@ -143,8 +143,8 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                 Fill::LinearGradient {
                                     angle: std::f32::consts::FRAC_PI_4,
                                     stops: vec![
-                                        (0.0, Color::hex("#a6e3a1")),
-                                        (1.0, Color::hex("#89dceb")),
+                                        (0.0, Color::hex("#BCDF59")),
+                                        (1.0, Color::hex("#AEE8F4")),
                                     ],
                                 },
                                 &theme,
@@ -155,8 +155,8 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     center: Point::new(0.5, 0.5),
                                     radius: 1.0,
                                     stops: vec![
-                                        (0.0, Color::hex("#f5c2e7")),
-                                        (1.0, Color::hex("#313244")),
+                                        (0.0, Color::hex("#AEA3E6")),
+                                        (1.0, Color::hex("#353035")),
                                     ],
                                 },
                                 &theme,

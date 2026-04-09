@@ -17,22 +17,23 @@ fn main() {
 }
 
 fn app(cx: &mut Context) -> Box<dyn Element> {
+    let theme = cx.theme().clone();
     let scroll = cx.use_scroll();
-    let heading_color = Color::hex("#cdd6f4");
-    let text_color = Color::hex("#bac2de");
-    let muted_color = Color::hex("#6c7086");
-    let accent = Color::hex("#89b4fa");
-    let green = Color::hex("#a6e3a1");
-    let red = Color::hex("#f38ba8");
-    let yellow = Color::hex("#f9e2af");
-    let surface = Color::hex("#313244");
+    let heading_color = theme.foreground;
+    let text_color = theme.text_secondary;
+    let muted_color = theme.muted_foreground;
+    let accent = theme.primary;
+    let green = theme.success;
+    let red = theme.danger;
+    let yellow = theme.warning;
+    let surface = theme.surface;
 
     Box::new(
         div()
             .w_full()
             .h_full()
             .flex_col()
-            .bg(Color::hex("#1e1e2e"))
+            .bg(theme.background)
             .on_key_down(move |key, _mods, _cx_any| {
                 if key == Key::Escape {
                     std::process::exit(0);
@@ -101,7 +102,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             ),
                     )
                     // ── Divider ────────────────────────────────────────
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     // ── Labels Section ─────────────────────────────────
                     .child(
                         div()
@@ -119,7 +120,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                     .child(
                         divider()
                             .label("Keyboard Shortcuts")
-                            .color(Color::hex("#45475a")),
+                            .color(theme.border),
                     )
                     // ── Kbd Section ────────────────────────────────────
                     .child(
@@ -161,7 +162,7 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                             ),
                     )
                     // ── Divider Variants ───────────────────────────────
-                    .child(divider().color(Color::hex("#45475a")))
+                    .child(divider().color(theme.border))
                     .child(
                         div()
                             .flex_col()
@@ -179,14 +180,14 @@ fn app(cx: &mut Context) -> Box<dyn Element> {
                                     .items_center()
                                     .h(24.0)
                                     .child(label("Left").font_size(13.0).color(text_color))
-                                    .child(divider().vertical().color(Color::hex("#45475a")))
+                                    .child(divider().vertical().color(theme.border))
                                     .child(label("Center").font_size(13.0).color(text_color))
-                                    .child(divider().vertical().color(Color::hex("#45475a")))
+                                    .child(divider().vertical().color(theme.border))
                                     .child(label("Right").font_size(13.0).color(text_color)),
                             ),
                     )
                     // ── Combined Example ───────────────────────────────
-                    .child(divider().label("Combined").color(Color::hex("#45475a")))
+                    .child(divider().label("Combined").color(theme.border))
                     .child(
                         div()
                             .flex_row()
