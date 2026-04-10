@@ -1,7 +1,7 @@
+use crate::util::ResultExt;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::rc::Rc;
-use crate::util::ResultExt;
 use uuid::Uuid;
 use windows::{
     Win32::{

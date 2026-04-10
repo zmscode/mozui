@@ -1,4 +1,5 @@
 use crate::{ActiveTheme, Sizable, Size, StyledExt};
+use instant::Duration;
 use mozui::prelude::FluentBuilder as _;
 use mozui::{
     Animation, AnimationExt as _, AnyElement, App, ElementId, Hsla, InteractiveElement as _,
@@ -6,7 +7,6 @@ use mozui::{
     ease_in_out, px, relative,
 };
 use mozui::{Bounds, div};
-use instant::Duration;
 use std::f32::consts::TAU;
 
 use super::ProgressState;
@@ -155,8 +155,7 @@ impl RenderOnce for ProgressCircle {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let value = self.value;
         let loading = self.loading;
-        let state =
-            window.use_keyed_state(self.id.clone(), cx, |_, _| ProgressState::new(value));
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, _| ProgressState::new(value));
         let prev_target = state.read(cx).target();
         let has_changed = prev_target != value;
 

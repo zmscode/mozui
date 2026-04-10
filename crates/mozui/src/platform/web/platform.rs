@@ -1,16 +1,16 @@
 use crate::dispatcher::WebDispatcher;
 use crate::display::WebDisplay;
 use crate::keyboard::WebKeyboardLayout;
+use crate::platform::wgpu::WgpuContext;
 use crate::window::WebWindow;
-use anyhow::Result;
-use futures::channel::oneshot;
 use crate::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DummyKeyboardMapper,
     ForegroundExecutor, Keymap, Menu, MenuItem, PathPromptOptions, Platform, PlatformDisplay,
     PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Task,
     ThermalState, WindowAppearance, WindowParams,
 };
-use crate::platform::wgpu::WgpuContext;
+use anyhow::Result;
+use futures::channel::oneshot;
 use std::{
     borrow::Cow,
     cell::RefCell,
@@ -63,9 +63,9 @@ impl WebPlatform {
         ));
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(dispatcher);
-        let text_system = Arc::new(crate::platform::wgpu::CosmicTextSystem::new_without_system_fonts(
-            "IBM Plex Sans",
-        ));
+        let text_system = Arc::new(
+            crate::platform::wgpu::CosmicTextSystem::new_without_system_fonts("IBM Plex Sans"),
+        );
         let fonts = BUNDLED_FONTS
             .iter()
             .map(|bytes| Cow::Borrowed(*bytes))

@@ -1,5 +1,6 @@
 #![allow(unused, non_upper_case_globals)]
 
+use crate::{FontFallbacks, FontFeatures};
 use cocoa::appkit::CGFloat;
 use core_foundation::{
     array::{
@@ -24,7 +25,6 @@ use core_text::{
     },
 };
 use font_kit::font::Font as FontKitFont;
-use crate::{FontFallbacks, FontFeatures};
 use std::ptr;
 
 pub fn apply_features_and_fallbacks(

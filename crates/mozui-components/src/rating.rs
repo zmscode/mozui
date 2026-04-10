@@ -158,12 +158,13 @@ impl RenderOnce for Rating {
                             .flex_shrink_0()
                             .when(filled || hovered, |this| this.text_color(active_color))
                             .child(
-                                IconName::Star.with_weight(if filled {
-                                    IconWeight::Fill
-                                } else {
-                                    IconWeight::Regular
-                                })
-                                .with_size(size),
+                                IconName::Star
+                                    .with_weight(if filled {
+                                        IconWeight::Fill
+                                    } else {
+                                        IconWeight::Regular
+                                    })
+                                    .with_size(size),
                             )
                             .when(!disabled, |this| {
                                 this.on_mouse_move(window.listener_for(

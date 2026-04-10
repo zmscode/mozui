@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 /// A collection that provides a map interface but is backed by vectors.
 ///
 /// This is suitable for small key-value stores where the item count is not
@@ -22,6 +21,7 @@ pub struct VecMap<K, V> {
 }
 
 impl<K, V> VecMap<K, V> {
+    /// Creates an empty `VecMap`.
     pub fn new() -> Self {
         Self {
             keys: Vec::new(),
@@ -29,6 +29,7 @@ impl<K, V> VecMap<K, V> {
         }
     }
 
+    /// Returns an iterator over key-value pairs in insertion order.
     pub fn iter(&self) -> Iter<'_, K, V> {
         Iter {
             iter: self.keys.iter().zip(self.values.iter()),
@@ -37,6 +38,7 @@ impl<K, V> VecMap<K, V> {
 }
 
 impl<K: Eq, V> VecMap<K, V> {
+    /// Returns the entry for the given key for in-place manipulation.
     pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
         match self.keys.iter().position(|k| k == &key) {
             Some(index) => Entry::Occupied(OccupiedEntry {
@@ -62,6 +64,7 @@ impl<K: Eq, V> VecMap<K, V> {
     }
 }
 
+/// An iterator over key-value pairs in a [`VecMap`].
 pub struct Iter<'a, K, V> {
     iter: std::iter::Zip<std::slice::Iter<'a, K>, std::slice::Iter<'a, V>>,
 }
@@ -74,12 +77,16 @@ impl<'a, K, V> Iterator for Iter<'a, K, V> {
     }
 }
 
+/// A view into a single entry in a [`VecMap`], which may be vacant or occupied.
 pub enum Entry<'a, K, V> {
+    /// An occupied entry.
     Occupied(OccupiedEntry<'a, K, V>),
+    /// A vacant entry.
     Vacant(VacantEntry<'a, K, V>),
 }
 
 impl<'a, K, V> Entry<'a, K, V> {
+    /// Returns a reference to the entry's key.
     pub fn key(&self) -> &K {
         match self {
             Entry::Occupied(entry) => entry.key,
@@ -87,6 +94,7 @@ impl<'a, K, V> Entry<'a, K, V> {
         }
     }
 
+    /// Inserts a value computed from the key if the entry is vacant.
     pub fn or_insert_with_key<F>(self, default: F) -> &'a mut V
     where
         F: FnOnce(&K) -> V,
@@ -104,6 +112,7 @@ impl<'a, K, V> Entry<'a, K, V> {
         }
     }
 
+    /// Inserts a value computed from a closure if the entry is vacant.
     pub fn or_insert_with<F>(self, default: F) -> &'a mut V
     where
         F: FnOnce() -> V,
@@ -111,10 +120,12 @@ impl<'a, K, V> Entry<'a, K, V> {
         self.or_insert_with_key(|_| default())
     }
 
+    /// Inserts the given value if the entry is vacant.
     pub fn or_insert(self, value: V) -> &'a mut V {
         self.or_insert_with_key(|_| value)
     }
 
+    /// Inserts the default value if the entry is vacant.
     pub fn or_insert_default(self) -> &'a mut V
     where
         V: Default,
@@ -123,22 +134,28 @@ impl<'a, K, V> Entry<'a, K, V> {
     }
 }
 
+/// A view into an occupied entry in a [`VecMap`].
 pub struct OccupiedEntry<'a, K, V> {
     key: &'a K,
     value: &'a mut V,
 }
 
+/// A view into a vacant entry in a [`VecMap`].
 pub struct VacantEntry<'a, K, V> {
     map: &'a mut VecMap<K, V>,
     key: K,
 }
 
+/// A view into a single entry in a [`VecMap`], using a borrowed key.
 pub enum EntryRef<'key, 'map, K, V> {
+    /// An occupied entry.
     Occupied(OccupiedEntry<'map, K, V>),
+    /// A vacant entry with a borrowed key.
     Vacant(VacantEntryRef<'key, 'map, K, V>),
 }
 
 impl<'key, 'map, K, V> EntryRef<'key, 'map, K, V> {
+    /// Returns a reference to the entry's key.
     pub fn key(&self) -> &K {
         match self {
             EntryRef::Occupied(entry) => entry.key,
@@ -151,6 +168,7 @@ impl<'key, 'map, K, V> EntryRef<'key, 'map, K, V>
 where
     K: Clone,
 {
+    /// Inserts a value computed from the key if the entry is vacant.
     pub fn or_insert_with_key<F>(self, default: F) -> &'map mut V
     where
         F: FnOnce(&K) -> V,
@@ -168,6 +186,7 @@ where
         }
     }
 
+    /// Inserts a value computed from a closure if the entry is vacant.
     pub fn or_insert_with<F>(self, default: F) -> &'map mut V
     where
         F: FnOnce() -> V,
@@ -175,10 +194,12 @@ where
         self.or_insert_with_key(|_| default())
     }
 
+    /// Inserts the given value if the entry is vacant.
     pub fn or_insert(self, value: V) -> &'map mut V {
         self.or_insert_with_key(|_| value)
     }
 
+    /// Inserts the default value if the entry is vacant.
     pub fn or_insert_default(self) -> &'map mut V
     where
         V: Default,
@@ -187,6 +208,7 @@ where
     }
 }
 
+/// A view into a vacant entry in a [`VecMap`], holding a borrowed key.
 pub struct VacantEntryRef<'key, 'map, K, V> {
     map: &'map mut VecMap<K, V>,
     key: &'key K,

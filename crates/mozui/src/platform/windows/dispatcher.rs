@@ -4,8 +4,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context;
 use crate::util::ResultExt;
+use anyhow::Context;
 use windows::{
     System::Threading::{
         ThreadPool, ThreadPoolTimer, TimerElapsedHandler, WorkItemHandler, WorkItemPriority,
@@ -21,11 +21,11 @@ use windows::{
     },
 };
 
-use crate::{HWND, SafeHwnd, WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD};
 use crate::{
     GLOBAL_THREAD_TIMINGS, PlatformDispatcher, Priority, PriorityQueueSender, RunnableVariant,
     TaskTiming, ThreadTaskTimings, TimerResolutionGuard,
 };
+use crate::{HWND, SafeHwnd, WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD};
 
 pub(crate) struct WindowsDispatcher {
     pub(crate) wake_posted: AtomicBool,

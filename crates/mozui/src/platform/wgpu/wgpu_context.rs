@@ -1,7 +1,7 @@
 #[cfg(not(target_family = "wasm"))]
-use anyhow::Context as _;
-#[cfg(not(target_family = "wasm"))]
 use crate::util::ResultExt;
+#[cfg(not(target_family = "wasm"))]
+use anyhow::Context as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 

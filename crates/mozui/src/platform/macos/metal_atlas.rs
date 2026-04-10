@@ -1,11 +1,11 @@
-use anyhow::{Context as _, Result};
 use crate::collections::FxHashMap;
-use derive_more::{Deref, DerefMut};
-use etagere::BucketedAtlasAllocator;
 use crate::{
     AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTextureList, AtlasTile, Bounds, DevicePixels,
     PlatformAtlas, Point, Size,
 };
+use anyhow::{Context as _, Result};
+use derive_more::{Deref, DerefMut};
+use etagere::BucketedAtlasAllocator;
 use metal::Device;
 use parking_lot::Mutex;
 use std::borrow::Cow;

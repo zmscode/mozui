@@ -1,10 +1,10 @@
 use crate::{ActiveTheme, Sizable, Size, StyledExt};
+use instant::Duration;
 use mozui::{
     Animation, AnimationExt as _, App, ElementId, Hsla, InteractiveElement as _, IntoElement,
     ParentElement, RenderOnce, StyleRefinement, Styled, Window, div, ease_in_out,
     prelude::FluentBuilder, px, relative,
 };
-use instant::Duration;
 
 use super::ProgressState;
 

@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 use super::{Instant, Priority, RunnableMeta, Scheduler, SessionId, Timer};
 use std::{
     future::Future,
@@ -13,6 +12,7 @@ use std::{
     time::Duration,
 };
 
+/// Scheduler-level executor for spawning tasks on the main thread.
 #[derive(Clone)]
 pub struct ForegroundExecutor {
     session_id: SessionId,
@@ -21,6 +21,7 @@ pub struct ForegroundExecutor {
 }
 
 impl ForegroundExecutor {
+    /// Creates a new foreground executor bound to the given session and scheduler.
     pub fn new(session_id: SessionId, scheduler: Arc<dyn Scheduler>) -> Self {
         Self {
             session_id,
@@ -29,14 +30,17 @@ impl ForegroundExecutor {
         }
     }
 
+    /// Returns the session ID this executor is bound to.
     pub fn session_id(&self) -> SessionId {
         self.session_id
     }
 
+    /// Returns a reference to the underlying scheduler.
     pub fn scheduler(&self) -> &Arc<dyn Scheduler> {
         &self.scheduler
     }
 
+    /// Spawns a future to run on the main thread within this session.
     #[track_caller]
     pub fn spawn<F>(&self, future: F) -> Task<F::Output>
     where
@@ -57,6 +61,7 @@ impl ForegroundExecutor {
         Task(TaskState::Spawned(task))
     }
 
+    /// Blocks the current thread until the given future completes.
     pub fn block_on<Fut: Future>(&self, future: Fut) -> Fut::Output {
         use std::cell::Cell;
 
@@ -101,26 +106,31 @@ impl ForegroundExecutor {
         }
     }
 
+    /// Returns a timer future that completes after the given duration.
     #[track_caller]
     pub fn timer(&self, duration: Duration) -> Timer {
         self.scheduler.timer(duration)
     }
 
+    /// Returns the current time from the scheduler's clock.
     pub fn now(&self) -> Instant {
         self.scheduler.clock().now()
     }
 }
 
+/// Scheduler-level executor for spawning tasks on background threads.
 #[derive(Clone)]
 pub struct BackgroundExecutor {
     scheduler: Arc<dyn Scheduler>,
 }
 
 impl BackgroundExecutor {
+    /// Creates a new background executor with the given scheduler.
     pub fn new(scheduler: Arc<dyn Scheduler>) -> Self {
         Self { scheduler }
     }
 
+    /// Spawns a future to run on a background thread with default priority.
     #[track_caller]
     pub fn spawn<F>(&self, future: F) -> Task<F::Output>
     where
@@ -130,6 +140,7 @@ impl BackgroundExecutor {
         self.spawn_with_priority(Priority::default(), future)
     }
 
+    /// Spawns a future to run on a background thread with the given priority.
     #[track_caller]
     pub fn spawn_with_priority<F>(&self, priority: Priority, future: F) -> Task<F::Output>
     where
@@ -178,15 +189,18 @@ impl BackgroundExecutor {
         Task(TaskState::Spawned(task))
     }
 
+    /// Returns a timer future that completes after the given duration.
     #[track_caller]
     pub fn timer(&self, duration: Duration) -> Timer {
         self.scheduler.timer(duration)
     }
 
+    /// Returns the current time from the scheduler's clock.
     pub fn now(&self) -> Instant {
         self.scheduler.clock().now()
     }
 
+    /// Returns a reference to the underlying scheduler.
     pub fn scheduler(&self) -> &Arc<dyn Scheduler> {
         &self.scheduler
     }
@@ -222,6 +236,7 @@ impl<T> Task<T> {
         Task(TaskState::Spawned(task))
     }
 
+    /// Returns true if the task has completed or was created with `Task::ready`.
     pub fn is_ready(&self) -> bool {
         match &self.0 {
             TaskState::Ready(_) => true,

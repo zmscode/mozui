@@ -147,7 +147,9 @@ impl Render for StepperStory {
                                 .icon(IconName::Calendar)
                                 .child("Order Details"),
                             StepperItem::new().icon(IconName::Tray).child("Shipping"),
-                            StepperItem::new().icon(IconName::FrameCorners).child("Preview"),
+                            StepperItem::new()
+                                .icon(IconName::FrameCorners)
+                                .child("Preview"),
                             StepperItem::new().icon(IconName::Info).child("Finish"),
                         ])
                         .on_click(cx.listener(|this, step, _, cx| {

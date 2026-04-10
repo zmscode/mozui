@@ -1,4 +1,4 @@
-use mozui_refineable::Refineable as _;
+use crate::Refineable as _;
 
 use crate::{
     App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, Pixels,

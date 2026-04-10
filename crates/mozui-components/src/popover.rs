@@ -381,7 +381,10 @@ impl RenderOnce for Popover {
 
         // Shared cell so the deferred Anchored element can read the real trigger bounds at
         // prepaint time (after trigger's on_prepaint has already fired with the correct bounds).
-        let position = Rc::new(Cell::new(Self::resolved_corner(self.anchor, trigger_bounds)));
+        let position = Rc::new(Cell::new(Self::resolved_corner(
+            self.anchor,
+            trigger_bounds,
+        )));
 
         let el = div()
             .id(self.id)

@@ -3,9 +3,10 @@ use mozui::{
     Styled, Window,
 };
 use mozui_components::{
+    ActiveTheme as _, Icon, IconName, Sizable,
     button::{Button, ButtonVariant, ButtonVariants},
     dock::PanelControl,
-    h_flex, neutral_500, v_flex, ActiveTheme as _, Icon, IconName, Sizable,
+    h_flex, neutral_500, v_flex,
 };
 
 use crate::section;

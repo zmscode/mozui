@@ -98,22 +98,25 @@ pub enum ScrollStrategy {
     Nearest,
 }
 
+/// A pending scroll-to-item request for a uniform list.
 #[derive(Clone, Copy, Debug)]
-#[allow(missing_docs)]
 pub struct DeferredScrollToItem {
-    /// The item index to scroll to
+    /// The item index to scroll to.
     pub item_index: usize,
-    /// The scroll strategy to use
+    /// The scroll strategy to use.
     pub strategy: ScrollStrategy,
-    /// The offset in number of items
+    /// The offset in number of items.
     pub offset: usize,
+    /// Whether to strictly enforce the scroll position.
     pub scroll_strict: bool,
 }
 
+/// Scroll state for a [`UniformList`], tracking deferred scroll requests and layout info.
 #[derive(Clone, Debug, Default)]
-#[allow(missing_docs)]
 pub struct UniformListScrollState {
+    /// The underlying scroll handle.
     pub base_handle: ScrollHandle,
+    /// A pending scroll-to-item request to process on next layout.
     pub deferred_scroll_to_item: Option<DeferredScrollToItem>,
     /// Size of the item, captured during last layout.
     pub last_item_size: Option<ItemSize>,

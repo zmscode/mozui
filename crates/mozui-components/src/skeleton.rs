@@ -1,9 +1,9 @@
 use crate::{ActiveTheme, StyledExt};
-use mozui::{
-    bounce, div, ease_in_out, Animation, AnimationExt, IntoElement, RenderOnce, StyleRefinement,
-    Styled,
-};
 use instant::Duration;
+use mozui::{
+    Animation, AnimationExt, IntoElement, RenderOnce, StyleRefinement, Styled, bounce, div,
+    ease_in_out,
+};
 
 /// A skeleton loading placeholder element.
 #[derive(IntoElement)]

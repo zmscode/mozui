@@ -13,10 +13,10 @@ use std::{
     time::Duration,
 };
 
+use crate::util::ResultExt as _;
 use anyhow::{Context as _, anyhow};
 use calloop::LoopSignal;
 use futures::channel::oneshot;
-use crate::util::ResultExt as _;
 #[cfg(any(feature = "wayland", feature = "x11"))]
 use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
@@ -1061,7 +1061,9 @@ pub(super) fn capslock_from_xkb(keymap_state: &State) -> crate::Capslock {
 /// [`CompositorGpuHint`] that the GPU adapter selection code can use to
 /// prioritize the compositor's rendering device.
 #[cfg(any(feature = "wayland", feature = "x11"))]
-pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<crate::platform::wgpu::CompositorGpuHint> {
+pub(super) fn compositor_gpu_hint_from_dev_t(
+    dev: u64,
+) -> Option<crate::platform::wgpu::CompositorGpuHint> {
     fn dev_major(dev: u64) -> u32 {
         ((dev >> 8) & 0xfff) as u32 | (((dev >> 32) & !0xfff) as u32)
     }

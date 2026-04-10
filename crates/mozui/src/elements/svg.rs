@@ -1,11 +1,11 @@
 use std::{fs, path::Path, sync::Arc};
 
+use crate::util::ResultExt;
 use crate::{
     App, Asset, Bounds, Element, GlobalElementId, Hitbox, InspectorElementId, InteractiveElement,
     Interactivity, IntoElement, LayoutId, Pixels, Point, Radians, SharedString, Size,
     StyleRefinement, Styled, TransformationMatrix, Window, point, px, radians, size,
 };
-use crate::util::ResultExt;
 
 /// An SVG element.
 pub struct Svg {
@@ -139,14 +139,7 @@ impl Element for Svg {
                         .unwrap_or_default();
 
                     window
-                        .paint_svg(
-                            bounds,
-                            key.clone(),
-                            Some(data),
-                            transformation,
-                            color,
-                            cx,
-                        )
+                        .paint_svg(bounds, key.clone(), Some(data), transformation, color, cx)
                         .log_err();
                 } else if let Some((path, color)) = self.path.as_ref().zip(style.text.color) {
                     let transformation = self

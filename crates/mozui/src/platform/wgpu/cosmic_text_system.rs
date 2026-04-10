@@ -1,13 +1,13 @@
-use anyhow::{Context as _, Ok, Result};
 use crate::collections::HashMap;
-use cosmic_text::{
-    Attrs, AttrsList, Family, Font as CosmicTextFont, FontFeatures as CosmicFontFeatures,
-    FontSystem, ShapeBuffer, ShapeLine,
-};
 use crate::{
     Bounds, DevicePixels, Font, FontFeatures, FontId, FontMetrics, FontRun, GlyphId, LineLayout,
     Pixels, PlatformTextSystem, RenderGlyphParams, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y,
     ShapedGlyph, ShapedRun, SharedString, Size, TextRenderingMode, point, size,
+};
+use anyhow::{Context as _, Ok, Result};
+use cosmic_text::{
+    Attrs, AttrsList, Family, Font as CosmicTextFont, FontFeatures as CosmicFontFeatures,
+    FontSystem, ShapeBuffer, ShapeLine,
 };
 
 use itertools::Itertools;

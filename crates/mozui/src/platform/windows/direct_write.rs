@@ -4,9 +4,9 @@ use std::{
     mem::ManuallyDrop,
 };
 
+use crate::collections::HashMap;
 use crate::util::{ResultExt, maybe};
 use anyhow::{Context, Result};
-use crate::collections::HashMap;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use windows::{
     Win32::{

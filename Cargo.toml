@@ -6,12 +6,6 @@ members = [
     "crates/mozui",
     "crates/mozui-macros",
 
-    # mozui support crates
-    "crates/mozui-refineable",
-    "crates/mozui-refineable/derive",
-    "crates/mozui-sum-tree",
-    "crates/mozui-util-macros",
-
     # mozui UI component library
     "crates/mozui-components-macros",
     "crates/mozui-story",
@@ -30,10 +24,6 @@ edition = "2024"
 #
 mozui = { path = "crates/mozui" }
 mozui-macros = { path = "crates/mozui-macros" }
-mozui-refineable = { path = "crates/mozui-refineable" }
-mozui-derive-refineable = { path = "crates/mozui-refineable/derive" }
-mozui-sum-tree = { path = "crates/mozui-sum-tree" }
-mozui-util-macros = { path = "crates/mozui-util-macros" }
 #
 # Local workspace crates (mozui UI component library)
 #
@@ -237,14 +227,10 @@ smol = { opt-level = 3 }
 mozui = { opt-level = 3 }
 mozui-macros = { opt-level = 3 }
 tree-sitter = { opt-level = 3 }
-mozui-sum-tree = { opt-level = 3 }
 ropey = { opt-level = 3 }
 lsp-types = { opt-level = 3 }
 markdown = { opt-level = 3 }
 xml5ever = { opt-level = 3 }
-mozui-derive-refineable = { opt-level = 3 }
-mozui-util-macros = { opt-level = 3 }
-mozui-refineable = { codegen-units = 1 }
 
 [workspace.metadata.typos]
 files.extend-exclude = ["**/fixtures/*"]

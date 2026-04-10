@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+/// A clone-on-write type backed by `Arc`.
 pub mod arc_cow;
 
 use crate::{BackgroundExecutor, Task};
@@ -8,7 +8,10 @@ use std::{
     ops::AddAssign,
     panic::Location,
     pin::Pin,
-    sync::{OnceLock, atomic::{AtomicUsize, Ordering::SeqCst}},
+    sync::{
+        OnceLock,
+        atomic::{AtomicUsize, Ordering::SeqCst},
+    },
     task::{self, Context, Poll},
     time::{Duration, Instant},
 };
@@ -87,6 +90,7 @@ impl<T: Future> FutureExt for T {
     }
 }
 
+/// A future that resolves with `Err(Timeout)` if the inner future doesn't complete in time.
 #[pin_project::pin_project]
 pub struct WithTimeout<T> {
     #[pin]
@@ -133,12 +137,14 @@ pub(crate) fn atomic_incr_if_not_zero(counter: &AtomicUsize) -> usize {
 
 // --- Merged from gpui_util ---
 
+/// Increments the value in place and returns the previous value (post-increment).
 pub fn post_inc<T: From<u8> + AddAssign<T> + Copy>(value: &mut T) -> T {
     let prev = *value;
     *value += T::from(1);
     prev
 }
 
+/// Measures and prints the execution time of a closure when `ZED_MEASUREMENTS=1` is set.
 pub fn measure<R>(label: &str, f: impl FnOnce() -> R) -> R {
     static ZED_MEASUREMENTS: OnceLock<bool> = OnceLock::new();
     let zed_measurements = ZED_MEASUREMENTS.get_or_init(|| {
@@ -158,6 +164,7 @@ pub fn measure<R>(label: &str, f: impl FnOnce() -> R) -> R {
     }
 }
 
+/// Panics in debug builds; logs the error with a backtrace in release builds.
 #[macro_export]
 macro_rules! debug_panic {
     ( $($fmt_arg:tt)* ) => {
@@ -170,6 +177,7 @@ macro_rules! debug_panic {
     };
 }
 
+/// Returns the option unchanged, but panics in debug builds if it is `None`.
 #[track_caller]
 pub fn some_or_debug_panic<T>(option: Option<T>) -> Option<T> {
     #[cfg(debug_assertions)]
@@ -196,14 +204,20 @@ macro_rules! maybe {
     };
 }
 
+/// Extension methods for `Result` that log errors and convert to `Option`.
 pub trait ResultExt<E> {
+    /// The success type of the result.
     type Ok;
 
+    /// Logs the error at `Error` level and returns the `Ok` value as an `Option`.
     fn log_err(self) -> Option<Self::Ok>;
     /// Assert that this result should never be an error in development or tests.
     fn debug_assert_ok(self, reason: &str) -> Self;
+    /// Logs the error at `Warn` level and returns the `Ok` value as an `Option`.
     fn warn_on_err(self) -> Option<Self::Ok>;
+    /// Logs the error at the given level and returns the `Ok` value as an `Option`.
     fn log_with_level(self, level: log::Level) -> Option<Self::Ok>;
+    /// Converts the error type into an `anyhow::Error`.
     fn anyhow(self) -> anyhow::Result<Self::Ok>
     where
         E: Into<anyhow::Error>;
@@ -283,22 +297,28 @@ where
     );
 }
 
+/// Logs an error value at `Error` level with caller location information.
 pub fn log_err<E: std::fmt::Debug>(error: &E) {
     log_error_with_caller(*Location::caller(), error, log::Level::Error);
 }
 
+/// Extension methods for futures that return `Result`, providing error logging combinators.
 pub trait TryFutureExt {
+    /// Wraps this future to log errors at `Error` level and resolve to `Option<T>`.
     fn log_err(self) -> LogErrorFuture<Self>
     where
         Self: Sized;
 
+    /// Like [`TryFutureExt::log_err`] but with an explicit source location for the log message.
     fn log_tracked_err(self, location: core::panic::Location<'static>) -> LogErrorFuture<Self>
     where
         Self: Sized;
 
+    /// Wraps this future to log errors at `Warn` level and resolve to `Option<T>`.
     fn warn_on_err(self) -> LogErrorFuture<Self>
     where
         Self: Sized;
+    /// Wraps this future to unwrap the `Result`, panicking on `Err`.
     fn unwrap(self) -> UnwrapFuture<Self>
     where
         Self: Sized;
@@ -342,6 +362,7 @@ where
     }
 }
 
+/// A future wrapper that logs errors at a specified level and resolves to `Option<T>`.
 #[must_use]
 pub struct LogErrorFuture<F>(F, log::Level, core::panic::Location<'static>);
 
@@ -369,6 +390,7 @@ where
     }
 }
 
+/// A future wrapper that unwraps the inner `Result`, panicking on `Err`.
 pub struct UnwrapFuture<F>(F);
 
 impl<F, T, E> Future for UnwrapFuture<F>
@@ -387,6 +409,7 @@ where
     }
 }
 
+/// A guard that runs a closure when dropped, unless explicitly aborted.
 pub struct Deferred<F: FnOnce()>(Option<F>);
 
 impl<F: FnOnce()> Deferred<F> {

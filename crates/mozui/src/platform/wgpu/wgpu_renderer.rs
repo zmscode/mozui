@@ -1,10 +1,10 @@
-use crate::{CompositorGpuHint, WgpuAtlas, WgpuContext};
-use bytemuck::{Pod, Zeroable};
 use crate::{
     AtlasTextureId, Background, Bounds, DevicePixels, GpuSpecs, MonochromeSprite, Path, Point,
     PolychromeSprite, PrimitiveBatch, Quad, ScaledPixels, Scene, Shadow, Size, SubpixelSprite,
     Underline, get_gamma_correction_ratios,
 };
+use crate::{CompositorGpuHint, WgpuAtlas, WgpuContext};
+use bytemuck::{Pod, Zeroable};
 use log::warn;
 #[cfg(not(target_family = "wasm"))]
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};

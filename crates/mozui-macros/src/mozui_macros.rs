@@ -1,6 +1,7 @@
 mod derive_action;
 mod derive_app_context;
 mod derive_into_element;
+mod derive_refineable;
 mod derive_render;
 mod derive_visual_context;
 mod property_test;
@@ -18,6 +19,13 @@ use syn::{DeriveInput, Ident};
 #[proc_macro_derive(Action, attributes(action))]
 pub fn derive_action(input: TokenStream) -> TokenStream {
     derive_action::derive_action(input)
+}
+
+/// `Refineable` derive macro — generates a companion refinement type and implements the
+/// `Refineable` trait for hierarchical configuration patterns.
+#[proc_macro_derive(Refineable, attributes(refineable))]
+pub fn derive_refineable(input: TokenStream) -> TokenStream {
+    derive_refineable::derive_refineable(input)
 }
 
 /// This can be used to register an action with the GPUI runtime when you want to manually implement

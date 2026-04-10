@@ -1,5 +1,5 @@
 use mozui_assets::Assets;
-use mozui_story::{Gallery, init, create_new_window};
+use mozui_story::{Gallery, create_new_window, init};
 
 fn main() {
     let app = mozui::platform::application().with_assets(Assets);

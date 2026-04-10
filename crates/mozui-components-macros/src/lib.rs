@@ -169,7 +169,8 @@ pub fn icon_named(input: TokenStream) -> TokenStream {
                         }
                     } else {
                         // Icon doesn't exist at this weight — fall back to regular if possible
-                        let regular_path = icons_dir.join("regular").join(format!("{}.svg", filename));
+                        let regular_path =
+                            icons_dir.join("regular").join(format!("{}.svg", filename));
                         if regular_path.exists() {
                             let lit = syn::LitStr::new(
                                 &regular_path.to_string_lossy(),
@@ -191,7 +192,9 @@ pub fn icon_named(input: TokenStream) -> TokenStream {
                                 }
                             }
                             let lit = syn::LitStr::new(
-                                &fallback.unwrap_or_else(|| panic!("No SVG found for icon '{}' in any weight", filename)),
+                                &fallback.unwrap_or_else(|| {
+                                    panic!("No SVG found for icon '{}' in any weight", filename)
+                                }),
                                 proc_macro2::Span::call_site(),
                             );
                             quote! {

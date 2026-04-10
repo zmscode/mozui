@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 use std::{
     borrow::Cow,
     cmp::Ordering,
@@ -7,8 +6,13 @@ use std::{
     sync::Arc,
 };
 
+/// A clone-on-write smart pointer that can hold either a borrowed reference or an `Arc`.
+///
+/// Similar to [`Cow`] but uses [`Arc`] for the owned variant instead of requiring `ToOwned`.
 pub enum ArcCow<'a, T: ?Sized> {
+    /// A borrowed reference.
     Borrowed(&'a T),
+    /// An atomically reference-counted owned value.
     Owned(Arc<T>),
 }
 

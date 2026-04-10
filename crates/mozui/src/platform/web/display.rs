@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::{Bounds, DisplayId, Pixels, PlatformDisplay, Point, Size, px};
+use anyhow::Result;
 
 #[derive(Debug)]
 pub struct WebDisplay {

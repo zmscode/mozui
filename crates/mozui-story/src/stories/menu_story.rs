@@ -156,7 +156,11 @@ impl Render for MenuStory {
                                         Box::new(ToggleCheck),
                                     )
                                     .separator()
-                                    .menu_with_icon("Search", IconName::MagnifyingGlass, Box::new(SearchAll))
+                                    .menu_with_icon(
+                                        "Search",
+                                        IconName::MagnifyingGlass,
+                                        Box::new(SearchAll),
+                                    )
                                     .separator()
                                     .item(
                                         PopupMenuItem::element(|_, cx| {

@@ -1,13 +1,14 @@
 use mozui::{
-    prelude::FluentBuilder as _, px, App, AppContext as _, Context, Entity, Focusable,
-    InteractiveElement, IntoElement, ParentElement as _, Render, SharedString, Styled,
-    Subscription, Window,
+    App, AppContext as _, Context, Entity, Focusable, InteractiveElement, IntoElement,
+    ParentElement as _, Render, SharedString, Styled, Subscription, Window,
+    prelude::FluentBuilder as _, px,
 };
 use mozui_components::{
+    Disableable as _, Sizable, StyledExt,
     checkbox::Checkbox,
     h_flex,
     input::{InputEvent, OtpInput, OtpState},
-    v_flex, Disableable as _, Sizable, StyledExt,
+    v_flex,
 };
 
 use crate::section;

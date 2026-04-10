@@ -14,8 +14,7 @@ pub fn current_platform(headless: bool) -> Rc<dyn crate::Platform> {
     #[cfg(target_os = "windows")]
     {
         Rc::new(
-            windows::WindowsPlatform::new(headless)
-                .expect("failed to initialize Windows platform"),
+            windows::WindowsPlatform::new(headless).expect("failed to initialize Windows platform"),
         )
     }
 
@@ -65,9 +64,7 @@ pub fn web_init() {
 pub fn current_headless_renderer() -> Option<Box<dyn crate::PlatformHeadlessRenderer>> {
     #[cfg(target_os = "macos")]
     {
-        Some(Box::new(
-            macos::metal_renderer::MetalHeadlessRenderer::new(),
-        ))
+        Some(Box::new(macos::metal_renderer::MetalHeadlessRenderer::new()))
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -128,6 +125,8 @@ pub(crate) type PlatformScreenCaptureFrame = ();
 #[cfg(all(target_os = "macos", feature = "screen-capture"))]
 pub(crate) type PlatformScreenCaptureFrame = core_video::image_buffer::CVImageBuffer;
 
+use crate::scheduler::Instant;
+pub use crate::scheduler::RunnableMeta;
 use crate::{
     Action, AnyWindowHandle, App, AsyncWindowContext, BackgroundExecutor, Bounds,
     DEFAULT_WINDOW_SIZE, DevicePixels, DispatchEventResult, Font, FontId, FontMetrics, FontRun,
@@ -146,8 +145,6 @@ use image::RgbaImage;
 use image::codecs::gif::GifDecoder;
 use image::{AnimationDecoder as _, Frame};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use crate::scheduler::Instant;
-pub use crate::scheduler::RunnableMeta;
 use schemars::JsonSchema;
 use seahash::SeaHasher;
 use serde::{Deserialize, Serialize};
@@ -1517,43 +1514,49 @@ pub struct WindowOptions {
     ),
     allow(dead_code)
 )]
-#[allow(missing_docs)]
+/// Parameters for creating a new platform window.
 pub struct WindowParams {
+    /// The initial bounds of the window.
     pub bounds: Bounds<Pixels>,
 
-    /// The titlebar configuration of the window
+    /// The titlebar configuration of the window.
     #[cfg_attr(feature = "wayland", allow(dead_code))]
     pub titlebar: Option<TitlebarOptions>,
 
-    /// The kind of window to create
+    /// The kind of window to create.
     #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub kind: WindowKind,
 
-    /// Whether the window should be movable by the user
+    /// Whether the window should be movable by the user.
     #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub is_movable: bool,
 
-    /// Whether the window should be resizable by the user
+    /// Whether the window should be resizable by the user.
     #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub is_resizable: bool,
 
-    /// Whether the window should be minimized by the user
+    /// Whether the window should be minimizable by the user.
     #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub is_minimizable: bool,
 
+    /// Whether the window should receive focus when opened.
     #[cfg_attr(
         any(target_os = "linux", target_os = "freebsd", target_os = "windows"),
         allow(dead_code)
     )]
     pub focus: bool,
 
+    /// Whether the window should be visible when created.
     #[cfg_attr(any(target_os = "linux", target_os = "freebsd"), allow(dead_code))]
     pub show: bool,
 
+    /// The display to open the window on, if specified.
     #[cfg_attr(feature = "wayland", allow(dead_code))]
     pub display_id: Option<DisplayId>,
 
+    /// The minimum size constraint for the window.
     pub window_min_size: Option<Size<Pixels>>,
+    /// The tabbing group identifier for macOS window tabbing.
     #[cfg(target_os = "macos")]
     pub tabbing_identifier: Option<String>,
 }

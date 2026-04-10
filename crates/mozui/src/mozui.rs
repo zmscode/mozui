@@ -46,12 +46,15 @@ pub mod profiler;
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
 #[expect(missing_docs)]
 pub mod queue;
+mod refineable;
 mod scene;
 mod shared_string;
 mod shared_uri;
 mod style;
 mod styled;
 mod subscription;
+/// A concurrency-friendly B-tree (sum tree) data structure.
+pub mod sum_tree;
 mod svg_renderer;
 mod tab_stop;
 mod taffy;
@@ -104,12 +107,12 @@ pub use keymap::*;
 pub use mozui_macros::{
     AppContext, IntoElement, Render, VisualContext, property_test, register_action, test,
 };
-pub use mozui_refineable::*;
 pub use path_builder::*;
 pub use platform::*;
 pub use profiler::*;
 #[cfg(any(target_os = "windows", target_os = "linux", target_family = "wasm"))]
 pub use queue::{PriorityQueueReceiver, PriorityQueueSender};
+pub use refineable::*;
 pub use scene::*;
 pub use shared_string::*;
 pub use shared_uri::*;

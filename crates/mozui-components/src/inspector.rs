@@ -1,14 +1,15 @@
 use std::{cell::OnceCell, collections::HashMap, fmt::Write as _, sync::OnceLock};
 
 use mozui::{
-    actions, div, inspector_reflection::FunctionReflection, prelude::FluentBuilder, px, AnyElement,
-    App, AppContext, Context, DivInspectorState, Entity, Inspector, InspectorElementId,
+    AnyElement, App, AppContext, Context, DivInspectorState, Entity, Inspector, InspectorElementId,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Refineable as _, Render,
-    SharedString, StyleRefinement, Styled, Subscription, Window,
+    SharedString, StyleRefinement, Styled, Subscription, Window, actions, div,
+    inspector_reflection::FunctionReflection, prelude::FluentBuilder, px,
 };
 use ropey::Rope;
 
 use crate::{
+    ActiveTheme, IconName, Selectable, Sizable, TITLE_BAR_HEIGHT,
     alert::Alert,
     button::{Button, ButtonVariants},
     clipboard::Clipboard,
@@ -16,7 +17,7 @@ use crate::{
     h_flex,
     input::{Input, InputEvent, InputState, RopeExt, TabSize},
     link::Link,
-    v_flex, ActiveTheme, IconName, Selectable, Sizable, TITLE_BAR_HEIGHT,
+    v_flex,
 };
 
 actions!(inspector, [ToggleInspector]);
@@ -77,10 +78,7 @@ pub struct DivInspector {
 
 impl DivInspector {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let json_input_state = cx.new(|cx| {
-            InputState::new(window, cx)
-                .multi_line(true)
-        });
+        let json_input_state = cx.new(|cx| InputState::new(window, cx).multi_line(true));
 
         let rust_input_state = cx.new(|cx| {
             InputState::new(window, cx)

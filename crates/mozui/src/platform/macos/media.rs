@@ -4,9 +4,7 @@
 pub mod core_media {
     #![allow(non_snake_case)]
 
-    pub use super::super::media_bindings::{
-        CMItemIndex, CMSampleTimingInfo, kCMTimeInvalid,
-    };
+    pub use super::super::media_bindings::{CMItemIndex, CMSampleTimingInfo, kCMTimeInvalid};
     use anyhow::Result;
     use core_foundation::{
         array::{CFArray, CFArrayRef},

@@ -7,17 +7,17 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::collections::HashMap;
+use crate::util::ResultExt as _;
 use ashpd::WindowIdentifier;
 use calloop::{
     EventLoop, LoopHandle,
     timer::{TimeoutAction, Timer},
 };
 use calloop_wayland_source::WaylandSource;
-use crate::collections::HashMap;
 use filedescriptor::Pipe;
-use url::Url;
 use smallvec::SmallVec;
-use crate::util::ResultExt as _;
+use url::Url;
 use wayland_backend::client::ObjectId;
 use wayland_backend::protocol::WEnum;
 use wayland_client::event_created_child;
@@ -91,6 +91,7 @@ use crate::linux::{
     },
     xdg_desktop_portal::{Event as XDPEvent, XDPEventSource},
 };
+use crate::platform::wgpu::{CompositorGpuHint, GpuContext};
 use crate::{
     AnyWindowHandle, Bounds, Capslock, CursorStyle, DevicePixels, DisplayId, FileDropEvent,
     ForegroundExecutor, KeyDownEvent, KeyUpEvent, Keystroke, Modifiers, ModifiersChangedEvent,
@@ -99,7 +100,6 @@ use crate::{
     ScrollDelta, ScrollWheelEvent, SharedString, Size, TaskTiming, TouchPhase, WindowButtonLayout,
     WindowParams, point, profiler, px, size,
 };
-use crate::platform::wgpu::{CompositorGpuHint, GpuContext};
 use wayland_protocols::wp::linux_dmabuf::zv1::client::{
     zwp_linux_dmabuf_feedback_v1, zwp_linux_dmabuf_v1,
 };

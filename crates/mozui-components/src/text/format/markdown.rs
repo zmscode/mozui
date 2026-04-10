@@ -1,8 +1,8 @@
-use mozui::SharedString;
 use markdown::{
     ParseOptions,
     mdast::{self, Node},
 };
+use mozui::SharedString;
 
 use crate::{
     highlighter::HighlightTheme,

@@ -4,13 +4,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use markdown::mdast;
 use mozui::{
     AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
     InteractiveElement as _, IntoElement, Length, ObjectFit, ParentElement, SharedString,
     SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div, img,
     prelude::FluentBuilder as _, px, relative, rems,
 };
-use markdown::mdast;
 use ropey::Rope;
 
 use crate::{

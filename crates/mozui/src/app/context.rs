@@ -1,3 +1,4 @@
+use crate::util::Deferred;
 use crate::{
     AnyView, AnyWindowHandle, AppContext, AsyncApp, DispatchPhase, Effect, EntityId, EventEmitter,
     FocusHandle, FocusOutEvent, Focusable, Global, KeystrokeObserver, Priority, Reservation,
@@ -5,7 +6,6 @@ use crate::{
 };
 use anyhow::Result;
 use futures::FutureExt;
-use crate::util::Deferred;
 use std::{
     any::{Any, TypeId},
     borrow::{Borrow, BorrowMut},

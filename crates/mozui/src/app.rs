@@ -22,11 +22,11 @@ use itertools::Itertools;
 use parking_lot::RwLock;
 use slotmap::SlotMap;
 
-pub use async_context::*;
 use crate::collections::{FxHashMap, FxHashSet, HashMap, VecDeque};
+use crate::util::ResultExt;
+pub use async_context::*;
 pub use context::*;
 pub use entity_map::*;
-use crate::util::ResultExt;
 #[cfg(any(test, feature = "test-support"))]
 pub use headless_app_context::*;
 use smallvec::SmallVec;
@@ -143,10 +143,7 @@ pub struct Application(Rc<AppCell>);
 impl Application {
     /// Builds an app with a caller-provided platform implementation.
     pub fn with_platform(platform: Rc<dyn Platform>) -> Self {
-        Self(App::new_app(
-            platform,
-            Arc::new(()),
-        ))
+        Self(App::new_app(platform, Arc::new(())))
     }
 
     /// Assigns the source of assets for the application.

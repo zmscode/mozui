@@ -1,6 +1,6 @@
+use itertools::Itertools as _;
 use mozui::*;
 use mozui_components::{button::*, checkbox::*, divider::*, input::*, select::*, *};
-use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
 
 use crate::section;

@@ -1,13 +1,13 @@
+use crate::collections::HashMap;
+use crate::util::ResultExt as _;
+use crate::{Capslock, TaskTiming, profiler};
 use anyhow::{Context as _, anyhow};
 use ashpd::WindowIdentifier;
 use calloop::{
     EventLoop, LoopHandle, RegistrationToken,
     generic::{FdWrapper, Generic},
 };
-use crate::collections::HashMap;
 use core::str;
-use crate::{Capslock, TaskTiming, profiler};
-use url::Url;
 use log::Level;
 use smallvec::SmallVec;
 use std::{
@@ -18,7 +18,7 @@ use std::{
     rc::{Rc, Weak},
     time::{Duration, Instant},
 };
-use crate::util::ResultExt as _;
+use url::Url;
 
 use x11rb::{
     connection::{Connection, RequestConnection},
@@ -58,13 +58,13 @@ use crate::linux::{
 };
 use crate::linux::{LinuxCommon, LinuxKeyboardLayout, X11Window, modifiers_from_xinput_info};
 
+use crate::platform::wgpu::{CompositorGpuHint, GpuContext};
 use crate::{
     AnyWindowHandle, Bounds, ClipboardItem, CursorStyle, DisplayId, FileDropEvent, Keystroke,
     Modifiers, ModifiersChangedEvent, MouseButton, Pixels, PlatformDisplay, PlatformInput,
     PlatformKeyboardLayout, PlatformWindow, Point, RequestFrameOptions, ScrollDelta, Size,
     TouchPhase, WindowButtonLayout, WindowParams, point, px,
 };
-use crate::platform::wgpu::{CompositorGpuHint, GpuContext};
 
 /// Value for DeviceId parameters which selects all devices.
 pub(crate) const XINPUT_ALL_DEVICES: xinput::DeviceId = 0;

@@ -1,5 +1,5 @@
-use crate::{h_flex, skeleton::Skeleton, v_flex, ActiveTheme, Size};
-use mozui::{prelude::FluentBuilder as _, IntoElement, ParentElement as _, RenderOnce, Styled};
+use crate::{ActiveTheme, Size, h_flex, skeleton::Skeleton, v_flex};
+use mozui::{IntoElement, ParentElement as _, RenderOnce, Styled, prelude::FluentBuilder as _};
 
 #[derive(IntoElement)]
 pub(super) struct Loading {

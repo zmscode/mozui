@@ -1,9 +1,9 @@
+use crate::WindowAppearance;
 use cocoa::{
     appkit::{NSAppearanceNameVibrantDark, NSAppearanceNameVibrantLight},
     base::id,
     foundation::NSString,
 };
-use crate::WindowAppearance;
 use objc::{msg_send, sel, sel_impl};
 use std::ffi::CStr;
 

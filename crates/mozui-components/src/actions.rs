@@ -1,4 +1,4 @@
-use mozui::{actions, Action};
+use mozui::{Action, actions};
 use serde::Deserialize;
 
 #[derive(Clone, Action, PartialEq, Eq, Deserialize)]
@@ -8,5 +8,19 @@ pub struct Confirm {
     pub secondary: bool,
 }
 
-actions!(ui, [Cancel, SelectUp, SelectDown, SelectLeft, SelectRight, SelectFirst, SelectLast, SelectPrevColumn, SelectNextColumn, SelectPageUp, SelectPageDown]);
-
+actions!(
+    ui,
+    [
+        Cancel,
+        SelectUp,
+        SelectDown,
+        SelectLeft,
+        SelectRight,
+        SelectFirst,
+        SelectLast,
+        SelectPrevColumn,
+        SelectNextColumn,
+        SelectPageUp,
+        SelectPageDown
+    ]
+);

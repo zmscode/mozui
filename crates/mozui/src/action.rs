@@ -1,5 +1,5 @@
-use anyhow::{Context as _, Result};
 use crate::collections::HashMap;
+use anyhow::{Context as _, Result};
 pub use mozui_macros::Action;
 pub use no_action::{NoAction, Unbind, is_no_action, is_unbind};
 use serde_json::json;
@@ -182,7 +182,7 @@ impl dyn Action {
     }
 }
 
-/// Error type for `Keystroke::parse`. 
+/// Error type for `Keystroke::parse`.
 #[derive(Debug)]
 pub enum ActionBuildError {
     /// Indicates that an action with this name has not been registered.

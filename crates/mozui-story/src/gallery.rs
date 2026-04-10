@@ -189,17 +189,13 @@ impl Render for Gallery {
                                                     .size_8()
                                                     .flex_shrink_0()
                                                     .when(!self.collapsed, |this| {
-                                                        this.child(Icon::new(
-                                                            IconName::SquaresFour,
-                                                        ))
+                                                        this.child(Icon::new(IconName::SquaresFour))
                                                     })
                                                     .when(self.collapsed, |this| {
                                                         this.size_4()
                                                             .bg(cx.theme().transparent)
                                                             .text_color(cx.theme().foreground)
-                                                            .child(Icon::new(
-                                                                IconName::SquaresFour,
-                                                            ))
+                                                            .child(Icon::new(IconName::SquaresFour))
                                                     }),
                                             )
                                             .when(!self.collapsed, |this| {

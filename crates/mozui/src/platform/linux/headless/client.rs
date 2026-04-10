@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use calloop::{EventLoop, LoopHandle};
 use crate::util::ResultExt;
+use calloop::{EventLoop, LoopHandle};
 
 use crate::linux::{LinuxClient, LinuxCommon, LinuxKeyboardLayout};
 use crate::{

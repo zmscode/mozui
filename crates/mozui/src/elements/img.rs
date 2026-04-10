@@ -6,13 +6,13 @@ use crate::{
 };
 use anyhow::Result;
 
-use futures::Future;
+use crate::scheduler::Instant;
 use crate::util::ResultExt;
+use futures::Future;
 use image::{
     AnimationDecoder, DynamicImage, Frame, ImageError, ImageFormat, Rgba,
     codecs::{gif::GifDecoder, webp::WebPDecoder},
 };
-use crate::scheduler::Instant;
 use smallvec::SmallVec;
 use std::{
     fs,
@@ -620,11 +620,7 @@ impl Asset for ImageAssetLoader {
                         let mut body = String::from_utf8_lossy(&body_bytes).into_owned();
                         let first_line = body.lines().next().unwrap_or("").trim_end();
                         body.truncate(first_line.len());
-                        return Err(ImageCacheError::BadStatus {
-                            uri,
-                            status,
-                            body,
-                        });
+                        return Err(ImageCacheError::BadStatus { uri, status, body });
                     }
                     response
                         .bytes()

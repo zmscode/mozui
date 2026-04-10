@@ -1,10 +1,10 @@
-use anyhow::{Context as _, Result};
 use crate::collections::FxHashMap;
-use etagere::{BucketedAtlasAllocator, size2};
 use crate::{
     AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTextureList, AtlasTile, Bounds, DevicePixels,
     PlatformAtlas, Point, Size,
 };
+use anyhow::{Context as _, Result};
+use etagere::{BucketedAtlasAllocator, size2};
 use parking_lot::Mutex;
 use std::{borrow::Cow, ops, sync::Arc};
 

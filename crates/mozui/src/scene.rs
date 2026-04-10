@@ -459,25 +459,39 @@ impl<'a> Iterator for BatchIterator<'a> {
     ),
     allow(dead_code)
 )]
-#[allow(missing_docs)]
+/// A batch of scene primitives of the same type, ready for GPU submission.
 pub enum PrimitiveBatch {
+    /// A range of shadow primitives.
     Shadows(Range<usize>),
+    /// A range of quad primitives.
     Quads(Range<usize>),
+    /// A range of path primitives.
     Paths(Range<usize>),
+    /// A range of underline primitives.
     Underlines(Range<usize>),
+    /// A range of monochrome sprite primitives from a single atlas texture.
     MonochromeSprites {
+        /// The atlas texture these sprites are drawn from.
         texture_id: AtlasTextureId,
+        /// The range of sprites in the batch.
         range: Range<usize>,
     },
+    /// A range of subpixel-rendered sprite primitives (e.g. text with LCD antialiasing).
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     SubpixelSprites {
+        /// The atlas texture these sprites are drawn from.
         texture_id: AtlasTextureId,
+        /// The range of sprites in the batch.
         range: Range<usize>,
     },
+    /// A range of full-color sprite primitives.
     PolychromeSprites {
+        /// The atlas texture these sprites are drawn from.
         texture_id: AtlasTextureId,
+        /// The range of sprites in the batch.
         range: Range<usize>,
     },
+    /// A range of surface primitives.
     Surfaces(Range<usize>),
 }
 
@@ -710,12 +724,16 @@ impl From<PolychromeSprite> for Primitive {
     }
 }
 
+/// A native surface primitive for rendering platform-specific content (e.g. video).
 #[derive(Clone, Debug)]
-#[allow(missing_docs)]
 pub struct PaintSurface {
+    /// The draw order for depth sorting.
     pub order: DrawOrder,
+    /// The bounds of the surface in scaled pixels.
     pub bounds: Bounds<ScaledPixels>,
+    /// The content mask applied to this surface.
     pub content_mask: ContentMask<ScaledPixels>,
+    /// The CoreVideo pixel buffer backing this surface.
     #[cfg(target_os = "macos")]
     pub image_buffer: core_video::pixel_buffer::CVPixelBuffer,
 }
