@@ -69,14 +69,14 @@ static mut APP_DELEGATE_CLASS: *const Class = ptr::null();
 unsafe fn build_classes() {
     unsafe {
         APP_CLASS = {
-            let mut decl = ClassDecl::new("GPUIApplication", class!(NSApplication)).unwrap();
+            let mut decl = ClassDecl::new("MozuiApplication", class!(NSApplication)).unwrap();
             decl.add_ivar::<*mut c_void>(MAC_PLATFORM_IVAR);
             decl.register()
         }
     };
     unsafe {
         APP_DELEGATE_CLASS = unsafe {
-            let mut decl = ClassDecl::new("GPUIApplicationDelegate", class!(NSResponder)).unwrap();
+            let mut decl = ClassDecl::new("MozuiApplicationDelegate", class!(NSResponder)).unwrap();
             decl.add_ivar::<*mut c_void>(MAC_PLATFORM_IVAR);
             decl.add_method(
                 sel!(applicationWillFinishLaunching:),
@@ -95,7 +95,7 @@ unsafe fn build_classes() {
                 will_terminate as extern "C" fn(&mut Object, Sel, id),
             );
             decl.add_method(
-                sel!(handleGPUIMenuItem:),
+                sel!(handleMozuiMenuItem:),
                 handle_menu_item as extern "C" fn(&mut Object, Sel, id),
             );
             // Add menu item handlers so that OS save panels have the correct key commands
@@ -329,9 +329,9 @@ impl MacPlatform {
                         Some(crate::OsAction::SelectAll) => selector("selectAll:"),
                         // "undo:" and "redo:" are always disabled in our case, as
                         // we don't have a NSTextView/NSTextField to enable them on.
-                        Some(crate::OsAction::Undo) => selector("handleGPUIMenuItem:"),
-                        Some(crate::OsAction::Redo) => selector("handleGPUIMenuItem:"),
-                        None => selector("handleGPUIMenuItem:"),
+                        Some(crate::OsAction::Undo) => selector("handleMozuiMenuItem:"),
+                        Some(crate::OsAction::Redo) => selector("handleMozuiMenuItem:"),
+                        None => selector("handleMozuiMenuItem:"),
                     };
 
                     let item;

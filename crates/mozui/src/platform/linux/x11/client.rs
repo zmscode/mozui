@@ -76,7 +76,7 @@ pub(crate) const XINPUT_ALL_DEVICES: xinput::DeviceId = 0;
 /// terminology is both archaic and unclear.
 pub(crate) const XINPUT_ALL_DEVICE_GROUPS: xinput::DeviceId = 1;
 
-const GPUI_X11_SCALE_FACTOR_ENV: &str = "GPUI_X11_SCALE_FACTOR";
+const X11_SCALE_FACTOR_ENV: &str = "X11_SCALE_FACTOR";
 
 pub(crate) struct WindowRef {
     window: X11WindowStatePtr,
@@ -2428,7 +2428,7 @@ fn get_scale_factor(
     resource_database: &Database,
     screen_index: usize,
 ) -> f32 {
-    let env_dpi = std::env::var(GPUI_X11_SCALE_FACTOR_ENV)
+    let env_dpi = std::env::var(X11_SCALE_FACTOR_ENV)
         .ok()
         .map(|var| {
             if var.to_lowercase() == "randr" {
@@ -2439,7 +2439,7 @@ fn get_scale_factor(
                 } else {
                     panic!(
                         "`{}` must be a positive normal number or `randr`. Got `{}`",
-                        GPUI_X11_SCALE_FACTOR_ENV, var
+                        X11_SCALE_FACTOR_ENV, var
                     );
                 }
             } else if var.is_empty() {
@@ -2447,7 +2447,7 @@ fn get_scale_factor(
             } else {
                 panic!(
                     "`{}` must be a positive number or `randr`. Got `{}`",
-                    GPUI_X11_SCALE_FACTOR_ENV, var
+                    X11_SCALE_FACTOR_ENV, var
                 );
             }
         })
@@ -2457,7 +2457,7 @@ fn get_scale_factor(
         DpiMode::Scale(scale) => {
             log::info!(
                 "Using scale factor from {}: {}",
-                GPUI_X11_SCALE_FACTOR_ENV,
+                X11_SCALE_FACTOR_ENV,
                 scale
             );
             return scale;
@@ -2466,7 +2466,7 @@ fn get_scale_factor(
             if let Some(scale) = get_randr_scale_factor(connection, screen_index) {
                 log::info!(
                     "Using RandR scale factor from {}=randr: {}",
-                    GPUI_X11_SCALE_FACTOR_ENV,
+                    X11_SCALE_FACTOR_ENV,
                     scale
                 );
                 return scale;

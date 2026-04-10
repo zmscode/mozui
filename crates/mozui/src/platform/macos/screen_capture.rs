@@ -286,7 +286,7 @@ pub(crate) fn get_sources() -> oneshot::Receiver<Result<Vec<Rc<dyn ScreenCapture
 
 #[ctor]
 unsafe fn build_classes() {
-    let mut decl = ClassDecl::new("GPUIStreamDelegate", class!(NSObject)).unwrap();
+    let mut decl = ClassDecl::new("MozuiStreamDelegate", class!(NSObject)).unwrap();
     unsafe {
         decl.add_method(
             sel!(outputVideoEffectDidStartForStream:),
@@ -302,7 +302,7 @@ unsafe fn build_classes() {
         );
         DELEGATE_CLASS = decl.register();
 
-        let mut decl = ClassDecl::new("GPUIStreamOutput", class!(NSObject)).unwrap();
+        let mut decl = ClassDecl::new("MozuiStreamOutput", class!(NSObject)).unwrap();
         decl.add_method(
             sel!(stream:didOutputSampleBuffer:ofType:),
             stream_did_output_sample_buffer_of_type

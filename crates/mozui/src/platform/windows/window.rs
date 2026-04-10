@@ -220,8 +220,8 @@ impl WindowsWindowState {
 
     /// get the logical size of the app's drawable area.
     ///
-    /// Currently, GPUI uses the logical size of the app to handle mouse interactions (such as
-    /// whether the mouse collides with other elements of GPUI).
+    /// Currently, mozui uses the logical size of the app to handle mouse interactions (such as
+    /// whether the mouse collides with other elements of mozui).
     fn content_size(&self) -> Size<Pixels> {
         self.logical_size.get()
     }
@@ -578,8 +578,8 @@ impl PlatformWindow for WindowsWindow {
 
     /// get the logical size of the app's drawable area.
     ///
-    /// Currently, GPUI uses the logical size of the app to handle mouse interactions (such as
-    /// whether the mouse collides with other elements of GPUI).
+    /// Currently, mozui uses the logical size of the app to handle mouse interactions (such as
+    /// whether the mouse collides with other elements of mozui).
     fn content_size(&self) -> Size<Pixels> {
         self.state.content_size()
     }
@@ -1239,7 +1239,7 @@ enum WindowOpenState {
     Windowed,
 }
 
-const WINDOW_CLASS_NAME: PCWSTR = w!("Zed::Window");
+const WINDOW_CLASS_NAME: PCWSTR = w!("Mozui::Window");
 
 fn register_window_class(icon_handle: HICON) {
     static ONCE: Once = Once::new();

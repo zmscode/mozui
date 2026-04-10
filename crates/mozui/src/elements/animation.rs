@@ -87,7 +87,7 @@ pub trait AnimationExt {
 
 impl<E: IntoElement + 'static> AnimationExt for E {}
 
-/// A GPUI element that applies an animation to another element
+/// A mozui element that applies an animation to another element
 pub struct AnimationElement<E> {
     id: ElementId,
     element: Option<E>,

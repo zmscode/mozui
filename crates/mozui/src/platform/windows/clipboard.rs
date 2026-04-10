@@ -25,9 +25,9 @@ use crate::{
 const DRAGDROP_GET_FILES_COUNT: u32 = 0xFFFFFFFF;
 
 static CLIPBOARD_HASH_FORMAT: LazyLock<u32> =
-    LazyLock::new(|| register_clipboard_format(windows::core::w!("GPUI internal text hash")));
+    LazyLock::new(|| register_clipboard_format(windows::core::w!("mozui internal text hash")));
 static CLIPBOARD_METADATA_FORMAT: LazyLock<u32> =
-    LazyLock::new(|| register_clipboard_format(windows::core::w!("GPUI internal metadata")));
+    LazyLock::new(|| register_clipboard_format(windows::core::w!("mozui internal metadata")));
 static CLIPBOARD_SVG_FORMAT: LazyLock<u32> =
     LazyLock::new(|| register_clipboard_format(windows::core::w!("image/svg+xml")));
 static CLIPBOARD_GIF_FORMAT: LazyLock<u32> =
@@ -214,7 +214,7 @@ fn write_image(item: &Image) -> Result<()> {
 }
 
 fn convert_to_png(bytes: &[u8], format: ImageFormat) -> Option<Vec<u8>> {
-    let img_format = gpui_to_image_format(format)?;
+    let img_format = mozui_to_image_format(format)?;
     let image = image::load_from_memory_with_format(bytes, img_format)
         .map_err(|e| log::warn!("Failed to decode image for PNG conversion: {e}"))
         .ok()?;
@@ -319,7 +319,7 @@ fn log_unsupported_clipboard_formats() {
     }
 }
 
-fn gpui_to_image_format(value: ImageFormat) -> Option<image::ImageFormat> {
+fn mozui_to_image_format(value: ImageFormat) -> Option<image::ImageFormat> {
     match value {
         ImageFormat::Png => Some(image::ImageFormat::Png),
         ImageFormat::Jpeg => Some(image::ImageFormat::Jpeg),

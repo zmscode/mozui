@@ -9,7 +9,7 @@ use crate::PlatformKeyboardMapper;
 
 /// This is a helper trait so that we can simplify the implementation of some functions
 pub trait AsKeystroke {
-    /// Returns the GPUI representation of the keystroke.
+    /// Returns the mozui representation of the keystroke.
     fn as_keystroke(&self) -> &Keystroke;
 }
 
@@ -35,7 +35,7 @@ pub struct Keystroke {
 /// Represents a keystroke that can be used in keybindings and displayed to the user.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct KeybindingKeystroke {
-    /// The GPUI representation of the keystroke.
+    /// The mozui representation of the keystroke.
     inner: Keystroke,
     /// The modifiers to display.
     #[cfg(target_os = "windows")]
@@ -45,7 +45,7 @@ pub struct KeybindingKeystroke {
     display_key: String,
 }
 
-/// Error type for `Keystroke::parse`. This is used instead of `anyhow::Error` so that Zed can use
+/// Error type for `Keystroke::parse`. This is used instead of `anyhow::Error` so that the consumer can use
 /// markdown to display it.
 #[derive(Debug)]
 pub struct InvalidKeystrokeError {
@@ -301,7 +301,7 @@ impl KeybindingKeystroke {
         }
     }
 
-    /// Returns the GPUI representation of the keystroke.
+    /// Returns the mozui representation of the keystroke.
     pub fn inner(&self) -> &Keystroke {
         &self.inner
     }
@@ -309,7 +309,7 @@ impl KeybindingKeystroke {
     /// Returns the modifiers.
     ///
     /// Platform-specific behavior:
-    /// - On macOS and Linux, this modifiers is the same as `inner.modifiers`, which is the GPUI representation of the keystroke.
+    /// - On macOS and Linux, this modifiers is the same as `inner.modifiers`, which is the mozui representation of the keystroke.
     /// - On Windows, this modifiers is the display modifiers, for example, a `ctrl-@` keystroke will have `inner.modifiers` as
     /// `Modifiers::control()` and `display_modifiers` as `Modifiers::control_shift()`.
     pub fn modifiers(&self) -> &Modifiers {
@@ -326,7 +326,7 @@ impl KeybindingKeystroke {
     /// Returns the key.
     ///
     /// Platform-specific behavior:
-    /// - On macOS and Linux, this key is the same as `inner.key`, which is the GPUI representation of the keystroke.
+    /// - On macOS and Linux, this key is the same as `inner.key`, which is the mozui representation of the keystroke.
     /// - On Windows, this key is the display key, for example, a `ctrl-@` keystroke will have `inner.key` as `@` and `display_key` as `2`.
     pub fn key(&self) -> &str {
         #[cfg(target_os = "windows")]

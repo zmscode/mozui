@@ -136,7 +136,7 @@ impl WebWindowInner {
             event.prevent_default();
             this.input_element.focus().ok();
 
-            let button = dom_mouse_button_to_gpui(event.button());
+            let button = dom_mouse_button_to_mozui(event.button());
             let position = pointer_position_in_element(&event);
             let modifiers = modifiers_from_mouse_event(&event, this.is_mac);
             let time = js_sys::Date::now();
@@ -166,7 +166,7 @@ impl WebWindowInner {
             let event: web_sys::PointerEvent = event.unchecked_into();
             event.prevent_default();
 
-            let button = dom_mouse_button_to_gpui(event.button());
+            let button = dom_mouse_button_to_mozui(event.button());
             let position = pointer_position_in_element(&event);
             let modifiers = modifiers_from_mouse_event(&event, this.is_mac);
 
@@ -345,7 +345,7 @@ impl WebWindowInner {
                 capslock,
             }));
 
-            let key = dom_key_to_gpui_key(&event);
+            let key = dom_key_to_mozui_key(&event);
 
             if is_modifier_only_key(&key) {
                 return;
@@ -407,7 +407,7 @@ impl WebWindowInner {
                 capslock,
             }));
 
-            let key = dom_key_to_gpui_key(&event);
+            let key = dom_key_to_mozui_key(&event);
 
             if is_modifier_only_key(&key) {
                 return;
@@ -517,7 +517,7 @@ impl WebWindowInner {
     }
 }
 
-fn dom_key_to_gpui_key(event: &web_sys::KeyboardEvent) -> String {
+fn dom_key_to_mozui_key(event: &web_sys::KeyboardEvent) -> String {
     let key = event.key();
     match key.as_str() {
         "Enter" => "enter".to_string(),
@@ -553,7 +553,7 @@ fn dom_key_to_gpui_key(event: &web_sys::KeyboardEvent) -> String {
     }
 }
 
-fn dom_mouse_button_to_gpui(button: i16) -> MouseButton {
+fn dom_mouse_button_to_mozui(button: i16) -> MouseButton {
     match button {
         0 => MouseButton::Left,
         1 => MouseButton::Middle,
@@ -628,18 +628,18 @@ fn is_modifier_only_key(key: &str) -> bool {
 
 fn compute_key_char(
     event: &web_sys::KeyboardEvent,
-    gpui_key: &str,
+    mozui_key: &str,
     modifiers: &Modifiers,
 ) -> Option<String> {
     if modifiers.platform || modifiers.control {
         return None;
     }
 
-    if is_modifier_only_key(gpui_key) {
+    if is_modifier_only_key(mozui_key) {
         return None;
     }
 
-    if gpui_key == "space" {
+    if mozui_key == "space" {
         return Some(" ".to_string());
     }
 

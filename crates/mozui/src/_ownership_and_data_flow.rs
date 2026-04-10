@@ -1,4 +1,4 @@
-//! In GPUI, every model or view in the application is actually owned by a single top-level object called the `App`. When a new entity or view is created (referred to collectively as _entities_), the application is given ownership of their state to enable their participation in a variety of app services and interaction with other entities.
+//! In mozui, every model or view in the application is actually owned by a single top-level object called the `App`. When a new entity or view is created (referred to collectively as _entities_), the application is given ownership of their state to enable their participation in a variety of app services and interaction with other entities.
 //!
 //! To illustrate, consider the trivial app below. We start the app by calling `run` with a callback, which is passed a reference to the `App` that owns all the state for the application. This `App` is our gateway to all application-level services, such as opening windows, presenting dialogs, etc. It also has an `insert_entity` method, which is called below to create an entity and give ownership of it to the application.
 //!
@@ -87,7 +87,7 @@
 //!
 //! After updating the first counter, it can be noted that the observing counter's state is maintained according to our subscription.
 //!
-//! In addition to `observe` and `notify`, which indicate that an entity's state has changed, GPUI also offers `subscribe` and `emit`, which enables entities to emit typed events. To opt into this system, the emitting object must implement the `EventEmitter` trait.
+//! In addition to `observe` and `notify`, which indicate that an entity's state has changed, mozui also offers `subscribe` and `emit`, which enables entities to emit typed events. To opt into this system, the emitting object must implement the `EventEmitter` trait.
 //!
 //! Let's introduce a new event type called `CounterChangeEvent`, then indicate that `Counter` can emit this type of event:
 //!

@@ -64,7 +64,7 @@ pub use prompts::*;
 pub const DEFAULT_WINDOW_SIZE: Size<Pixels> = size(px(1536.), px(1095.));
 
 /// A 6:5 aspect ratio minimum window size to be used for functional,
-/// additional-to-main-Zed windows, like the settings and rules library windows.
+/// additional windows, like the settings and rules library windows.
 pub const DEFAULT_ADDITIONAL_WINDOW_SIZE: Size<Pixels> = Size {
     width: Pixels(900.),
     height: Pixels(750.),
@@ -3805,7 +3805,7 @@ impl Window {
     }
 
     /// Obtain the bounds computed for the given LayoutId relative to the window. This method will usually be invoked by
-    /// GPUI itself automatically in order to pass your element its `Bounds` automatically.
+    /// mozui itself automatically in order to pass your element its `Bounds` automatically.
     ///
     /// This method should only be called as part of element drawing.
     pub fn layout_bounds(&mut self, layout_id: LayoutId) -> Bounds<Pixels> {
@@ -4746,7 +4746,7 @@ impl Window {
     {
         let prompt_builder = cx.prompt_builder.take();
         let Some(prompt_builder) = prompt_builder else {
-            unreachable!("Re-entrant window prompting is not supported by GPUI");
+            unreachable!("Re-entrant window prompting is not supported by mozui");
         };
 
         let answers = answers

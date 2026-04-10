@@ -122,7 +122,7 @@ impl VirtualListScrollHandle {
 
 /// Create a [`VirtualList`] in vertical direction.
 ///
-/// This is like `uniform_list` in GPUI, but support two axis.
+/// This is like `uniform_list` in mozui, but support two axis.
 ///
 /// The `item_sizes` is the size of each column,
 /// only the `height` is used, `width` is ignored and VirtualList will measure the first item width.

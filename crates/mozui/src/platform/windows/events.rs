@@ -20,14 +20,14 @@ use windows::{
 use crate::*;
 use crate::*;
 
-pub(crate) const WM_GPUI_CURSOR_STYLE_CHANGED: u32 = WM_USER + 1;
-pub(crate) const WM_GPUI_CLOSE_ONE_WINDOW: u32 = WM_USER + 2;
-pub(crate) const WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD: u32 = WM_USER + 3;
-pub(crate) const WM_GPUI_DOCK_MENU_ACTION: u32 = WM_USER + 4;
-pub(crate) const WM_GPUI_FORCE_UPDATE_WINDOW: u32 = WM_USER + 5;
-pub(crate) const WM_GPUI_KEYBOARD_LAYOUT_CHANGED: u32 = WM_USER + 6;
-pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
-pub(crate) const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
+pub(crate) const WM_MOZUI_CURSOR_STYLE_CHANGED: u32 = WM_USER + 1;
+pub(crate) const WM_MOZUI_CLOSE_ONE_WINDOW: u32 = WM_USER + 2;
+pub(crate) const WM_MOZUI_TASK_DISPATCHED_ON_MAIN_THREAD: u32 = WM_USER + 3;
+pub(crate) const WM_MOZUI_DOCK_MENU_ACTION: u32 = WM_USER + 4;
+pub(crate) const WM_MOZUI_FORCE_UPDATE_WINDOW: u32 = WM_USER + 5;
+pub(crate) const WM_MOZUI_KEYBOARD_LAYOUT_CHANGED: u32 = WM_USER + 6;
+pub(crate) const WM_MOZUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
+pub(crate) const WM_MOZUI_KEYDOWN: u32 = WM_USER + 8;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
@@ -100,7 +100,7 @@ impl WindowsWindowInner {
             WM_MOUSEHWHEEL => self.handle_mouse_horizontal_wheel_msg(handle, wparam, lparam),
             WM_SYSKEYUP => self.handle_syskeyup_msg(wparam, lparam),
             WM_KEYUP => self.handle_keyup_msg(wparam, lparam),
-            WM_GPUI_KEYDOWN => self.handle_keydown_msg(wparam, lparam),
+            WM_MOZUI_KEYDOWN => self.handle_keydown_msg(wparam, lparam),
             WM_CHAR => self.handle_char_msg(wparam),
             WM_IME_STARTCOMPOSITION => self.handle_ime_position(handle),
             WM_IME_COMPOSITION => self.handle_ime_composition(handle, lparam),
@@ -108,9 +108,9 @@ impl WindowsWindowInner {
             WM_SETTINGCHANGE => self.handle_system_settings_changed(handle, wparam, lparam),
             WM_INPUTLANGCHANGE => self.handle_input_language_changed(),
             WM_SHOWWINDOW => self.handle_window_visibility_changed(handle, wparam),
-            WM_GPUI_CURSOR_STYLE_CHANGED => self.handle_cursor_changed(lparam),
-            WM_GPUI_FORCE_UPDATE_WINDOW => self.draw_window(handle, true),
-            WM_GPUI_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
+            WM_MOZUI_CURSOR_STYLE_CHANGED => self.handle_cursor_changed(lparam),
+            WM_MOZUI_FORCE_UPDATE_WINDOW => self.draw_window(handle, true),
+            WM_MOZUI_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
             DM_POINTERHITTEST => self.handle_dm_pointer_hit_test(wparam),
             _ => None,
         };
@@ -286,7 +286,7 @@ impl WindowsWindowInner {
         unsafe {
             PostMessageW(
                 Some(self.platform_window_handle),
-                WM_GPUI_CLOSE_ONE_WINDOW,
+                WM_MOZUI_CLOSE_ONE_WINDOW,
                 WPARAM(self.validation_number),
                 LPARAM(handle.0 as isize),
             )
@@ -1114,7 +1114,7 @@ impl WindowsWindowInner {
         unsafe {
             PostMessageW(
                 Some(self.platform_window_handle),
-                WM_GPUI_KEYBOARD_LAYOUT_CHANGED,
+                WM_MOZUI_KEYBOARD_LAYOUT_CHANGED,
                 WPARAM(self.validation_number),
                 LPARAM(0),
             )

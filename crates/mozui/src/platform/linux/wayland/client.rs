@@ -292,7 +292,7 @@ pub(crate) enum PendingActivation {
 }
 
 /// This struct is required to conform to Rust's orphan rules, so we can dispatch on the state but hand the
-/// window to GPUI.
+/// window to mozui.
 #[derive(Clone)]
 pub struct WaylandClientStatePtr(Weak<RefCell<WaylandClientState>>);
 
@@ -1624,7 +1624,7 @@ impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for WaylandClientStatePtr {
                 if let Some(commit_text) = text {
                     drop(state);
                     // IBus Intercepts keys like `a`, `b`, but those keys are needed for vim mode.
-                    // We should only send ASCII characters to Zed, otherwise a user could remap a letter like `か` or `相`.
+                    // We should only send ASCII characters, otherwise a user could remap a letter like `か` or `相`.
                     if commit_text.len() == 1 {
                         window.handle_input(PlatformInput::KeyDown(KeyDownEvent {
                             keystroke: Keystroke {
@@ -1676,7 +1676,7 @@ impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for WaylandClientStatePtr {
     }
 }
 
-fn linux_button_to_gpui(button: u32) -> Option<MouseButton> {
+fn linux_button_to_mozui(button: u32) -> Option<MouseButton> {
     // These values are coming from <linux/input-event-codes.h>.
     const BTN_LEFT: u32 = 0x110;
     const BTN_RIGHT: u32 = 0x111;
@@ -1823,7 +1823,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                 ..
             } => {
                 state.serial_tracker.update(SerialKind::MousePress, serial);
-                let button = linux_button_to_gpui(button);
+                let button = linux_button_to_mozui(button);
                 let Some(button) = button else { return };
                 if state.mouse_focused_window.is_none() {
                     return;

@@ -101,7 +101,7 @@ impl ContextLessSummary for NoSummary {
 /// You can use dimensions to seek to a specific location in the [`SumTree`]
 ///
 /// # Example:
-/// Zed's rope has a `TextSummary` type that summarizes lines, characters, and bytes.
+/// The rope has a `TextSummary` type that summarizes lines, characters, and bytes.
 /// Each of these are different dimensions we may want to seek to
 pub trait Dimension<'a, S: Summary>: Clone {
     /// Return the zero value of this dimension.

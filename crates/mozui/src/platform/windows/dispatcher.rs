@@ -25,7 +25,7 @@ use crate::{
     GLOBAL_THREAD_TIMINGS, PlatformDispatcher, Priority, PriorityQueueSender, RunnableVariant,
     TaskTiming, ThreadTaskTimings, TimerResolutionGuard,
 };
-use crate::{HWND, SafeHwnd, WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD};
+use crate::{HWND, SafeHwnd, WM_MOZUI_TASK_DISPATCHED_ON_MAIN_THREAD};
 
 pub(crate) struct WindowsDispatcher {
     pub(crate) wake_posted: AtomicBool,
@@ -132,7 +132,7 @@ impl PlatformDispatcher for WindowsDispatcher {
                     unsafe {
                         PostMessageW(
                             Some(self.platform_window_handle.as_raw()),
-                            WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD,
+                            WM_MOZUI_TASK_DISPATCHED_ON_MAIN_THREAD,
                             WPARAM(self.validation_number),
                             LPARAM(0),
                         )

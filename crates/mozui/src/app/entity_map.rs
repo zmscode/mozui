@@ -409,7 +409,7 @@ impl std::fmt::Debug for AnyEntity {
 }
 
 /// A strong, well-typed reference to a struct which is managed
-/// by GPUI
+/// by mozui
 #[derive(Deref, DerefMut)]
 pub struct Entity<T> {
     #[deref]
@@ -1166,7 +1166,7 @@ impl fmt::Debug for BacktraceFormatter {
                         strip = false;
                         continue;
                     }
-                    "zed::main" => {
+                    "mozui::main" => {
                         strip = true;
                         f.frame().backtrace_frame(frame)?;
                     }

@@ -1,13 +1,13 @@
-//! Div is the central, reusable element that most GPUI trees will be built from.
+//! Div is the central, reusable element that most mozui trees will be built from.
 //! It functions as a container for other elements, and provides a number of
 //! useful features for laying out and styling its children as well as binding
 //! mouse events and action handlers. It is meant to be similar to the HTML `<div>`
-//! element, but for GPUI.
+//! element, but for mozui.
 //!
 //! # Build your own div
 //!
-//! GPUI does not directly provide APIs for stateful, multi step events like `click`
-//! and `drag`. We want GPUI users to be able to build their own abstractions for
+//! mozui does not directly provide APIs for stateful, multi step events like `click`
+//! and `drag`. We want mozui users to be able to build their own abstractions for
 //! their own needs. However, as a UI framework, we're also obliged to provide some
 //! building blocks to make the process of building your own elements easier.
 //! For this we have the [`Interactivity`] and the [`StyleRefinement`] structs, as well
@@ -671,7 +671,7 @@ impl Interactivity {
     }
 }
 
-/// A trait for elements that want to use the standard GPUI event handlers that don't
+/// A trait for elements that want to use the standard mozui event handlers that don't
 /// require any state.
 pub trait InteractiveElement: Sized {
     /// Retrieve the interactivity state associated with this element
@@ -1172,7 +1172,7 @@ pub trait InteractiveElement: Sized {
     }
 }
 
-/// A trait for elements that want to use the standard GPUI interactivity features
+/// A trait for elements that want to use the standard mozui interactivity features
 /// that require state.
 pub trait StatefulInteractiveElement: InteractiveElement {
     /// Set this element to focusable.
@@ -1385,7 +1385,7 @@ pub fn div() -> Div {
     }
 }
 
-/// A [`Div`] element, the all-in-one element for building complex UIs in GPUI
+/// A [`Div`] element, the all-in-one element for building complex UIs in mozui
 pub struct Div {
     interactivity: Interactivity,
     children: SmallVec<[StackSafe<AnyElement>; 2]>,

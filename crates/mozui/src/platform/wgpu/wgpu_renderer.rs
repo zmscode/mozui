@@ -616,7 +616,7 @@ impl WgpuRenderer {
         dual_source_blending: bool,
     ) -> WgpuPipelines {
         // Diagnostic guard: verify the device actually has
-        // DUAL_SOURCE_BLENDING. We have a crash report (ZED-5G1) where a
+        // DUAL_SOURCE_BLENDING. We have a crash report where a
         // feature mismatch caused a wgpu-hal abort, but we haven't
         // identified the code path that produces the mismatch. This
         // guard prevents the crash and logs more evidence.
@@ -639,7 +639,7 @@ impl WgpuRenderer {
 
         let base_shader_source = include_str!("shaders.wgsl");
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("gpui_shaders"),
+            label: Some("mozui_shaders"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(base_shader_source)),
         });
 
@@ -649,7 +649,7 @@ impl WgpuRenderer {
                 "enable dual_source_blending;\n{base_shader_source}\n{subpixel_shader_source}"
             );
             Some(device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("gpui_subpixel_shaders"),
+                label: Some("mozui_subpixel_shaders"),
                 source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(combined)),
             }))
         } else {
@@ -1857,20 +1857,20 @@ impl RenderingParameters {
             .find(|&n| format_features.flags.sample_count_supported(n))
             .unwrap_or(1);
 
-        let gamma = env::var("ZED_FONTS_GAMMA")
+        let gamma = env::var("FONT_GAMMA")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(1.8_f32)
             .clamp(1.0, 2.2);
         let gamma_ratios = get_gamma_correction_ratios(gamma);
 
-        let grayscale_enhanced_contrast = env::var("ZED_FONTS_GRAYSCALE_ENHANCED_CONTRAST")
+        let grayscale_enhanced_contrast = env::var("FONT_GRAYSCALE_CONTRAST")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(1.0_f32)
             .max(0.0);
 
-        let subpixel_enhanced_contrast = env::var("ZED_FONTS_SUBPIXEL_ENHANCED_CONTRAST")
+        let subpixel_enhanced_contrast = env::var("FONT_SUBPIXEL_CONTRAST")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(0.5_f32)

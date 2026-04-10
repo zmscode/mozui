@@ -1,19 +1,19 @@
-//! Test support for GPUI.
+//! Test support for mozui.
 //!
-//! GPUI provides first-class support for testing, which includes a macro to run test that rely on having a context,
+//! mozui provides first-class support for testing, which includes a macro to run test that rely on having a context,
 //! and a test implementation of the `ForegroundExecutor` and `BackgroundExecutor` which ensure that your tests run
 //! deterministically even in the face of arbitrary parallelism.
 //!
 //! The output of the `mozui::test` macro is understood by other rust test runners, so you can use it with `cargo test`
 //! or `cargo-nextest`, or another runner of your choice.
 //!
-//! To make it possible to test collaborative user interfaces (like Zed) you can ask for as many different contexts
+//! To make it possible to test collaborative user interfaces (like a collaborative editor) you can ask for as many different contexts
 //! as you need.
 //!
 //! ## Example
 //!
 //! ```
-//! use gpui;
+//! use mozui;
 //!
 //! #[mozui::test]
 //! async fn test_example(cx: &TestAppContext) {

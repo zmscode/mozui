@@ -22,7 +22,7 @@ mod bounds_tree;
 /// Standard collection types with FxHash defaults.
 pub mod collections;
 mod color;
-/// The default colors used by GPUI.
+/// The default colors used by mozui.
 pub mod colors;
 mod element;
 mod elements;
@@ -70,7 +70,7 @@ pub use proptest;
 #[cfg(doc)]
 pub mod _ownership_and_data_flow;
 
-/// Do not touch, here be dragons for use by gpui_macros and such.
+/// Do not touch, here be dragons for use by mozui_macros and such.
 #[doc(hidden)]
 pub mod private {
     pub use anyhow;
@@ -81,7 +81,7 @@ pub mod private {
 }
 
 mod seal {
-    /// A mechanism for restricting implementations of a trait to only those in GPUI.
+    /// A mechanism for restricting implementations of a trait to only those in mozui.
     /// See: <https://predr.ag/blog/definitive-guide-to-sealed-traits-in-rust/>
     pub trait Sealed {}
 }
@@ -132,7 +132,7 @@ pub use util::{FutureExt, Timeout};
 pub use view::*;
 pub use window::*;
 
-/// The context trait, allows the different contexts in GPUI to be used
+/// The context trait, allows the different contexts in mozui to be used
 /// interchangeably for certain operations.
 pub trait AppContext {
     /// Create a new entity in the app context.
@@ -210,7 +210,7 @@ impl<T: 'static> Reservation<T> {
     }
 }
 
-/// This trait is used for the different visual contexts in GPUI that
+/// This trait is used for the different visual contexts in mozui that
 /// require a window to be present.
 pub trait VisualContext: AppContext {
     /// The result type for window operations.
@@ -246,7 +246,7 @@ pub trait VisualContext: AppContext {
         V: Focusable;
 }
 
-/// A trait for tying together the types of a GPUI entity and the events it can
+/// A trait for tying together the types of a mozui entity and the events it can
 /// emit.
 pub trait EventEmitter<E: Any>: 'static {}
 
@@ -293,7 +293,7 @@ where
     }
 }
 
-/// Information about the GPU GPUI is running on.
+/// Information about the GPU mozui is running on.
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct GpuSpecs {
     /// Whether the GPU is really a fake (like `llvmpipe`) running on the CPU.

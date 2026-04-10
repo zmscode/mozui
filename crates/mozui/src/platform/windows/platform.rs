@@ -345,7 +345,7 @@ fn translate_accelerator(msg: &MSG) -> Option<()> {
     let result = unsafe {
         SendMessageW(
             msg.hwnd,
-            WM_GPUI_KEYDOWN,
+            WM_MOZUI_KEYDOWN,
             Some(msg.wParam),
             Some(msg.lParam),
         )
@@ -663,7 +663,7 @@ impl Platform for WindowsPlatform {
         let hcursor = load_cursor(style);
         if self.inner.state.current_cursor.get().map(|c| c.0) != hcursor.map(|c| c.0) {
             self.post_message(
-                WM_GPUI_CURSOR_STYLE_CHANGED,
+                WM_MOZUI_CURSOR_STYLE_CHANGED,
                 WPARAM(0),
                 LPARAM(hcursor.map_or(0, |c| c.0 as isize)),
             );
@@ -781,7 +781,7 @@ impl Platform for WindowsPlatform {
         unsafe {
             PostMessageW(
                 Some(self.handle),
-                WM_GPUI_DOCK_MENU_ACTION,
+                WM_MOZUI_DOCK_MENU_ACTION,
                 WPARAM(self.inner.validation_number),
                 LPARAM(action as isize),
             )
@@ -838,11 +838,11 @@ impl WindowsPlatformInner {
         lparam: LPARAM,
     ) -> LRESULT {
         let handled = match msg {
-            WM_GPUI_CLOSE_ONE_WINDOW
-            | WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD
-            | WM_GPUI_DOCK_MENU_ACTION
-            | WM_GPUI_KEYBOARD_LAYOUT_CHANGED
-            | WM_GPUI_GPU_DEVICE_LOST => self.handle_gpui_events(msg, wparam, lparam),
+            WM_MOZUI_CLOSE_ONE_WINDOW
+            | WM_MOZUI_TASK_DISPATCHED_ON_MAIN_THREAD
+            | WM_MOZUI_DOCK_MENU_ACTION
+            | WM_MOZUI_KEYBOARD_LAYOUT_CHANGED
+            | WM_MOZUI_GPU_DEVICE_LOST => self.handle_mozui_events(msg, wparam, lparam),
             _ => None,
         };
         if let Some(result) = handled {
@@ -852,20 +852,20 @@ impl WindowsPlatformInner {
         }
     }
 
-    fn handle_gpui_events(&self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+    fn handle_mozui_events(&self, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
         if wparam.0 != self.validation_number {
             log::error!("Wrong validation number while processing message: {message}");
             return None;
         }
         match message {
-            WM_GPUI_CLOSE_ONE_WINDOW => {
+            WM_MOZUI_CLOSE_ONE_WINDOW => {
                 self.close_one_window(HWND(lparam.0 as _));
                 Some(0)
             }
-            WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD => self.run_foreground_task(),
-            WM_GPUI_DOCK_MENU_ACTION => self.handle_dock_action_event(lparam.0 as _),
-            WM_GPUI_KEYBOARD_LAYOUT_CHANGED => self.handle_keyboard_layout_change(),
-            WM_GPUI_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
+            WM_MOZUI_TASK_DISPATCHED_ON_MAIN_THREAD => self.run_foreground_task(),
+            WM_MOZUI_DOCK_MENU_ACTION => self.handle_dock_action_event(lparam.0 as _),
+            WM_MOZUI_KEYBOARD_LAYOUT_CHANGED => self.handle_keyboard_layout_change(),
+            WM_MOZUI_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
             _ => unreachable!(),
         }
     }
@@ -894,8 +894,8 @@ impl WindowsPlatformInner {
             'timeout_loop: loop {
                 if start.elapsed().as_millis() >= MAIN_TASK_TIMEOUT {
                     log::debug!("foreground task timeout reached");
-                    // we spent our budget on gpui tasks, we likely have a lot of work queued so drain system events first to stay responsive
-                    // then quit out of foreground work to allow us to process other gpui events first before returning back to foreground task work
+                    // we spent our budget on mozui tasks, we likely have a lot of work queued so drain system events first to stay responsive
+                    // then quit out of foreground work to allow us to process other mozui events first before returning back to foreground task work
                     // if we don't we might not for example process window quit events
                     let mut msg = MSG::default();
                     let process_message = |msg: &_| {
@@ -915,11 +915,11 @@ impl WindowsPlatformInner {
                     while peek_msg(&mut msg, PM_QS_INPUT) {
                         process_message(&msg);
                     }
-                    // Allow the main loop to process other gpui events before going back into `run_foreground_task`
+                    // Allow the main loop to process other mozui events before going back into `run_foreground_task`
                     unsafe {
                         if let Err(_) = PostMessageW(
                             Some(self.dispatcher.platform_window_handle.as_raw()),
-                            WM_GPUI_TASK_DISPATCHED_ON_MAIN_THREAD,
+                            WM_MOZUI_TASK_DISPATCHED_ON_MAIN_THREAD,
                             WPARAM(self.validation_number),
                             LPARAM(0),
                         ) {
@@ -1238,7 +1238,7 @@ fn handle_gpu_device_lost(
     unsafe {
         SendMessageW(
             platform_window,
-            WM_GPUI_GPU_DEVICE_LOST,
+            WM_MOZUI_GPU_DEVICE_LOST,
             Some(WPARAM(validation_number)),
             Some(lparam),
         );
@@ -1252,7 +1252,7 @@ fn handle_gpu_device_lost(
             unsafe {
                 SendMessageW(
                     window.as_raw(),
-                    WM_GPUI_GPU_DEVICE_LOST,
+                    WM_MOZUI_GPU_DEVICE_LOST,
                     Some(WPARAM(validation_number)),
                     Some(lparam),
                 );
@@ -1263,7 +1263,7 @@ fn handle_gpu_device_lost(
             unsafe {
                 SendMessageW(
                     window.as_raw(),
-                    WM_GPUI_FORCE_UPDATE_WINDOW,
+                    WM_MOZUI_FORCE_UPDATE_WINDOW,
                     Some(WPARAM(validation_number)),
                     None,
                 );
@@ -1273,7 +1273,7 @@ fn handle_gpu_device_lost(
     Ok(())
 }
 
-const PLATFORM_WINDOW_CLASS_NAME: PCWSTR = w!("Zed::PlatformWindow");
+const PLATFORM_WINDOW_CLASS_NAME: PCWSTR = w!("Mozui::PlatformWindow");
 
 fn register_platform_window_class() {
     let wc = WNDCLASSW {

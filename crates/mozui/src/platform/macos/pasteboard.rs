@@ -37,8 +37,8 @@ impl Pasteboard {
     unsafe fn new(inner: id) -> Self {
         Self {
             inner,
-            text_hash_type: unsafe { ns_string("zed-text-hash") },
-            metadata_type: unsafe { ns_string("zed-metadata") },
+            text_hash_type: unsafe { ns_string("mozui-text-hash") },
+            metadata_type: unsafe { ns_string("mozui-metadata") },
         }
     }
 

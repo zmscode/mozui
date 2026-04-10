@@ -23,7 +23,7 @@ use crate::directx_renderer::shader_resources::{RawShaderBytes, ShaderModule, Sh
 use crate::*;
 use crate::*;
 
-pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "GPUI_DISABLE_DIRECT_COMPOSITION";
+pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "DISABLE_DIRECT_COMPOSITION";
 const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 // This configuration is used for MSAA rendering on paths only, and it's guaranteed to be supported by DirectX 11.
 const PATH_MULTISAMPLE_COUNT: u32 = 4;
@@ -1856,7 +1856,7 @@ mod amd {
     }
 
     #[repr(C)]
-    pub struct AGSGPUInfo {
+    pub struct AGSMOZUInfo {
         pub driver_version: *const c_char,
         pub radeon_software_version: *const c_char,
         pub num_devices: c_int,
@@ -1869,7 +1869,7 @@ mod amd {
         version: c_int,
         config: *const c_void,
         context: *mut *mut AGSContext,
-        gpu_info: *mut AGSGPUInfo,
+        gpu_info: *mut AGSMOZUInfo,
     ) -> c_int;
 
     // https://github.com/GPUOpen-LibrariesAndSDKs/AGS_SDK/blob/5d8812d703d0335741b6f7ffc37838eeb8b967f7/ags_lib/inc/amd_ags.h#L436
@@ -1892,7 +1892,7 @@ mod amd {
             let ags_deinitialize: agsDeInitialize_t = std::mem::transmute(ags_deinitialize_addr);
 
             let mut context: *mut AGSContext = std::ptr::null_mut();
-            let mut gpu_info: AGSGPUInfo = AGSGPUInfo {
+            let mut gpu_info: AGSMOZUInfo = AGSMOZUInfo {
                 driver_version: std::ptr::null(),
                 radeon_software_version: std::ptr::null(),
                 num_devices: 0,

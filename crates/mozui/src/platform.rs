@@ -182,7 +182,7 @@ pub use visual_test::VisualTestPlatform;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 #[inline]
 pub fn guess_compositor() -> &'static str {
-    if std::env::var_os("ZED_HEADLESS").is_some() {
+    if std::env::var_os("HEADLESS").is_some() {
         return "Headless";
     }
 
@@ -239,7 +239,7 @@ pub trait Platform: 'static {
         let (sources_tx, sources_rx) = oneshot::channel();
         sources_tx
             .send(Err(anyhow::anyhow!(
-                "gpui was compiled without the screen-capture feature"
+                "mozui was compiled without the screen-capture feature"
             )))
             .ok();
         sources_rx
@@ -558,7 +558,7 @@ pub struct WindowButtonLayout {
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 impl WindowButtonLayout {
-    /// Returns Zed's built-in fallback button layout for Linux titlebars.
+    /// Returns the built-in fallback button layout for Linux titlebars.
     pub fn linux_default() -> Self {
         Self {
             left: [None; MAX_BUTTONS_PER_SIDE],
@@ -1342,7 +1342,7 @@ pub struct UTF16Selection {
     pub reversed: bool,
 }
 
-/// Zed's interface for handling text input from the platform's IME system
+/// Interface for handling text input from the platform's IME system
 /// This is currently a 1:1 exposure of the NSTextInputClient API:
 ///
 /// <https://developer.apple.com/documentation/appkit/nstextinputclient>
@@ -2126,7 +2126,7 @@ impl Image {
         self.id
     }
 
-    /// Use the GPUI `use_asset` API to make this image renderable
+    /// Use the mozui `use_asset` API to make this image renderable
     pub fn use_render_image(
         self: Arc<Self>,
         window: &mut Window,
@@ -2137,7 +2137,7 @@ impl Image {
             .and_then(|result| result.ok())
     }
 
-    /// Use the GPUI `get_asset` API to make this image renderable
+    /// Use the mozui `get_asset` API to make this image renderable
     pub fn get_render_image(
         self: Arc<Self>,
         window: &mut Window,
@@ -2148,7 +2148,7 @@ impl Image {
             .and_then(|result| result.ok())
     }
 
-    /// Use the GPUI `remove_asset` API to drop this image, if possible.
+    /// Use the mozui `remove_asset` API to drop this image, if possible.
     pub fn remove_asset(self: Arc<Self>, cx: &mut App) {
         ImageSource::Image(self).remove_asset(cx);
     }

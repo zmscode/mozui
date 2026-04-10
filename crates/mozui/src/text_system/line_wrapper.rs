@@ -11,7 +11,7 @@ pub enum TruncateFrom {
     End,
 }
 
-/// The GPUI line wrapper, used to wrap lines of text to a given width.
+/// The mozui line wrapper, used to wrap lines of text to a given width.
 pub struct LineWrapper {
     text_system: Arc<TextSystem>,
     pub(crate) font_id: FontId,
@@ -243,7 +243,7 @@ impl LineWrapper {
         // e.g. `a-b`, `var_name`, `I'm`/`won’t`, '@mention`, `#hashtag`, `100%`, `3.1415`,
         // `2^3`, `a~b`, `a=1`, `Self::new`, etc.
         matches!(c, '-' | '_' | '.' | '\'' | '’' | '‘' | '$' | '%' | '@' | '#' | '^' | '~' | ',' | '=' | ':') ||
-        // `⋯` character is special used in Zed, to keep this at the end of the line.
+        // `⋯` character is special, used to keep this, to keep this at the end of the line.
         matches!(c, '⋯')
     }
 

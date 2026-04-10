@@ -135,7 +135,7 @@ pub(crate) fn atomic_incr_if_not_zero(counter: &AtomicUsize) -> usize {
     }
 }
 
-// --- Merged from gpui_util ---
+// --- Merged from util ---
 
 /// Increments the value in place and returns the previous value (post-increment).
 pub fn post_inc<T: From<u8> + AddAssign<T> + Copy>(value: &mut T) -> T {
@@ -144,16 +144,16 @@ pub fn post_inc<T: From<u8> + AddAssign<T> + Copy>(value: &mut T) -> T {
     prev
 }
 
-/// Measures and prints the execution time of a closure when `ZED_MEASUREMENTS=1` is set.
+/// Measures and prints the execution time of a closure when `PERF_TIMING=1` is set.
 pub fn measure<R>(label: &str, f: impl FnOnce() -> R) -> R {
-    static ZED_MEASUREMENTS: OnceLock<bool> = OnceLock::new();
-    let zed_measurements = ZED_MEASUREMENTS.get_or_init(|| {
-        env::var("ZED_MEASUREMENTS")
-            .map(|measurements| measurements == "1" || measurements == "true")
+    static PERF_TIMING: OnceLock<bool> = OnceLock::new();
+    let perf_timing = PERF_TIMING.get_or_init(|| {
+        env::var("PERF_TIMING")
+            .map(|val| val == "1" || val == "true")
             .unwrap_or(false)
     });
 
-    if *zed_measurements {
+    if *perf_timing {
         let start = Instant::now();
         let result = f();
         let elapsed = start.elapsed();

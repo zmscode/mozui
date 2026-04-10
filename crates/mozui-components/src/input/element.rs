@@ -219,7 +219,7 @@ impl TextElement {
                     scroll_offset.x
                 };
 
-                // If we change the scroll_offset.y, GPUI will render and trigger the next run loop.
+                // If we change the scroll_offset.y, mozui will render and trigger the next run loop.
                 // So, here we just adjust offset by `line_height` for move smooth.
                 scroll_offset.y =
                     if scroll_offset.y + cursor_pos.y > bounds.size.height - top_bottom_margin {
@@ -1187,9 +1187,9 @@ impl Element for TextElement {
         //
         // #### text
         //
-        // Hello 世界，this is GPUI component.
-        // The GPUI Component is a collection of UI components for
-        // GPUI framework, including Button, Input, Checkbox, Radio,
+        // Hello 世界，this is mozui component.
+        // The mozui Component is a collection of UI components for
+        // mozui framework, including Button, Input, Checkbox, Radio,
         // Dropdown, Tab, and more...
         //
         // wrap_width: 444px, line_height: 20px

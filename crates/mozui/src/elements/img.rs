@@ -589,7 +589,7 @@ impl Asset for ImageDecoder {
     }
 }
 
-/// An image loader for the GPUI asset system
+/// An image loader for the mozui asset system
 #[derive(Clone)]
 pub enum ImageAssetLoader {}
 

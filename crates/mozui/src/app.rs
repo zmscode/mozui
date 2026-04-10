@@ -134,7 +134,7 @@ impl Drop for AppRefMut<'_> {
     }
 }
 
-/// A reference to a GPUI application, typically constructed in the `main` function of your app.
+/// A reference to a mozui application, typically constructed in the `main` function of your app.
 /// You won't interact with this type much outside of initial configuration and startup.
 pub struct Application(Rc<AppCell>);
 
@@ -1246,7 +1246,7 @@ impl App {
         self.platform.open_url(url);
     }
 
-    /// Registers the given URL scheme (e.g. `zed` for `zed://` urls) to be
+    /// Registers the given URL scheme (e.g. `mozui` for `mozui://` urls) to be
     /// opened by the current app.
     ///
     /// On some platforms (e.g. macOS) you may be able to register URL schemes
@@ -2190,7 +2190,7 @@ impl App {
         }
     }
 
-    /// Set the prompt renderer for GPUI. This will replace the default or platform specific
+    /// Set the prompt renderer for mozui. This will replace the default or platform specific
     /// prompts with this custom implementation.
     pub fn set_prompt_builder(
         &mut self,
@@ -2213,7 +2213,7 @@ impl App {
         self.prompt_builder = Some(PromptBuilder::Default);
     }
 
-    /// Remove an asset from GPUI's cache
+    /// Remove an asset from mozui's cache
     pub fn remove_asset<A: Asset>(&mut self, source: &A::Source) {
         let asset_id = (TypeId::of::<A>(), hash(source));
         self.loading_assets.remove(&asset_id);
@@ -2249,7 +2249,7 @@ impl App {
         FocusHandle::new(&self.focus_handles)
     }
 
-    /// Tell GPUI that an entity has changed and observers of it should be notified.
+    /// Tell mozui that an entity has changed and observers of it should be notified.
     pub fn notify(&mut self, entity_id: EntityId) {
         let window_invalidators = mem::take(
             self.window_invalidators_by_entity
@@ -2314,7 +2314,7 @@ impl App {
         self.inspector_element_registry.register(f);
     }
 
-    /// Initializes gpui's default colors for the application.
+    /// Initializes mozui's default colors for the application.
     ///
     /// These colors can be accessed through `cx.default_colors()`.
     pub fn init_colors(&mut self) {
@@ -2552,7 +2552,7 @@ pub struct KeystrokeEvent {
     pub context_stack: Vec<KeyContext>,
 }
 
-/// A mutable reference to an entity owned by GPUI
+/// A mutable reference to an entity owned by mozui
 pub struct GpuiBorrow<'a, T> {
     inner: Option<Lease<T>>,
     app: &'a mut App,

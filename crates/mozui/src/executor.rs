@@ -313,7 +313,7 @@ impl BackgroundExecutor {
             .scheduler()
             .allow_parking();
 
-        if std::env::var("GPUI_RUN_UNTIL_PARKED_LOG").ok().as_deref() == Some("1") {
+        if std::env::var("DEBUG_SCHEDULER").is_ok() {
             log::warn!("[mozui::executor] allow_parking: enabled");
         }
     }
@@ -443,7 +443,7 @@ impl ForegroundExecutor {
         };
         let mut future = std::pin::pin!(future);
 
-        // In async GPUI tests, we must allow foreground tasks scheduled by the test itself
+        // In async mozui tests, we must allow foreground tasks scheduled by the test itself
         // (which are associated with the test session) to make progress while we block.
         // Otherwise, awaiting futures that depend on same-session foreground work can deadlock.
         scheduler.block(None, future.as_mut(), None);

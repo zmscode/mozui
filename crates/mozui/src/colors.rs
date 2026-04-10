@@ -2,7 +2,7 @@ use crate::{App, Global, Rgba, Window, WindowAppearance, rgb};
 use std::ops::Deref;
 use std::sync::Arc;
 
-/// The default set of colors for gpui.
+/// The default set of colors for mozui.
 ///
 /// These are used for styling base components, examples and more.
 #[derive(Clone, Debug)]
@@ -100,7 +100,7 @@ impl DefaultColors for App {
     }
 }
 
-/// The appearance of the base GPUI colors, used to style GPUI elements
+/// The appearance of the base mozui colors, used to style mozui elements
 ///
 /// Varies based on the system's current [`WindowAppearance`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]

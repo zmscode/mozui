@@ -144,7 +144,7 @@ where
     }
 }
 
-/// A handle to a subscription created by GPUI. When dropped, the subscription
+/// A handle to a subscription created by mozui. When dropped, the subscription
 /// is cancelled and the callback will no longer be invoked.
 #[must_use]
 pub struct Subscription {

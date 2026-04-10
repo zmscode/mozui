@@ -260,7 +260,7 @@ impl WebWindow {
                 let mut s = inner.state.borrow_mut();
                 s.bounds.size = Size::default();
                 s.scale_factor = dpr_f32;
-                // Still fire the callback so GPUI knows the window is gone.
+                // Still fire the callback so mozui knows the window is gone.
                 drop(s);
                 let mut cbs = inner.callbacks.borrow_mut();
                 if let Some(ref mut callback) = cbs.resize {

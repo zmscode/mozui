@@ -125,10 +125,10 @@ unsafe extern "C" {
 #[ctor]
 unsafe fn build_classes() {
     unsafe {
-        WINDOW_CLASS = build_window_class("GPUIWindow", class!(NSWindow));
-        PANEL_CLASS = build_window_class("GPUIPanel", class!(NSPanel));
+        WINDOW_CLASS = build_window_class("MozuiWindow", class!(NSWindow));
+        PANEL_CLASS = build_window_class("MozuiPanel", class!(NSPanel));
         VIEW_CLASS = {
-            let mut decl = ClassDecl::new("GPUIView", class!(NSView)).unwrap();
+            let mut decl = ClassDecl::new("MozuiView", class!(NSView)).unwrap();
             decl.add_ivar::<*mut c_void>(WINDOW_STATE_IVAR);
             unsafe {
                 decl.add_method(sel!(dealloc), dealloc_view as extern "C" fn(&Object, Sel));
@@ -1859,7 +1859,7 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
     match event {
         PlatformInput::KeyDown(key_down_event) => {
             // For certain keystrokes, macOS will first dispatch a "key equivalent" event.
-            // If that event isn't handled, it will then dispatch a "key down" event. GPUI
+            // If that event isn't handled, it will then dispatch a "key down" event. mozui
             // makes no distinction between these two types of events, so we need to ignore
             // the "key down" event if we've already just processed its "key equivalent" version.
             if key_equivalent {
@@ -2565,7 +2565,7 @@ extern "C" fn accepts_first_mouse(this: &Object, _: Sel, _: id) -> BOOL {
 }
 
 extern "C" fn character_index_for_point(this: &Object, _: Sel, position: NSPoint) -> u64 {
-    let position = screen_point_to_gpui_point(this, position);
+    let position = screen_point_to_mozui_point(this, position);
     with_input_handler(this, |input_handler| {
         input_handler.character_index_for_point(position)
     })
@@ -2574,7 +2574,7 @@ extern "C" fn character_index_for_point(this: &Object, _: Sel, position: NSPoint
     .unwrap_or(NSNotFound as u64)
 }
 
-fn screen_point_to_gpui_point(this: &Object, position: NSPoint) -> Point<Pixels> {
+fn screen_point_to_mozui_point(this: &Object, position: NSPoint) -> Point<Pixels> {
     let frame = get_frame(this);
     let window_x = position.x - frame.origin.x;
     let window_y = frame.size.height - (position.y - frame.origin.y);

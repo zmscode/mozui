@@ -51,7 +51,7 @@ pub const SUBPIXEL_VARIANTS_Y: u8 = if cfg!(target_os = "windows") || cfg!(targe
     SUBPIXEL_VARIANTS_X
 };
 
-/// The GPUI text rendering sub system.
+/// The mozui text rendering sub system.
 pub struct TextSystem {
     platform_text_system: Arc<dyn PlatformTextSystem>,
     font_ids_by_font: RwLock<FxHashMap<Font, Result<FontId>>>,
@@ -364,7 +364,7 @@ impl TextSystem {
     }
 }
 
-/// The GPUI text layout subsystem.
+/// The mozui text layout subsystem.
 #[derive(Deref)]
 pub struct WindowTextSystem {
     line_layout_cache: LineLayoutCache,

@@ -1,4 +1,4 @@
-//! A clean testing API for GPUI applications.
+//! A clean testing API for mozui applications.
 //!
 //! `TestApp` provides a simpler alternative to `TestAppContext` with:
 //! - Automatic effect flushing after updates

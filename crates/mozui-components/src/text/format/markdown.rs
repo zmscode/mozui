@@ -120,7 +120,7 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
                 text.push_str(&parse_paragraph(&mut child_paragraph, &child, cx));
             }
 
-            // FIXME: GPUI InteractiveText does not support inline images yet.
+            // FIXME: mozui InteractiveText does not support inline images yet.
             // So here we push images to the paragraph directly.
             for child in child_paragraph.children.iter_mut() {
                 if let Some(image) = child.image.as_mut() {

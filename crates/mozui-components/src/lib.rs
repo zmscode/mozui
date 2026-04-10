@@ -136,12 +136,12 @@ pub fn set_locale(locale: &str) {
 
 #[inline]
 pub(crate) fn measure_enable() -> bool {
-    std::env::var("ZED_MEASUREMENTS").is_ok() || std::env::var("GPUI_MEASUREMENTS").is_ok()
+    std::env::var("PERF_TIMING").is_ok()
 }
 
 /// Measures the execution time of a function and logs it if `if_` is true.
 ///
-/// And need env `GPUI_MEASUREMENTS=1`
+/// Requires env `PERF_TIMING=1`
 #[inline]
 #[track_caller]
 pub fn measure_if(name: impl Into<SharedString>, if_: bool, f: impl FnOnce()) {
