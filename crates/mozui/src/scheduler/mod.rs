@@ -4,7 +4,7 @@ mod test_scheduler;
 
 pub use clock::*;
 pub use executor::*;
-pub use test_scheduler::TestScheduler;
+pub use test_scheduler::*;
 
 use async_task::Runnable;
 use futures::channel::oneshot;
