@@ -1,7 +1,0 @@
-[package]
-name = "mozui-executor"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-web-time = "1.1.0"

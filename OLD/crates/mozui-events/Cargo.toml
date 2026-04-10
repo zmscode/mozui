@@ -1,7 +1,0 @@
-[package]
-name = "mozui-events"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-mozui-style = { workspace = true }

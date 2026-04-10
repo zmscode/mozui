@@ -1,8 +1,0 @@
-[package]
-name = "mozui-devtools"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-mozui-layout = { workspace = true }
-web-time = "1.1.0"
