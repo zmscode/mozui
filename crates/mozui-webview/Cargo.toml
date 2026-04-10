@@ -1,0 +1,18 @@
+[package]
+name = "mozui-webview"
+description = "WebView support for mozui, based on Wry."
+license = "Apache-2.0"
+edition.workspace = true
+publish = false
+version = "0.5.0"
+
+[features]
+inspector = ["wry/devtools"]
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow.workspace = true
+mozui.workspace = true
+wry = { version = "0.53.3", package = "lb-wry" }

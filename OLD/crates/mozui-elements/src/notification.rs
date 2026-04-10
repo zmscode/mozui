@@ -1,0 +1,608 @@
+use crate::{DeferredPosition, Element, LayoutContext, PaintContext};
+use mozui_icons::{IconName, IconWeight};
+use mozui_layout::LayoutId;
+use mozui_renderer::DrawCommand;
+use mozui_style::animation::{Animated, Transition};
+use mozui_style::{Color, Corners, Fill, Rect, Shadow, Theme};
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Duration;
+use taffy::prelude::*;
+
+// gpui-component: w_112 = 28rem = 448px
+const NOTIFICATION_WIDTH: f32 = 448.0;
+// gpui-component: py_3p5 = 14px
+const PADDING_Y: f32 = 14.0;
+// gpui-component: px_4 = 16px
+const PADDING_X: f32 = 16.0;
+// gpui-component: gap_3 = 12px
+const GAP: f32 = 12.0;
+// gpui-component: pl_6 = 24px (left padding for text when icon is present)
+const ICON_TEXT_INDENT: f32 = 24.0;
+// gpui-component: icon size (default small = 16px)
+const ICON_SIZE: f32 = 16.0;
+// gpui-component: close button at top_1 (4px) right_1 (4px), xsmall = 16px
+const CLOSE_SIZE: f32 = 16.0;
+const CLOSE_OFFSET: f32 = 4.0;
+// gpui-component: text_sm = 14px (0.875rem)
+const TEXT_SM: f32 = 14.0;
+// gpui-component: default margin from window edge = 16px
+const MARGIN: f32 = 16.0;
+/// gpui-component: gap_3 between stacked notifications = 12px
+pub const STACK_GAP: f32 = 12.0;
+
+/// Placement of notification toasts on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum NotificationPlacement {
+    #[default]
+    TopRight,
+    TopLeft,
+    TopCenter,
+    BottomRight,
+    BottomLeft,
+    BottomCenter,
+}
+
+/// Notification type/severity, each with a default icon and color.
+///
+/// Matches gpui-component's `NotificationType` enum with the same icon mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NotificationType {
+    /// Plain notification with no icon or accent color.
+    Default,
+    Info,
+    Success,
+    Warning,
+    Error,
+}
+
+impl NotificationType {
+    /// Default icon for each type. Matches gpui-component:
+    /// Info -> Info, Success -> CheckCircle, Warning -> Warning, Error -> XCircle
+    /// Default has no icon.
+    pub fn icon(&self) -> Option<IconName> {
+        match self {
+            Self::Default => None,
+            Self::Info => Some(IconName::Info),
+            Self::Success => Some(IconName::CheckCircle),
+            Self::Warning => Some(IconName::Warning),
+            Self::Error => Some(IconName::XCircle),
+        }
+    }
+
+    /// Accent color for each type from theme semantic colors.
+    /// Default uses the foreground color.
+    pub fn color(&self, theme: &Theme) -> Color {
+        match self {
+            Self::Default => theme.muted_foreground,
+            Self::Info => theme.info,
+            Self::Success => theme.success,
+            Self::Warning => theme.warning,
+            Self::Error => theme.danger,
+        }
+    }
+}
+
+/// A toast notification matching gpui-component's `Notification` styling.
+///
+/// Uses the deferred element system so notifications always paint on top.
+///
+/// ```rust,ignore
+/// notification(&theme, NotificationType::Success, "File saved")
+///     .description("Your changes have been saved successfully.")
+///     .on_dismiss(move |cx| { /* remove notification */ })
+/// ```
+/// Animation duration in ms for notification entrance/exit (gpui-component: 250ms).
+/// Use this when scheduling removal after exit animation:
+/// `cx.set_timeout(Duration::from_millis(NOTIFICATION_ANIM_MS), ...)`
+pub const NOTIFICATION_ANIM_MS: u64 = 250;
+/// Slide distance in pixels for entrance/exit animation.
+const SLIDE_DISTANCE: f32 = 45.0;
+
+pub struct Notification {
+    notification_type: NotificationType,
+    title: Option<String>,
+    message: String,
+    icon_override: Option<IconName>,
+    on_dismiss: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
+    bg: Color,
+    fg: Color,
+    accent_color: Color,
+    border_color: Color,
+    shadow: Shadow,
+    corner_radius: f32,
+    /// Vertical offset from top (for stacking multiple notifications).
+    top_offset: f32,
+    /// Titlebar height -- notifications start below this.
+    titlebar_height: f32,
+    /// Baked-in animation: 0.0 = hidden, 1.0 = fully visible.
+    anim: Animated<f32>,
+    /// Whether animation is disabled (always fully visible).
+    no_anim: bool,
+    /// Screen placement (default: TopRight).
+    placement: NotificationPlacement,
+}
+
+/// Create a new entrance animation for a notification.
+/// Store this in your notification list and pass it to the notification builder.
+/// Call `.set(0.0)` on it to trigger the exit animation.
+pub fn notification_anim(animation_flag: Rc<Cell<bool>>) -> Animated<f32> {
+    let transition = Transition::new(Duration::from_millis(NOTIFICATION_ANIM_MS))
+        .custom_bezier(0.4, 0.0, 0.2, 1.0);
+    let anim = Animated::new(0.0, transition, animation_flag);
+    anim.set(1.0); // start entrance animation
+    anim
+}
+
+/// Create a notification toast with baked-in animation support.
+///
+/// Pass an `Animated<f32>` from `notification_anim()` to animate entrance/exit.
+/// The notification reads the animation progress and computes opacity + slide
+/// automatically -- no manual wiring needed.
+///
+/// ```rust,ignore
+/// // On spawn:
+/// let anim = notification_anim(cx.animation_flag());
+/// // Store (id, type, title, message, anim) in your list.
+///
+/// // On render:
+/// notification(&theme, NotificationType::Success, "Saved!")
+///     .title("File saved")
+///     .anim(anim.clone())
+///     .on_dismiss(move |cx| { anim.set(0.0); /* schedule removal */ });
+/// ```
+pub fn notification(
+    theme: &Theme,
+    notification_type: NotificationType,
+    message: impl Into<String>,
+) -> Notification {
+    let accent = notification_type.color(theme);
+    // Default: no animation (fully visible immediately).
+    // Call .anim() to attach a persisted animation handle.
+    let dummy_flag = Rc::new(Cell::new(false));
+    let anim = Animated::new(1.0, Transition::new(Duration::ZERO), dummy_flag);
+    Notification {
+        notification_type,
+        title: None,
+        message: message.into(),
+        icon_override: None,
+        on_dismiss: None,
+        bg: theme.popover,
+        fg: theme.popover_foreground,
+        accent_color: accent,
+        border_color: theme.border,
+        shadow: theme.shadow_md,
+        corner_radius: theme.radius_lg,
+        top_offset: 0.0,
+        titlebar_height: 38.0,
+        anim,
+        no_anim: true,
+        placement: NotificationPlacement::TopRight,
+    }
+}
+
+impl Notification {
+    /// Set an optional bold title above the message.
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// Alias for the message field -- set the description/body text.
+    pub fn description(mut self, desc: impl Into<String>) -> Self {
+        self.message = desc.into();
+        self
+    }
+
+    /// Override the default icon for this notification type.
+    pub fn icon(mut self, icon: IconName) -> Self {
+        self.icon_override = Some(icon);
+        self
+    }
+
+    /// Handler called when the close button is clicked.
+    pub fn on_dismiss(mut self, handler: impl Fn(&mut dyn std::any::Any) + 'static) -> Self {
+        self.on_dismiss = Some(Rc::new(handler));
+        self
+    }
+
+    /// Set the vertical offset from the top edge (for stacking).
+    /// Each notification adds its measured height + STACK_GAP.
+    pub fn top_offset(mut self, offset: f32) -> Self {
+        self.top_offset = offset;
+        self
+    }
+
+    /// Set the titlebar height (notifications start below it).
+    pub fn titlebar_height(mut self, height: f32) -> Self {
+        self.titlebar_height = height;
+        self
+    }
+
+    /// Attach a persisted animation handle (from `notification_anim()`).
+    /// The notification reads the animation progress to compute opacity and slide.
+    pub fn anim(mut self, anim: Animated<f32>) -> Self {
+        self.anim = anim;
+        self.no_anim = false;
+        self
+    }
+
+    /// Set the screen placement (default: TopRight).
+    pub fn placement(mut self, placement: NotificationPlacement) -> Self {
+        self.placement = placement;
+        self
+    }
+
+    /// Disable entrance/exit animations. The notification appears instantly.
+    pub fn no_anim(mut self) -> Self {
+        self.no_anim = true;
+        self.anim.set_immediate(1.0);
+        self
+    }
+}
+
+impl Element for Notification {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "Notification",
+            layout_id: LayoutId::NONE,
+            properties: vec![],
+        })
+    }
+
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        // Defer the notification overlay for paint-on-top z-ordering
+        cx.defer(
+            Box::new(NotificationOverlay {
+                notification_type: self.notification_type,
+                title: self.title.clone(),
+                message: self.message.clone(),
+                icon_override: self.icon_override,
+                on_dismiss: self.on_dismiss.take(),
+                bg: self.bg,
+                fg: self.fg,
+                accent_color: self.accent_color,
+                border_color: self.border_color,
+                shadow: self.shadow,
+                corner_radius: self.corner_radius,
+                top_offset: self.top_offset,
+                titlebar_height: self.titlebar_height,
+                anim: self.anim.clone(),
+                no_anim: self.no_anim,
+                placement: self.placement,
+                layout_id: LayoutId::NONE,
+                content_id: LayoutId::NONE,
+                text_col_id: LayoutId::NONE,
+                title_id: LayoutId::NONE,
+                message_id: LayoutId::NONE,
+            }),
+            DeferredPosition::Overlay,
+        );
+
+        // Return a zero-size placeholder
+        cx.new_leaf(taffy::Style::default())
+    }
+
+    fn paint(&mut self, _bounds: Rect, _cx: &mut PaintContext) {
+        // Nothing — painted by the deferred system
+    }
+}
+
+// ── Deferred notification overlay ─────────────────────────────────
+
+struct NotificationOverlay {
+    notification_type: NotificationType,
+    title: Option<String>,
+    message: String,
+    icon_override: Option<IconName>,
+    on_dismiss: Option<Rc<dyn Fn(&mut dyn std::any::Any)>>,
+    bg: Color,
+    fg: Color,
+    accent_color: Color,
+    border_color: Color,
+    shadow: Shadow,
+    corner_radius: f32,
+    top_offset: f32,
+    titlebar_height: f32,
+    anim: Animated<f32>,
+    no_anim: bool,
+    placement: NotificationPlacement,
+    // Layout IDs
+    layout_id: LayoutId,
+    content_id: LayoutId,
+    text_col_id: LayoutId,
+    title_id: LayoutId,
+    message_id: LayoutId,
+}
+
+impl Element for NotificationOverlay {
+    fn debug_info(&self) -> Option<mozui_devtools::ElementInfo> {
+        Some(mozui_devtools::ElementInfo {
+            type_name: "NotificationOverlay",
+            layout_id: self.layout_id,
+            properties: vec![],
+        })
+    }
+
+    fn layout(&mut self, cx: &mut LayoutContext) -> LayoutId {
+        let has_icon = self.icon_override.is_some() || self.notification_type.icon().is_some();
+
+        // Text column children
+        let mut text_children = Vec::new();
+        let text_max_width = NOTIFICATION_WIDTH
+            - PADDING_X * 2.0
+            - if has_icon { ICON_TEXT_INDENT } else { 0.0 }
+            - CLOSE_SIZE
+            - CLOSE_OFFSET;
+
+        // Title (optional, bold)
+        if let Some(ref title) = self.title {
+            let style = mozui_text::TextStyle {
+                font_size: TEXT_SM,
+                color: self.fg,
+                weight: mozui_text::FontWeight::Bold,
+                ..Default::default()
+            };
+            let m = mozui_text::measure_text(title, &style, Some(text_max_width), cx.font_system);
+            self.title_id = cx.new_leaf(Style {
+                size: taffy::Size {
+                    width: length(m.width),
+                    height: length(m.height),
+                },
+                ..Default::default()
+            });
+            text_children.push(self.title_id);
+        }
+
+        // Message
+        let msg_style = mozui_text::TextStyle {
+            font_size: TEXT_SM,
+            color: self.fg,
+            ..Default::default()
+        };
+        let msg_m =
+            mozui_text::measure_text(&self.message, &msg_style, Some(text_max_width), cx.font_system);
+        self.message_id = cx.new_leaf(Style {
+            size: taffy::Size {
+                width: length(msg_m.width),
+                height: length(msg_m.height),
+            },
+            ..Default::default()
+        });
+        text_children.push(self.message_id);
+
+        // Text column
+        self.text_col_id = cx.new_with_children(
+            Style {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                flex_grow: 1.0,
+                overflow: taffy::Point {
+                    x: taffy::Overflow::Hidden,
+                    y: taffy::Overflow::Hidden,
+                },
+                padding: taffy::Rect {
+                    left: if has_icon {
+                        length(ICON_TEXT_INDENT)
+                    } else {
+                        zero()
+                    },
+                    right: zero(),
+                    top: zero(),
+                    bottom: zero(),
+                },
+                ..Default::default()
+            },
+            &text_children,
+        );
+
+        // Main content container
+        self.content_id = cx.new_with_children(
+            Style {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Row,
+                position: Position::Relative,
+                align_items: Some(AlignItems::FlexStart),
+                gap: taffy::Size {
+                    width: length(GAP),
+                    height: zero(),
+                },
+                padding: taffy::Rect {
+                    left: length(PADDING_X),
+                    right: length(PADDING_X),
+                    top: length(PADDING_Y),
+                    bottom: length(PADDING_Y),
+                },
+                size: taffy::Size {
+                    width: length(NOTIFICATION_WIDTH),
+                    height: auto(),
+                },
+                ..Default::default()
+            },
+            &[self.text_col_id],
+        );
+
+        // Full-window flex container that aligns the notification to the
+        // correct corner. Uses percent(1.0) to fill the sub-engine's available
+        // space (Position::Absolute + inset doesn't work at sub-engine root).
+        let top_edge = self.titlebar_height + MARGIN + self.top_offset;
+        let bottom_edge = MARGIN + self.top_offset;
+
+        // Flex direction Column: justify = vertical axis, align = horizontal axis
+        let (justify, align_items, content_margin) = match self.placement {
+            NotificationPlacement::TopRight => (
+                JustifyContent::FlexStart,
+                AlignItems::FlexEnd,
+                taffy::Rect { top: length(top_edge), right: length(MARGIN), left: auto(), bottom: auto() },
+            ),
+            NotificationPlacement::TopLeft => (
+                JustifyContent::FlexStart,
+                AlignItems::FlexStart,
+                taffy::Rect { top: length(top_edge), left: length(MARGIN), right: auto(), bottom: auto() },
+            ),
+            NotificationPlacement::TopCenter => (
+                JustifyContent::FlexStart,
+                AlignItems::Center,
+                taffy::Rect { top: length(top_edge), left: auto(), right: auto(), bottom: auto() },
+            ),
+            NotificationPlacement::BottomRight => (
+                JustifyContent::FlexEnd,
+                AlignItems::FlexEnd,
+                taffy::Rect { bottom: length(bottom_edge), right: length(MARGIN), left: auto(), top: auto() },
+            ),
+            NotificationPlacement::BottomLeft => (
+                JustifyContent::FlexEnd,
+                AlignItems::FlexStart,
+                taffy::Rect { bottom: length(bottom_edge), left: length(MARGIN), right: auto(), top: auto() },
+            ),
+            NotificationPlacement::BottomCenter => (
+                JustifyContent::FlexEnd,
+                AlignItems::Center,
+                taffy::Rect { bottom: length(bottom_edge), left: auto(), right: auto(), top: auto() },
+            ),
+        };
+
+        // Apply margin to the content to offset from the edge
+        let content_wrapper = cx.new_with_children(
+            Style {
+                display: Display::Flex,
+                margin: content_margin,
+                ..Default::default()
+            },
+            &[self.content_id],
+        );
+
+        self.layout_id = cx.new_with_children(
+            Style {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                size: Size {
+                    width: percent(1.0),
+                    height: percent(1.0),
+                },
+                justify_content: Some(justify),
+                align_items: Some(align_items),
+                ..Default::default()
+            },
+            &[content_wrapper],
+        );
+        self.layout_id
+    }
+
+    fn paint(&mut self, _bounds: Rect, cx: &mut PaintContext) {
+        let progress = if self.no_anim { 1.0 } else { self.anim.get() };
+        let opacity = progress;
+        let dy = match self.placement {
+            NotificationPlacement::BottomRight
+            | NotificationPlacement::BottomLeft
+            | NotificationPlacement::BottomCenter => SLIDE_DISTANCE * (1.0 - progress),
+            _ => -SLIDE_DISTANCE * (1.0 - progress),
+        };
+
+        let offset_rect = |r: Rect| -> Rect {
+            Rect::new(r.origin.x, r.origin.y + dy, r.size.width, r.size.height)
+        };
+        let fade = |c: Color| -> Color { c.with_alpha(c.a * opacity) };
+
+        if opacity < 0.001 {
+            return;
+        }
+
+        // Content container
+        let content_bounds = offset_rect(cx.bounds(self.content_id));
+
+        // Draw notification background
+        let shadow = if opacity < 0.85 {
+            None
+        } else {
+            Some(self.shadow)
+        };
+        cx.draw_list.push(DrawCommand::Rect {
+            bounds: content_bounds,
+            background: Fill::Solid(fade(self.bg)),
+            corner_radii: Corners::uniform(self.corner_radius),
+            border: Some(mozui_renderer::Border {
+                width: 1.0,
+                color: fade(self.border_color),
+            }),
+            shadow,
+            shadows: vec![],
+        });
+
+        // Register hover region
+        cx.interactions.register_hover_region(content_bounds);
+        let notification_hovered = cx.interactions.is_hovered(content_bounds);
+
+        // Draw icon
+        let resolved_icon = self.icon_override.or_else(|| self.notification_type.icon());
+        if let Some(icon_name) = resolved_icon {
+            let first_line_height = TEXT_SM * 1.4;
+            let icon_x = content_bounds.origin.x + PADDING_X;
+            let icon_y =
+                content_bounds.origin.y + PADDING_Y + (first_line_height - ICON_SIZE) / 2.0;
+            let icon_bounds = Rect::new(icon_x, icon_y, ICON_SIZE, ICON_SIZE);
+            cx.draw_list.push(DrawCommand::Icon {
+                name: icon_name,
+                weight: IconWeight::Regular,
+                bounds: icon_bounds,
+                color: fade(self.accent_color),
+                size_px: ICON_SIZE,
+            });
+        }
+
+        // Title (optional)
+        if self.title.is_some() {
+            let title_bounds = offset_rect(cx.bounds(self.title_id));
+            cx.draw_list.push(DrawCommand::Text {
+                text: self.title.as_ref().unwrap().clone(),
+                bounds: title_bounds,
+                font_size: TEXT_SM,
+                color: fade(self.fg),
+                weight: 600,
+                italic: false,
+            });
+        }
+
+        // Message
+        let msg_bounds = offset_rect(cx.bounds(self.message_id));
+        cx.draw_list.push(DrawCommand::Text {
+            text: self.message.clone(),
+            bounds: msg_bounds,
+            font_size: TEXT_SM,
+            color: fade(self.fg),
+            weight: 400,
+            italic: false,
+        });
+
+        // Close button
+        let close_x =
+            content_bounds.origin.x + content_bounds.size.width - CLOSE_OFFSET - CLOSE_SIZE;
+        let close_y = content_bounds.origin.y + CLOSE_OFFSET;
+        let close_bounds = Rect::new(close_x, close_y, CLOSE_SIZE, CLOSE_SIZE);
+
+        if notification_hovered {
+            let close_icon_hovered = cx.interactions.is_hovered(close_bounds);
+            let close_color = if close_icon_hovered {
+                fade(self.fg)
+            } else {
+                fade(self.fg.with_alpha(0.5))
+            };
+            cx.draw_list.push(DrawCommand::Icon {
+                name: IconName::X,
+                weight: IconWeight::Regular,
+                bounds: close_bounds,
+                color: close_color,
+                size_px: CLOSE_SIZE,
+            });
+
+            cx.interactions.register_hover_region(close_bounds);
+        }
+
+        if let Some(ref handler) = self.on_dismiss {
+            cx.interactions.register_click(
+                close_bounds,
+                handler.clone(),
+            );
+        }
+    }
+}
