@@ -158,12 +158,12 @@ impl Render for TabsStory {
                         .suffix(
                             h_flex()
                                 .mx_1()
-                                .child(Button::new("inbox").ghost().xsmall().icon(IconName::Inbox))
+                                .child(Button::new("inbox").ghost().xsmall().icon(IconName::Tray))
                                 .child(
                                     Button::new("more")
                                         .ghost()
                                         .xsmall()
-                                        .icon(IconName::Ellipsis),
+                                        .icon(IconName::DotsThree),
                                 ),
                         ),
                 ),
@@ -242,9 +242,9 @@ impl Render for TabsStory {
                         .on_click(cx.listener(|this, ix: &usize, window, cx| {
                             this.set_active_tab(*ix, window, cx);
                         }))
-                        .child(IconName::Bot)
+                        .child(IconName::Robot)
                         .child(IconName::Calendar)
-                        .child(IconName::Map)
+                        .child(IconName::MapTrifold)
                         .children(vec!["Appearance", "Settings", "About", "License"]),
                 ),
             )

@@ -298,7 +298,7 @@ impl DialogStory {
                                             .bg(cx.theme().warning.opacity(0.2))
                                             .size_12()
                                             .text_color(cx.theme().warning)
-                                            .child(Icon::new(IconName::TriangleAlert).size_8()),
+                                            .child(Icon::new(IconName::Warning).size_8()),
                                     )
                                     .child(
                                         "Update successful, \

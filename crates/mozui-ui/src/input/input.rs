@@ -157,7 +157,7 @@ impl Input {
             .icon(if masked {
                 IconName::Eye
             } else {
-                IconName::EyeOff
+                IconName::EyeSlash
             })
             .xsmall()
             .ghost()

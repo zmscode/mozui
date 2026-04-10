@@ -173,7 +173,7 @@ impl Render for AccordionStory {
                         })
                         .item(|this| {
                             this.open(self.open_ixs.contains(&1))
-                            .when(self.show_icon, |this| this.icon(IconName::Inbox))
+                            .when(self.show_icon, |this| this.icon(IconName::Tray))
                             .title("Is it styled with complex elements?")
                             .child(
                                 v_flex()

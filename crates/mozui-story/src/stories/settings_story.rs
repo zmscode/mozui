@@ -131,7 +131,7 @@ impl SettingsStory {
             SettingPage::new("General")
                 .resettable(resettable)
                 .default_open(true)
-                .icon(Icon::new(IconName::Settings2))
+                .icon(Icon::new(IconName::GearSix))
                 .groups(vec![
                     SettingGroup::new().title("Appearance").items(vec![
                         SettingItem::new(
@@ -369,7 +369,7 @@ impl SettingsStory {
                             .w_full()
                             .items_center()
                             .justify_center()
-                            .child(Icon::new(IconName::GalleryVerticalEnd).size_16())
+                            .child(Icon::new(IconName::SquaresFour).size_16())
                             .child("GPUI Component")
                             .child(
                                 Label::new(

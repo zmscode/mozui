@@ -475,7 +475,7 @@ fn render_inspector(
                         .text_sm()
                         .child(
                             Button::new("inspect")
-                                .icon(IconName::Inspector)
+                                .icon(IconName::MagnifyingGlassPlus)
                                 .selected(inspector.is_picking())
                                 .small()
                                 .ghost()
@@ -488,7 +488,7 @@ fn render_inspector(
                 )
                 .child(
                     Button::new("close")
-                        .icon(IconName::Close)
+                        .icon(IconName::X)
                         .small()
                         .ghost()
                         .on_click(|_, window, cx| {

@@ -642,7 +642,7 @@ where
                             Input::new(&input)
                                 .with_size(self.options.size)
                                 .prefix(
-                                    Icon::new(IconName::Search)
+                                    Icon::new(IconName::MagnifyingGlass)
                                         .text_color(cx.theme().muted_foreground),
                                 )
                                 .cleanable(true)

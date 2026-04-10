@@ -1185,7 +1185,7 @@ impl PopupMenu {
                                     .gap_1p5()
                                     .child(label.clone())
                                     .child(
-                                        Icon::new(IconName::ExternalLink)
+                                        Icon::new(IconName::ArrowSquareOut)
                                             .xsmall()
                                             .text_color(cx.theme().muted_foreground),
                                     ),
@@ -1224,7 +1224,7 @@ impl PopupMenu {
                                 .justify_between()
                                 .child(label.clone())
                                 .child(
-                                    Icon::new(IconName::ChevronRight)
+                                    Icon::new(IconName::CaretRight)
                                         .xsmall()
                                         .text_color(cx.theme().muted_foreground),
                                 ),

@@ -105,14 +105,14 @@ impl Pagination {
             (
                 "prev",
                 t!("Pagination.previous"),
-                IconName::ChevronLeft,
+                IconName::CaretLeft,
                 self.current_page <= 1,
             )
         } else {
             (
                 "next",
                 t!("Pagination.next"),
-                IconName::ChevronRight,
+                IconName::CaretRight,
                 self.current_page >= self.total_pages,
             )
         };
@@ -223,7 +223,7 @@ impl RenderOnce for Pagination {
                     .with_size(self.size)
                     .compact()
                     .disabled(self.disabled)
-                    .icon(IconName::Ellipsis)
+                    .icon(IconName::DotsThree)
                     .dropdown_menu({
                         let on_click = on_click.clone();
                         move |mut menu, _, _| {

@@ -222,12 +222,12 @@ impl Render for InputStory {
                     .child(
                         Input::new(&self.prefix_input1)
                             .cleanable(true)
-                            .prefix(Icon::new(IconName::Search).small()),
+                            .prefix(Icon::new(IconName::MagnifyingGlass).small()),
                     )
                     .child(
                         Input::new(&self.both_input1)
                             .cleanable(true)
-                            .prefix(div().child(Icon::new(IconName::Search).small()))
+                            .prefix(div().child(Icon::new(IconName::MagnifyingGlass).small()))
                             .suffix(Button::new("info").ghost().icon(IconName::Info).xsmall()),
                     )
                     .child(

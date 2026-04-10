@@ -278,9 +278,9 @@ impl RenderOnce for AccordionItem {
                             this.hover(|this| this.bg(cx.theme().accordion_hover))
                                 .child(
                                     Icon::new(if self.open {
-                                        IconName::ChevronUp
+                                        IconName::CaretUp
                                     } else {
-                                        IconName::ChevronDown
+                                        IconName::CaretDown
                                     })
                                     .xsmall()
                                     .text_color(cx.theme().muted_foreground),

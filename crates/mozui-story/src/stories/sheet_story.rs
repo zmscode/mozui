@@ -101,7 +101,7 @@ impl ListDelegate for ListItemDeletegate {
     ) -> impl IntoElement {
         v_flex()
             .size_full()
-            .child(Icon::new(IconName::Inbox).size(px(50.)).text_color(cx.theme().muted_foreground))
+            .child(Icon::new(IconName::Tray).size(px(50.)).text_color(cx.theme().muted_foreground))
             .child("No matches found")
             .items_center()
             .justify_center()

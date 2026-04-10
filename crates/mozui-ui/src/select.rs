@@ -296,7 +296,7 @@ where
                 .justify_center()
                 .py_6()
                 .text_color(cx.theme().muted_foreground.opacity(0.6))
-                .child(Icon::new(IconName::Inbox).size(px(28.)))
+                .child(Icon::new(IconName::Tray).size(px(28.)))
                 .into_any_element()
         }
     }
@@ -865,7 +865,7 @@ where
                             .when(!show_clean, |this| {
                                 let icon = match self.options.icon.clone() {
                                     Some(icon) => icon,
-                                    None => Icon::new(IconName::ChevronDown),
+                                    None => Icon::new(IconName::CaretDown),
                                 };
 
                                 this.child(icon.xsmall().text_color(cx.theme().muted_foreground))

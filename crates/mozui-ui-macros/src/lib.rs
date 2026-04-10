@@ -4,39 +4,19 @@ use syn::parse::{Parse, ParseStream};
 
 mod derive_into_plot;
 
-/// Input for icon_name! macro: EnumName, "path", [optional derives]
+/// Input for icon_name! macro: EnumName, "path"
 struct IconNameInput {
     enum_name: syn::Ident,
     _comma: syn::Token![,],
     path: syn::LitStr,
-    derives: Option<(
-        syn::Token![,],
-        syn::punctuated::Punctuated<syn::Path, syn::Token![,]>,
-    )>,
 }
 
 impl Parse for IconNameInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let enum_name = input.parse()?;
-        let _comma = input.parse()?;
-        let path = input.parse()?;
-
-        // Check if there's an optional derives list
-        let derives = if input.peek(syn::Token![,]) {
-            let comma = input.parse()?;
-            let content;
-            syn::bracketed!(content in input);
-            let derives = content.parse_terminated(syn::Path::parse, syn::Token![,])?;
-            Some((comma, derives))
-        } else {
-            None
-        };
-
         Ok(IconNameInput {
-            enum_name,
-            _comma,
-            path,
-            derives,
+            enum_name: input.parse()?,
+            _comma: input.parse()?,
+            path: input.parse()?,
         })
     }
 }
@@ -50,14 +30,6 @@ pub fn derive_into_plot(input: TokenStream) -> TokenStream {
 ///
 /// Strips `.svg` extension, splits on separators (`-`, `_`, `.`),
 /// and capitalizes each word following Rust naming conventions.
-///
-/// # Examples
-///
-/// ```ignore
-/// assert_eq!(pascal_case("arrow-right.svg"), "ArrowRight");
-/// assert_eq!(pascal_case("some_icon_name.svg"), "SomeIconName");
-/// assert_eq!(pascal_case("icon-123.svg"), "Icon123");
-/// ```
 fn pascal_case(filename: &str) -> String {
     filename
         .strip_suffix(".svg")
@@ -80,86 +52,212 @@ fn pascal_case(filename: &str) -> String {
         .collect()
 }
 
-/// Generate a custom icon enum and its `IconNamed` impl by scanning a directory of SVG files.
+/// Known weight directory names, in enum order.
+const WEIGHTS: &[&str] = &["thin", "light", "regular", "bold", "fill", "duotone"];
+
+/// Generate a Phosphor icon enum with weight support and embedded SVG data.
 ///
-/// Accepts an enum name, a path relative to the calling crate's `CARGO_MANIFEST_DIR`,
-/// and optionally a list of additional derive traits.
+/// Scans subdirectories (thin/, light/, regular/, bold/, fill/, duotone/) under
+/// the given path. Generates an `IconName` enum from the union of SVG filenames
+/// and an `IconWeight` enum. Each variant embeds its SVG data via `include_bytes!`.
 ///
 /// # Example
 ///
 /// ```ignore
-/// // Basic usage (derives IntoElement, Clone by default)
-/// icon_named!(IconName, "../assets/assets/icons");
-///
-/// // With custom derives
-/// icon_named!(IconName, "../assets/assets/icons", [Debug, Copy, PartialEq, Eq]);
+/// icon_named!(IconName, "icons");
 /// ```
 #[proc_macro]
 pub fn icon_named(input: TokenStream) -> TokenStream {
     let IconNameInput {
-        enum_name,
-        path,
-        derives,
-        ..
+        enum_name, path, ..
     } = syn::parse_macro_input!(input as IconNameInput);
 
     let relative_path = path.value();
-
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     let icons_dir = std::path::Path::new(&manifest_dir).join(&relative_path);
 
-    let mut entries: Vec<(String, String)> = Vec::new();
+    // Collect all unique icon names across all weight directories
+    let mut all_icons: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    // Track which weights exist
+    let mut available_weights: Vec<&str> = Vec::new();
 
-    let dir = std::fs::read_dir(&icons_dir).unwrap_or_else(|e| {
-        panic!(
-            "generate_icon_enum: failed to read '{}': {}",
-            icons_dir.display(),
-            e
-        )
-    });
-
-    for entry in dir {
-        let entry = entry.expect("failed to read directory entry");
-        let filename = entry.file_name().to_string_lossy().to_string();
-        if filename.ends_with(".svg") {
-            let variant_name = pascal_case(&filename);
-            let path = format!("icons/{}", filename);
-            entries.push((variant_name, path));
+    for &weight in WEIGHTS {
+        let weight_dir = icons_dir.join(weight);
+        if weight_dir.is_dir() {
+            available_weights.push(weight);
+            if let Ok(dir) = std::fs::read_dir(&weight_dir) {
+                for entry in dir {
+                    let entry = entry.expect("failed to read directory entry");
+                    let filename = entry.file_name().to_string_lossy().to_string();
+                    if filename.ends_with(".svg") {
+                        let name = filename.strip_suffix(".svg").unwrap().to_string();
+                        all_icons.insert(name);
+                    }
+                }
+            }
         }
     }
 
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    if available_weights.is_empty() {
+        panic!(
+            "icon_named!: no weight directories found in '{}'",
+            icons_dir.display()
+        );
+    }
+
+    // Build enum variants
+    let entries: Vec<(String, String)> = all_icons
+        .iter()
+        .map(|name| (pascal_case(&format!("{}.svg", name)), name.clone()))
+        .collect();
 
     let variants: Vec<proc_macro2::Ident> = entries
         .iter()
-        .map(|(name, _)| proc_macro2::Ident::new(name, proc_macro2::Span::call_site()))
+        .map(|(pascal, _)| proc_macro2::Ident::new(pascal, proc_macro2::Span::call_site()))
         .collect();
-    let paths: Vec<&str> = entries.iter().map(|(_, p)| p.as_str()).collect();
 
-    // Build derive list: always include IntoElement and Clone, then add custom derives
-    let derive_attrs = if let Some((_, custom_derives)) = derives {
-        let derives_vec: Vec<_> = custom_derives.iter().collect();
+    // Build weight enum variants
+    let weight_variants: Vec<proc_macro2::Ident> = available_weights
+        .iter()
+        .map(|w| {
+            let pascal = pascal_case(&format!("{}.svg", w));
+            proc_macro2::Ident::new(&pascal, proc_macro2::Span::call_site())
+        })
+        .collect();
+
+    let has_regular = available_weights.contains(&"regular");
+    let default_weight = if has_regular {
         quote! {
-            #[derive(IntoElement, Clone, #(#derives_vec),*)]
+            impl Default for IconWeight {
+                fn default() -> Self {
+                    Self::Regular
+                }
+            }
         }
     } else {
+        let first = &weight_variants[0];
         quote! {
-            #[derive(IntoElement, Clone)]
+            impl Default for IconWeight {
+                fn default() -> Self {
+                    Self::#first
+                }
+            }
         }
     };
 
+    // Build the svg_data match arms for each weight
+    let weight_match_arms: Vec<proc_macro2::TokenStream> = available_weights
+        .iter()
+        .zip(weight_variants.iter())
+        .map(|(weight, weight_variant)| {
+            let weight_dir = icons_dir.join(weight);
+
+            let arms: Vec<proc_macro2::TokenStream> = entries
+                .iter()
+                .zip(variants.iter())
+                .map(|((_, filename), variant)| {
+                    let svg_path = weight_dir.join(format!("{}.svg", filename));
+                    let svg_path_str = svg_path.to_string_lossy().to_string();
+
+                    if svg_path.exists() {
+                        // Use the absolute path for include_bytes
+                        let lit = syn::LitStr::new(&svg_path_str, proc_macro2::Span::call_site());
+                        quote! {
+                            (Self::#variant, IconWeight::#weight_variant) => {
+                                include_bytes!(#lit)
+                            }
+                        }
+                    } else {
+                        // Icon doesn't exist at this weight — fall back to regular if possible
+                        let regular_path = icons_dir.join("regular").join(format!("{}.svg", filename));
+                        if regular_path.exists() {
+                            let lit = syn::LitStr::new(
+                                &regular_path.to_string_lossy(),
+                                proc_macro2::Span::call_site(),
+                            );
+                            quote! {
+                                (Self::#variant, IconWeight::#weight_variant) => {
+                                    include_bytes!(#lit)
+                                }
+                            }
+                        } else {
+                            // Find any weight that has this icon
+                            let mut fallback: Option<String> = None;
+                            for &w in WEIGHTS {
+                                let p = icons_dir.join(w).join(format!("{}.svg", filename));
+                                if p.exists() {
+                                    fallback = Some(p.to_string_lossy().to_string());
+                                    break;
+                                }
+                            }
+                            let lit = syn::LitStr::new(
+                                &fallback.unwrap_or_else(|| panic!("No SVG found for icon '{}' in any weight", filename)),
+                                proc_macro2::Span::call_site(),
+                            );
+                            quote! {
+                                (Self::#variant, IconWeight::#weight_variant) => {
+                                    include_bytes!(#lit)
+                                }
+                            }
+                        }
+                    }
+                })
+                .collect();
+
+            quote! { #(#arms,)* }
+        })
+        .collect();
+
+    // Build the cache key match arms (weight_prefix/filename for atlas caching)
+    let weight_prefix_strs: Vec<String> = available_weights.iter().map(|w| w.to_string()).collect();
+    let key_match_arms: Vec<proc_macro2::TokenStream> = available_weights
+        .iter()
+        .zip(weight_variants.iter())
+        .enumerate()
+        .map(|(i, (_, weight_variant))| {
+            let prefix = &weight_prefix_strs[i];
+            let arms: Vec<proc_macro2::TokenStream> = entries
+                .iter()
+                .zip(variants.iter())
+                .map(|((_, filename), variant)| {
+                    let key = format!("icons/{}/{}.svg", prefix, filename);
+                    quote! {
+                        (Self::#variant, IconWeight::#weight_variant) => #key
+                    }
+                })
+                .collect();
+            quote! { #(#arms,)* }
+        })
+        .collect();
+
     let expanded = quote! {
-        #derive_attrs
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum IconWeight {
+            #(#weight_variants,)*
+        }
+
+        #default_weight
+
+        #[derive(IntoElement, Clone, Copy)]
         pub enum #enum_name {
             #(#variants,)*
         }
 
         impl IconNamed for #enum_name {
             fn path(self) -> SharedString {
-                match self {
-                    #(Self::#variants => #paths,)*
+                self.cache_key(IconWeight::default()).into()
+            }
+
+            fn svg_data(self, weight: IconWeight) -> &'static [u8] {
+                match (self, weight) {
+                    #(#weight_match_arms)*
                 }
-                .into()
+            }
+
+            fn cache_key(self, weight: IconWeight) -> &'static str {
+                match (self, weight) {
+                    #(#key_match_arms)*
+                }
             }
         }
     };

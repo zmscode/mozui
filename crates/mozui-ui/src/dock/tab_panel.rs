@@ -460,9 +460,9 @@ impl TabPanel {
             })
             .map(|this| {
                 let value = if zoomed {
-                    Some(("zoom-out", IconName::Minimize, t!("Dock.Zoom Out")))
+                    Some(("zoom-out", IconName::ArrowsInSimple, t!("Dock.Zoom Out")))
                 } else if zoomable_toolbar_visible {
-                    Some(("zoom-in", IconName::Maximize, t!("Dock.Zoom In")))
+                    Some(("zoom-in", IconName::ArrowsOutSimple, t!("Dock.Zoom In")))
                 } else {
                     None
                 };
@@ -486,7 +486,7 @@ impl TabPanel {
             })
             .child(
                 Button::new("menu")
-                    .icon(IconName::Ellipsis)
+                    .icon(IconName::DotsThree)
                     .xsmall()
                     .ghost()
                     .tab_stop(false)
@@ -561,23 +561,23 @@ impl TabPanel {
         let icon = match placement {
             DockPlacement::Left => {
                 if is_open {
-                    IconName::PanelLeft
+                    IconName::SidebarSimple
                 } else {
-                    IconName::PanelLeftOpen
+                    IconName::Sidebar
                 }
             }
             DockPlacement::Right => {
                 if is_open {
-                    IconName::PanelRight
+                    IconName::SidebarSimple
                 } else {
-                    IconName::PanelRightOpen
+                    IconName::Sidebar
                 }
             }
             DockPlacement::Bottom => {
                 if is_open {
-                    IconName::PanelBottom
+                    IconName::Layout
                 } else {
-                    IconName::PanelBottomOpen
+                    IconName::Layout
                 }
             }
             DockPlacement::Center => unreachable!(),

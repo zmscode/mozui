@@ -177,7 +177,7 @@ impl RenderOnce for DropdownButton {
                 .when_some(self.menu, |this, menu| {
                     this.child(
                         Button::new("popup")
-                            .icon(IconName::ChevronDown)
+                            .icon(IconName::CaretDown)
                             .rounded(self.rounded)
                             .border_edges(Edges {
                                 left: rounded,

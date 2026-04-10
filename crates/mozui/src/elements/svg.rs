@@ -13,6 +13,7 @@ pub struct Svg {
     transformation: Option<Transformation>,
     path: Option<SharedString>,
     external_path: Option<SharedString>,
+    embedded_data: Option<(SharedString, &'static [u8])>,
 }
 
 /// Create a new SVG element.
@@ -23,6 +24,7 @@ pub fn svg() -> Svg {
         transformation: None,
         path: None,
         external_path: None,
+        embedded_data: None,
     }
 }
 
@@ -36,6 +38,15 @@ impl Svg {
     /// Set the path to the SVG file for this element.
     pub fn external_path(mut self, path: impl Into<SharedString>) -> Self {
         self.external_path = Some(path.into());
+        self
+    }
+
+    /// Set embedded SVG data for this element.
+    ///
+    /// The key is used for atlas caching. The data is the raw SVG bytes,
+    /// typically from `include_bytes!`.
+    pub fn svg_data(mut self, key: impl Into<SharedString>, data: &'static [u8]) -> Self {
+        self.embedded_data = Some((key.into(), data));
         self
     }
 
@@ -116,7 +127,28 @@ impl Element for Svg {
             window,
             cx,
             |style, window, cx| {
-                if let Some((path, color)) = self.path.as_ref().zip(style.text.color) {
+                if let Some(((key, data), color)) =
+                    self.embedded_data.as_ref().zip(style.text.color)
+                {
+                    let transformation = self
+                        .transformation
+                        .as_ref()
+                        .map(|transformation| {
+                            transformation.into_matrix(bounds.center(), window.scale_factor())
+                        })
+                        .unwrap_or_default();
+
+                    window
+                        .paint_svg(
+                            bounds,
+                            key.clone(),
+                            Some(data),
+                            transformation,
+                            color,
+                            cx,
+                        )
+                        .log_err();
+                } else if let Some((path, color)) = self.path.as_ref().zip(style.text.color) {
                     let transformation = self
                         .transformation
                         .as_ref()

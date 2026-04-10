@@ -11,22 +11,33 @@ use mozui_ui_macros::icon_named;
 /// This allows you to implement a custom version of [`IconName`] that functions as a drop-in
 /// replacement for other UI components.
 pub trait IconNamed {
-    /// Returns the embedded path of the icon.
+    /// Returns the asset path for the icon at default weight (for backwards compat).
     fn path(self) -> SharedString;
+
+    /// Returns the embedded SVG bytes for this icon at the given weight.
+    fn svg_data(self, weight: IconWeight) -> &'static [u8];
+
+    /// Returns a cache key string for atlas caching.
+    fn cache_key(self, weight: IconWeight) -> &'static str;
 }
 
-impl<T: IconNamed> From<T> for Icon {
+impl<T: IconNamed + Copy> From<T> for Icon {
     fn from(value: T) -> Self {
         Icon::build(value)
     }
 }
 
-icon_named!(IconName, "../mozui-assets/assets/icons");
+icon_named!(IconName, "icons");
 
 impl IconName {
     /// Return the icon as a Entity<Icon>
     pub fn view(self, cx: &mut App) -> Entity<Icon> {
         Icon::build(self).view(cx)
+    }
+
+    /// Create an Icon with a specific weight.
+    pub fn with_weight(self, weight: IconWeight) -> Icon {
+        Icon::build_with_weight(self, weight)
     }
 }
 
@@ -50,6 +61,9 @@ pub struct Icon {
     text_color: Option<Hsla>,
     size: Option<Size>,
     rotation: Option<Radians>,
+    weight: IconWeight,
+    svg_bytes: Option<&'static [u8]>,
+    cache_key: Option<SharedString>,
 }
 
 impl Default for Icon {
@@ -61,17 +75,24 @@ impl Default for Icon {
             text_color: None,
             size: None,
             rotation: None,
+            weight: IconWeight::default(),
+            svg_bytes: None,
+            cache_key: None,
         }
     }
 }
 
 impl Clone for Icon {
     fn clone(&self) -> Self {
-        let mut this = Self::default().path(self.path.clone());
+        let mut this = Self::default();
+        this.path = self.path.clone();
         this.style = self.style.clone();
         this.rotation = self.rotation;
         this.size = self.size;
         this.text_color = self.text_color;
+        this.weight = self.weight;
+        this.svg_bytes = self.svg_bytes;
+        this.cache_key = self.cache_key.clone();
         this
     }
 }
@@ -81,8 +102,30 @@ impl Icon {
         icon.into()
     }
 
-    fn build(name: impl IconNamed) -> Self {
-        Self::default().path(name.path())
+    fn build(name: impl IconNamed + Copy) -> Self {
+        let weight = IconWeight::default();
+        let svg_bytes = name.svg_data(weight);
+        let cache_key: SharedString = name.cache_key(weight).into();
+        let path = name.path();
+        Self {
+            svg_bytes: Some(svg_bytes),
+            cache_key: Some(cache_key),
+            path,
+            ..Self::default()
+        }
+    }
+
+    fn build_with_weight(name: impl IconNamed + Copy, weight: IconWeight) -> Self {
+        let svg_bytes = name.svg_data(weight);
+        let cache_key: SharedString = name.cache_key(weight).into();
+        let path = name.path();
+        Self {
+            svg_bytes: Some(svg_bytes),
+            cache_key: Some(cache_key),
+            path,
+            weight,
+            ..Self::default()
+        }
     }
 
     /// Set the icon path of the Assets bundle
@@ -90,6 +133,8 @@ impl Icon {
     /// For example: `icons/foo.svg`
     pub fn path(mut self, path: impl Into<SharedString>) -> Self {
         self.path = path.into();
+        self.svg_bytes = None;
+        self.cache_key = None;
         self
     }
 
@@ -143,6 +188,12 @@ impl RenderOnce for Icon {
         let mut base = self.base;
         *base.style() = self.style;
 
+        let base = if let (Some(bytes), Some(key)) = (self.svg_bytes, &self.cache_key) {
+            base.svg_data(key.clone(), bytes)
+        } else {
+            base.path(self.path)
+        };
+
         base.flex_shrink_0()
             .text_color(text_color)
             .when(!has_base_size, |this| this.size(text_size))
@@ -153,7 +204,6 @@ impl RenderOnce for Icon {
                 Size::Medium => this.size_4(),
                 Size::Large => this.size_6(),
             })
-            .path(self.path)
     }
 }
 
@@ -172,6 +222,12 @@ impl Render for Icon {
         let mut base = svg().flex_none();
         *base.style() = self.style.clone();
 
+        let base = if let (Some(bytes), Some(key)) = (self.svg_bytes, &self.cache_key) {
+            base.svg_data(key.clone(), bytes)
+        } else {
+            base.path(self.path.clone())
+        };
+
         base.flex_shrink_0()
             .text_color(text_color)
             .when(!has_base_size, |this| this.size(text_size))
@@ -182,7 +238,6 @@ impl Render for Icon {
                 Size::Medium => this.size_4(),
                 Size::Large => this.size_6(),
             })
-            .path(self.path.clone())
             .when_some(self.rotation, |this, rotation| {
                 this.with_transformation(Transformation::rotate(rotation))
             })

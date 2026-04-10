@@ -283,7 +283,7 @@ impl Render for ButtonStory {
                         Button::new("button-icon-2")
                             .outline()
                             .label("Abort")
-                            .icon(IconName::Close)
+                            .icon(IconName::X)
                             .disabled(disabled)
                             .selected(selected)
                             .loading(loading)
@@ -294,7 +294,7 @@ impl Render for ButtonStory {
                         Button::new("button-icon-3")
                             .outline()
                             .label("Maximize")
-                            .icon(Icon::new(IconName::Maximize))
+                            .icon(Icon::new(IconName::ArrowsOutSimple))
                             .disabled(disabled)
                             .selected(selected)
                             .loading(loading)
@@ -308,7 +308,7 @@ impl Render for ButtonStory {
                                     .items_center()
                                     .gap_2()
                                     .child("Custom Child")
-                                    .child(IconName::ChevronDown)
+                                    .child(IconName::CaretDown)
                                     .child(IconName::Eye),
                             )
                             .disabled(disabled)
@@ -810,8 +810,8 @@ impl Render for ButtonStory {
                 section("Icon Button")
                     .child(
                         Button::new("icon-button-primary")
-                            .icon(IconName::Search)
-                            .loading_icon(IconName::LoaderCircle)
+                            .icon(IconName::MagnifyingGlass)
+                            .loading_icon(IconName::CircleNotch)
                             .primary()
                             .disabled(disabled)
                             .selected(selected)
@@ -829,7 +829,7 @@ impl Render for ButtonStory {
                     )
                     .child(
                         Button::new("icon-button-danger")
-                            .icon(IconName::Close)
+                            .icon(IconName::X)
                             .danger()
                             .disabled(disabled)
                             .selected(selected)
@@ -838,7 +838,7 @@ impl Render for ButtonStory {
                     )
                     .child(
                         Button::new("icon-button-small-primary")
-                            .icon(IconName::Search)
+                            .icon(IconName::MagnifyingGlass)
                             .small()
                             .primary()
                             .disabled(disabled)
@@ -848,7 +848,7 @@ impl Render for ButtonStory {
                     )
                     .child(
                         Button::new("icon-button-outline")
-                            .icon(IconName::Search)
+                            .icon(IconName::MagnifyingGlass)
                             .outline()
                             .disabled(disabled)
                             .selected(selected)
@@ -858,7 +858,7 @@ impl Render for ButtonStory {
                     .child(
                         Button::new("icon-button-ghost")
                             .icon(IconName::ArrowLeft)
-                            .loading_icon(IconName::LoaderCircle)
+                            .loading_icon(IconName::CircleNotch)
                             .ghost()
                             .disabled(disabled)
                             .selected(selected)
@@ -879,7 +879,7 @@ impl Render for ButtonStory {
                     )
                     .child(
                         Button::new("icon-button-5")
-                            .icon(IconName::Close)
+                            .icon(IconName::X)
                             .small()
                             .danger()
                             .disabled(disabled)
@@ -889,7 +889,7 @@ impl Render for ButtonStory {
                     )
                     .child(
                         Button::new("icon-button-6")
-                            .icon(IconName::Search)
+                            .icon(IconName::MagnifyingGlass)
                             .small()
                             .primary()
                             .disabled(disabled)
@@ -908,7 +908,7 @@ impl Render for ButtonStory {
                     )
                     .child(
                         Button::new("icon-button-8")
-                            .icon(IconName::Close)
+                            .icon(IconName::X)
                             .xsmall()
                             .danger()
                             .disabled(disabled)

@@ -74,7 +74,7 @@ impl Render for AppTitleBar {
                     .child(self.font_size_selector.clone())
                     .child(
                         Button::new("github")
-                            .icon(IconName::Github)
+                            .icon(IconName::GithubLogo)
                             .small()
                             .ghost()
                             .on_click(|_, _, cx| {
@@ -172,7 +172,7 @@ impl Render for FontSizeSelector {
                 Button::new("btn")
                     .small()
                     .ghost()
-                    .icon(IconName::Settings2)
+                    .icon(IconName::GearSix)
                     .dropdown_menu(move |this, _, cx| {
                         this.scrollable(true)
                             .check_side(Side::Right)

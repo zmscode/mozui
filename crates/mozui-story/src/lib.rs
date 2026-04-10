@@ -573,7 +573,7 @@ impl Panel for StoryContainer {
                     window.push_notification("You have clicked info button", cx);
                 }),
             Button::new("search")
-                .icon(IconName::Search)
+                .icon(IconName::MagnifyingGlass)
                 .on_click(|_, window, cx| {
                     window.push_notification("You have clicked search button", cx);
                 }),

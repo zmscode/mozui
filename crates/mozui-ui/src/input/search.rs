@@ -450,7 +450,7 @@ impl Render for SearchPanel {
                                             .xsmall()
                                             .compact()
                                             .ghost()
-                                            .icon(IconName::CaseSensitive)
+                                            .icon(IconName::TextAa)
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.case_insensitive = !this.case_insensitive;
                                                 this.update_search_query(cx);
@@ -472,7 +472,7 @@ impl Render for SearchPanel {
                         Button::new("replace-mode")
                             .xsmall()
                             .ghost()
-                            .icon(IconName::Replace)
+                            .icon(IconName::Swap)
                             .selected(self.replace_mode)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.replace_mode = !this.replace_mode;
@@ -496,7 +496,7 @@ impl Render for SearchPanel {
                         Button::new("prev")
                             .xsmall()
                             .ghost()
-                            .icon(IconName::ChevronLeft)
+                            .icon(IconName::CaretLeft)
                             .disabled(!has_matches)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.prev(window, cx);
@@ -506,7 +506,7 @@ impl Render for SearchPanel {
                         Button::new("next")
                             .xsmall()
                             .ghost()
-                            .icon(IconName::ChevronRight)
+                            .icon(IconName::CaretRight)
                             .disabled(!has_matches)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.next(window, cx);
@@ -525,7 +525,7 @@ impl Render for SearchPanel {
                         Button::new("close")
                             .xsmall()
                             .ghost()
-                            .icon(IconName::Close)
+                            .icon(IconName::X)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.on_action_escape(&Escape, window, cx);
                             })),

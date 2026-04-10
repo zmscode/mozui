@@ -97,21 +97,21 @@ impl Alert {
     pub fn success(id: impl Into<ElementId>, message: impl Into<Text>) -> Self {
         Self::new(id, message)
             .with_variant(AlertVariant::Success)
-            .icon(IconName::CircleCheck)
+            .icon(IconName::CheckCircle)
     }
 
     /// Create a new [`AlertVariant::Warning`] alert with the given message.
     pub fn warning(id: impl Into<ElementId>, message: impl Into<Text>) -> Self {
         Self::new(id, message)
             .with_variant(AlertVariant::Warning)
-            .icon(IconName::TriangleAlert)
+            .icon(IconName::Warning)
     }
 
     /// Create a new [`AlertVariant::Error`] alert with the given message.
     pub fn error(id: impl Into<ElementId>, message: impl Into<Text>) -> Self {
         Self::new(id, message)
             .with_variant(AlertVariant::Error)
-            .icon(IconName::CircleX)
+            .icon(IconName::XCircle)
     }
 
     /// Sets the [`AlertVariant`] of the alert.
@@ -243,7 +243,7 @@ impl RenderOnce for Alert {
                             on_close(ev, window, cx);
                         })
                         .child(
-                            Icon::new(IconName::Close)
+                            Icon::new(IconName::X)
                                 .with_size(self.size.max(Size::Medium))
                                 .flex_shrink_0(),
                         ),

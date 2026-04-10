@@ -154,7 +154,7 @@ impl SettingPage {
                         |this| {
                             this.child(
                                 Button::new("reset")
-                                    .icon(IconName::Undo2)
+                                    .icon(IconName::ArrowCounterClockwise)
                                     .ghost()
                                     .small()
                                     .tooltip(t!("Settings.Reset All"))

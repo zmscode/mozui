@@ -393,7 +393,7 @@ impl ThemeColorsStory {
         Sidebar::new(format!("color-theme-sidebar-{}", self.sidebar_render_key))
             .w(px(300.))
             .border_0()
-            .header(Input::new(&self.filter_input).prefix(IconName::Search))
+            .header(Input::new(&self.filter_input).prefix(IconName::MagnifyingGlass))
             .child(
                 SidebarMenu::new().children(categories.iter().enumerate().map(
                     |(

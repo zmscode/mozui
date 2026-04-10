@@ -64,7 +64,7 @@ impl Render for BadgeStory {
                     .child(
                         Badge::new()
                             .count(103)
-                            .child(Icon::new(IconName::Inbox).large()),
+                            .child(Icon::new(IconName::Tray).large()),
                     ),
             )
             .child(

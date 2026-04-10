@@ -260,7 +260,7 @@ impl RenderOnce for TabBar {
                     Button::new("more")
                         .xsmall()
                         .ghost()
-                        .icon(IconName::ChevronDown)
+                        .icon(IconName::CaretDown)
                         .dropdown_menu(move |mut this, _, _| {
                             this = this.scrollable(true);
                             for (ix, (label, disabled)) in item_labels.iter().enumerate() {

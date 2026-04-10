@@ -296,7 +296,7 @@ impl SidebarItem for SidebarMenuItem {
                                         .xsmall()
                                         .ghost()
                                         .icon(
-                                            Icon::new(IconName::ChevronRight)
+                                            Icon::new(IconName::CaretRight)
                                                 .size_4()
                                                 .when(is_open, |this| {
                                                     this.rotate(percentage(90. / 360.))

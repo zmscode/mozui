@@ -214,7 +214,7 @@ impl Render for SelectStory {
                 section("Searchable").max_w_128().child(
                     Select::new(&self.fruit_select)
                         .disabled(self.disabled)
-                        .icon(IconName::Search)
+                        .icon(IconName::MagnifyingGlass)
                         .w(px(320.))
                         .menu_width(px(400.)),
                 ),

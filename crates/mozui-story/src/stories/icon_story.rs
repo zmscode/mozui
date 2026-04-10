@@ -58,9 +58,9 @@ impl Render for IconStory {
                 section("Icon")
                     .text_lg()
                     .child(IconName::Info)
-                    .child(IconName::Map)
-                    .child(IconName::Bot)
-                    .child(IconName::Github)
+                    .child(IconName::MapTrifold)
+                    .child(IconName::Robot)
+                    .child(IconName::GithubLogo)
                     .child(IconName::Calendar)
                     .child(IconName::Globe)
                     .child(IconName::Heart),
@@ -68,12 +68,12 @@ impl Render for IconStory {
             .child(
                 section("Color Icon")
                     .child(
-                        Icon::new(IconName::Maximize)
+                        Icon::new(IconName::ArrowsOutSimple)
                             .size_6()
                             .text_color(cx.theme().green),
                     )
                     .child(
-                        Icon::new(IconName::Minimize)
+                        Icon::new(IconName::ArrowsInSimple)
                             .size_6()
                             .text_color(cx.theme().red),
                     ),
@@ -94,7 +94,7 @@ impl Render for IconStory {
                         .child(
                             Button::new("like2")
                                 .icon(
-                                    Icon::new(IconName::HeartOff)
+                                    Icon::new(IconName::HeartBreak)
                                         .text_color(cx.theme().red)
                                         .size_6(),
                                 )

@@ -146,8 +146,8 @@ impl Render for StepperStory {
                             StepperItem::new()
                                 .icon(IconName::Calendar)
                                 .child("Order Details"),
-                            StepperItem::new().icon(IconName::Inbox).child("Shipping"),
-                            StepperItem::new().icon(IconName::Frame).child("Preview"),
+                            StepperItem::new().icon(IconName::Tray).child("Shipping"),
+                            StepperItem::new().icon(IconName::FrameCorners).child("Preview"),
                             StepperItem::new().icon(IconName::Info).child("Finish"),
                         ])
                         .on_click(cx.listener(|this, step, _, cx| {
@@ -167,7 +167,7 @@ impl Render for StepperStory {
                         .items([
                             StepperItem::new()
                                 .pb_8()
-                                .icon(IconName::Building2)
+                                .icon(IconName::Buildings)
                                 .child(v_flex().child("Step 1").child("Description for step 1.")),
                             StepperItem::new()
                                 .pb_8()
@@ -178,7 +178,7 @@ impl Render for StepperStory {
                                 .icon(IconName::Folder)
                                 .child(v_flex().child("Step 3").child("Description for step 3.")),
                             StepperItem::new()
-                                .icon(IconName::CircleCheck)
+                                .icon(IconName::CheckCircle)
                                 .child(v_flex().child("Step 4").child("Description for step 4.")),
                         ])
                         .on_click(cx.listener(|this, step, _, cx| {

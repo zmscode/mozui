@@ -72,10 +72,10 @@ impl Render for SpinnerStory {
             .child(
                 section("Spinner with Icon")
                     .gap_x_2()
-                    .child(Spinner::new().icon(IconName::LoaderCircle))
+                    .child(Spinner::new().icon(IconName::CircleNotch))
                     .child(
                         Spinner::new()
-                            .icon(IconName::LoaderCircle)
+                            .icon(IconName::CircleNotch)
                             .large()
                             .color(cx.theme().cyan),
                     ),

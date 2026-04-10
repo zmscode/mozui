@@ -881,7 +881,7 @@ impl Tiles {
         elements.push(
             div()
                 .child(
-                    Icon::new(IconName::ResizeCorner)
+                    Icon::new(IconName::Resize)
                         .size_3()
                         .absolute()
                         .right(px(1.))

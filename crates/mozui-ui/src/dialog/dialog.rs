@@ -628,7 +628,7 @@ impl RenderOnce for Dialog {
                                     .right(right)
                                     .small()
                                     .ghost()
-                                    .icon(IconName::Close)
+                                    .icon(IconName::X)
                                     .on_click({
                                         let on_cancel = self.button_props.on_cancel.clone();
                                         let on_close = self.button_props.on_close.clone();

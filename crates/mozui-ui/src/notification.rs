@@ -34,9 +34,9 @@ impl NotificationType {
     fn icon(&self, cx: &App) -> Icon {
         match self {
             Self::Info => Icon::new(IconName::Info).text_color(cx.theme().info),
-            Self::Success => Icon::new(IconName::CircleCheck).text_color(cx.theme().success),
-            Self::Warning => Icon::new(IconName::TriangleAlert).text_color(cx.theme().warning),
-            Self::Error => Icon::new(IconName::CircleX).text_color(cx.theme().danger),
+            Self::Success => Icon::new(IconName::CheckCircle).text_color(cx.theme().success),
+            Self::Warning => Icon::new(IconName::Warning).text_color(cx.theme().warning),
+            Self::Error => Icon::new(IconName::XCircle).text_color(cx.theme().danger),
         }
     }
 }
@@ -332,7 +332,7 @@ impl Render for Notification {
                     .group_hover("", |this| this.visible())
                     .child(
                         Button::new("close")
-                            .icon(IconName::Close)
+                            .icon(IconName::X)
                             .ghost()
                             .xsmall()
                             .on_click(cx.listener(|this, _, window, cx| this.dismiss(window, cx))),

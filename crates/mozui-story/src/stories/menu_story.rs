@@ -156,7 +156,7 @@ impl Render for MenuStory {
                                         Box::new(ToggleCheck),
                                     )
                                     .separator()
-                                    .menu_with_icon("Search", IconName::Search, Box::new(SearchAll))
+                                    .menu_with_icon("Search", IconName::MagnifyingGlass, Box::new(SearchAll))
                                     .separator()
                                     .item(
                                         PopupMenuItem::element(|_, cx| {
@@ -205,7 +205,7 @@ impl Render for MenuStory {
                                     .submenu("Links", window, cx, |menu, _, _| {
                                         menu.link_with_icon(
                                             "GPUI Component",
-                                            IconName::Github,
+                                            IconName::GithubLogo,
                                             "https://github.com/longbridge/gpui-component",
                                         )
                                         .separator()

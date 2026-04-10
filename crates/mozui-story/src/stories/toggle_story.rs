@@ -102,10 +102,10 @@ impl Render for ToggleStory {
                     .child(
                         ToggleGroup::new("toggle-button-group1")
                             .child(Toggle::new(0).icon(IconName::Bell).checked(self.checked[0]))
-                            .child(Toggle::new(1).icon(IconName::Bot).checked(self.checked[1]))
+                            .child(Toggle::new(1).icon(IconName::Robot).checked(self.checked[1]))
                             .child(
                                 Toggle::new(2)
-                                    .icon(IconName::Inbox)
+                                    .icon(IconName::Tray)
                                     .checked(self.checked[2]),
                             )
                             .child(
@@ -127,10 +127,10 @@ impl Render for ToggleStory {
                         ToggleGroup::new("toggle-button-group1-sm")
                             .small()
                             .child(Toggle::new(0).icon(IconName::Bell).checked(self.checked[0]))
-                            .child(Toggle::new(1).icon(IconName::Bot).checked(self.checked[1]))
+                            .child(Toggle::new(1).icon(IconName::Robot).checked(self.checked[1]))
                             .child(
                                 Toggle::new(2)
-                                    .icon(IconName::Inbox)
+                                    .icon(IconName::Tray)
                                     .checked(self.checked[2]),
                             )
                             .child(
@@ -152,10 +152,10 @@ impl Render for ToggleStory {
                         ToggleGroup::new("toggle-button-group1-xs")
                             .xsmall()
                             .child(Toggle::new(0).icon(IconName::Bell).checked(self.checked[0]))
-                            .child(Toggle::new(1).icon(IconName::Bot).checked(self.checked[1]))
+                            .child(Toggle::new(1).icon(IconName::Robot).checked(self.checked[1]))
                             .child(
                                 Toggle::new(2)
-                                    .icon(IconName::Inbox)
+                                    .icon(IconName::Tray)
                                     .checked(self.checked[2]),
                             )
                             .child(
@@ -182,10 +182,10 @@ impl Render for ToggleStory {
                         ToggleGroup::new("toggle-button-group2")
                             .outline()
                             .child(Toggle::new(0).icon(IconName::Bell).checked(self.checked[0]))
-                            .child(Toggle::new(1).icon(IconName::Bot).checked(self.checked[1]))
+                            .child(Toggle::new(1).icon(IconName::Robot).checked(self.checked[1]))
                             .child(
                                 Toggle::new(2)
-                                    .icon(IconName::Inbox)
+                                    .icon(IconName::Tray)
                                     .checked(self.checked[2]),
                             )
                             .child(
@@ -208,10 +208,10 @@ impl Render for ToggleStory {
                             .outline()
                             .small()
                             .child(Toggle::new(0).icon(IconName::Bell).checked(self.checked[0]))
-                            .child(Toggle::new(1).icon(IconName::Bot).checked(self.checked[1]))
+                            .child(Toggle::new(1).icon(IconName::Robot).checked(self.checked[1]))
                             .child(
                                 Toggle::new(2)
-                                    .icon(IconName::Inbox)
+                                    .icon(IconName::Tray)
                                     .checked(self.checked[2]),
                             )
                             .child(
@@ -234,10 +234,10 @@ impl Render for ToggleStory {
                             .outline()
                             .xsmall()
                             .child(Toggle::new(0).icon(IconName::Bell).checked(self.checked[0]))
-                            .child(Toggle::new(1).icon(IconName::Bot).checked(self.checked[1]))
+                            .child(Toggle::new(1).icon(IconName::Robot).checked(self.checked[1]))
                             .child(
                                 Toggle::new(2)
-                                    .icon(IconName::Inbox)
+                                    .icon(IconName::Tray)
                                     .checked(self.checked[2]),
                             )
                             .child(

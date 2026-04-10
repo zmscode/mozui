@@ -1,5 +1,5 @@
 use crate::theme::ActiveTheme;
-use crate::{Disableable, Icon, IconName, Sizable, Size, StyledExt, h_flex};
+use crate::{Disableable, IconName, IconWeight, Sizable, Size, StyledExt, h_flex};
 use std::rc::Rc;
 
 use mozui::{
@@ -158,10 +158,10 @@ impl RenderOnce for Rating {
                             .flex_shrink_0()
                             .when(filled || hovered, |this| this.text_color(active_color))
                             .child(
-                                Icon::new(if filled {
-                                    IconName::StarFill
+                                IconName::Star.with_weight(if filled {
+                                    IconWeight::Fill
                                 } else {
-                                    IconName::Star
+                                    IconWeight::Regular
                                 })
                                 .with_size(size),
                             )

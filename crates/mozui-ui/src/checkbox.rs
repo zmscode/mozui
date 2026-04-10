@@ -1,8 +1,8 @@
 use std::{rc::Rc, time::Duration};
 
 use crate::{
-    ActiveTheme, Disableable, FocusableExt, IconName, Selectable, Sizable, Size, StyledExt as _,
-    icon::IconNamed, text::Text, v_flex,
+    ActiveTheme, Disableable, FocusableExt, IconName, IconWeight, Selectable, Sizable, Size,
+    StyledExt as _, icon::IconNamed, text::Text, v_flex,
 };
 use mozui::{
     Animation, AnimationExt, AnyElement, App, Div, ElementId, InteractiveElement, IntoElement,
@@ -160,7 +160,13 @@ pub(crate) fn checkbox_check_icon(
         })
         .text_color(color)
         .map(|this| match checked {
-            true => this.path(IconName::Check.path()),
+            true => {
+                let weight = IconWeight::default();
+                this.svg_data(
+                    IconName::Check.cache_key(weight),
+                    IconName::Check.svg_data(weight),
+                )
+            }
             _ => this,
         })
         .map(|this| {

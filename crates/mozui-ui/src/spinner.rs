@@ -20,14 +20,14 @@ impl Spinner {
         Self {
             size: Size::Medium,
             speed: Duration::from_secs_f64(0.8),
-            icon: Icon::new(IconName::Loader),
+            icon: Icon::new(IconName::Spinner),
             color: None,
         }
     }
 
     /// Set specified icon for the spinner.
     ///
-    /// Default is [`IconName::Loader`].
+    /// Default is [`IconName::Spinner`].
     ///
     /// Please ensure the icon used is suitable for a loading spinner.
     pub fn icon(mut self, icon: impl Into<Icon>) -> Self {

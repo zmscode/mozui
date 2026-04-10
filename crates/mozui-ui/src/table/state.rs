@@ -1289,7 +1289,7 @@ where
         let (icon, is_on) = match sort {
             ColumnSort::Ascending => (IconName::SortAscending, true),
             ColumnSort::Descending => (IconName::SortDescending, true),
-            ColumnSort::Default => (IconName::ChevronsUpDown, false),
+            ColumnSort::Default => (IconName::CaretUpDown, false),
         };
 
         Some(
