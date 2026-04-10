@@ -1,5 +1,5 @@
 use mozui::*;
-use mozui_ui::{button::*, checkbox::*, divider::*, input::*, select::*, *};
+use mozui_components::{button::*, checkbox::*, divider::*, input::*, select::*, *};
 use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
 

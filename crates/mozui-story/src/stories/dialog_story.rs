@@ -3,7 +3,7 @@ use mozui::{
     ParentElement, Render, SharedString, Styled, Window, div, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Icon, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,

@@ -4,11 +4,11 @@ use mozui::{
     Styled, Window, prelude::FluentBuilder as _,
 };
 
-use mozui_ui::group_box::{GroupBox, GroupBoxVariants as _};
-use mozui_ui::label::Label;
-use mozui_ui::tag::Tag;
-use mozui_ui::{ActiveTheme, IconName, StyledExt, h_flex};
-use mozui_ui::{
+use mozui_components::group_box::{GroupBox, GroupBoxVariants as _};
+use mozui_components::label::Label;
+use mozui_components::tag::Tag;
+use mozui_components::{ActiveTheme, IconName, StyledExt, h_flex};
+use mozui_components::{
     Sizable,
     button::{Button, ButtonVariants},
     collapsible::Collapsible,

@@ -3,7 +3,7 @@ use mozui::{
     Window, div, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Disableable as _, Sizable, checkbox::Checkbox, h_flex, text::markdown, v_flex,
 };
 

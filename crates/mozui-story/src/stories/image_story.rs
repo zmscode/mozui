@@ -3,7 +3,7 @@ use mozui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _,
     Render, Styled, Window, img,
 };
-use mozui_ui::{dock::PanelControl, v_flex};
+use mozui_components::{dock::PanelControl, v_flex};
 
 pub struct ImageStory {
     focus_handle: mozui::FocusHandle,

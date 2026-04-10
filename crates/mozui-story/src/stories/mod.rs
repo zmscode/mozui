@@ -1,5 +1,5 @@
 use mozui::{AnyView, App, AppContext as _, Entity, Hsla, Pixels, Render, Window, px};
-use mozui_ui::dock::PanelControl;
+use mozui_components::dock::PanelControl;
 
 mod accordion_story;
 mod alert_dialog_story;

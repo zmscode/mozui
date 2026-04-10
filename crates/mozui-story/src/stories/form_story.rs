@@ -2,7 +2,7 @@ use mozui::{
     App, AppContext, Axis, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ParentElement as _, Render, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, AxisExt, IndexPath, Selectable, Sizable, Size,
     button::{Button, ButtonGroup},
     checkbox::Checkbox,

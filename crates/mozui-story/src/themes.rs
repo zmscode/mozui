@@ -1,9 +1,9 @@
 use mozui::{Action, App, SharedString};
-use mozui_ui::{Theme, ThemeMode, ThemeRegistry, scroll::ScrollbarShow};
+use mozui_components::{Theme, ThemeMode, ThemeRegistry, scroll::ScrollbarShow};
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_family = "wasm"))]
-use mozui_ui::ActiveTheme;
+use mozui_components::ActiveTheme;
 
 #[cfg(target_family = "wasm")]
 use crate::embedded_themes;

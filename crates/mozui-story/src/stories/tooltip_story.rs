@@ -3,7 +3,7 @@ use mozui::{
     Render, StatefulInteractiveElement, Styled, Window, actions, div,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, IconName,
     button::{Button, ButtonVariant, ButtonVariants},
     checkbox::Checkbox,

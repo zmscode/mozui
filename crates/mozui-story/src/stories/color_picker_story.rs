@@ -2,7 +2,7 @@ use mozui::{
     App, AppContext, Context, Entity, Focusable, Hsla, IntoElement, ParentElement as _, Render,
     Styled as _, Subscription, Window, div, prelude::FluentBuilder as _,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme as _, Colorize, Sizable,
     color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
     v_flex,

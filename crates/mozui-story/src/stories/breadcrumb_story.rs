@@ -3,7 +3,7 @@ use mozui::{
     Styled, Window, prelude::FluentBuilder as _,
 };
 
-use mozui_ui::{
+use mozui_components::{
     breadcrumb::{Breadcrumb, BreadcrumbItem},
     v_flex,
 };

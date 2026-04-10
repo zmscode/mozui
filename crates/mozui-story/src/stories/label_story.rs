@@ -3,7 +3,7 @@ use mozui::{
     Styled, Subscription, Window, div, px, rems,
 };
 
-use mozui_ui::{
+use mozui_components::{
     IconName, StyledExt,
     button::{Button, ButtonVariant, ButtonVariants as _},
     checkbox::Checkbox,

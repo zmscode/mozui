@@ -3,7 +3,7 @@ use mozui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled,
     Window, px,
 };
-use mozui_ui::{ActiveTheme, divider::Divider, h_flex, label::Label, v_flex};
+use mozui_components::{ActiveTheme, divider::Divider, h_flex, label::Label, v_flex};
 
 const DESCRIPTION: &str = "GPUI Component is a Rust GUI components for building fantastic cross-platform desktop application by using GPUI.";
 

@@ -3,7 +3,7 @@ use mozui::{
     Styled, Window,
 };
 
-use mozui_ui::{h_flex, kbd::Kbd, v_flex};
+use mozui_components::{h_flex, kbd::Kbd, v_flex};
 
 use crate::section;
 

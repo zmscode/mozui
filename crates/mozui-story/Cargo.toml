@@ -5,14 +5,14 @@ publish = false
 edition.workspace = true
 
 [features]
-inspector = ["mozui-ui/inspector"]
-tree-sitter = ["mozui-ui/tree-sitter-languages"]
+inspector = ["mozui-components/inspector"]
+tree-sitter = ["mozui-components/tree-sitter-languages"]
 default = ["tree-sitter"]
 
 [dependencies]
 anyhow.workspace = true
 mozui.workspace = true
-mozui-ui = { workspace = true }
+mozui-components = { workspace = true }
 mozui-assets.workspace = true
 
 autocorrect = "2.14.2"

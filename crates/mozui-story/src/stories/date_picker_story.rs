@@ -3,7 +3,7 @@ use mozui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement as _, Render,
     Styled as _, Subscription, Window, div, px,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme as _, Sizable as _, calendar,
     date_picker::{DatePicker, DatePickerEvent, DatePickerState, DateRangePreset},
     v_flex,

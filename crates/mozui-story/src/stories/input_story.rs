@@ -4,7 +4,7 @@ use mozui::{
 };
 
 use crate::section;
-use mozui_ui::{button::*, input::*, *};
+use mozui_components::{button::*, input::*, *};
 
 const CODE_EXAMPLE: &str = r#"{"single_line":"code editor"}"#;
 

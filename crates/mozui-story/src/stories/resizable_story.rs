@@ -2,7 +2,7 @@ use mozui::{
     AnyElement, App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, Styled, Window, div, px,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme,
     resizable::{h_resizable, resizable_panel, v_resizable},
     v_flex,

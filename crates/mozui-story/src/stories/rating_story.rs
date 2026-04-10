@@ -1,7 +1,7 @@
 use mozui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled, Window,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, IconName, Selectable as _, Sizable as _, Size,
     button::{Button, ButtonGroup},
     h_flex,

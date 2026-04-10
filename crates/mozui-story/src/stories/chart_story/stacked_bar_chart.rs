@@ -1,7 +1,7 @@
 // You can draw any chart you want by using the `Plot`.
 
 use mozui::{App, Bounds, Pixels, TextAlign, Window, px};
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme,
     plot::{
         AXIS_GAP, AxisText, Grid, IntoPlot, Plot, PlotAxis,

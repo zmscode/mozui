@@ -1,6 +1,6 @@
 use mozui::{App, AppContext as _, Context, Entity, IntoElement, Render, Styled, Window};
 
-use mozui_ui::input::*;
+use mozui_components::input::*;
 
 const EXAMPLE_CODE: &str = include_str!("./editor_story.rs");
 

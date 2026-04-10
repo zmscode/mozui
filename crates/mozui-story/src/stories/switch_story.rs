@@ -3,7 +3,7 @@ use mozui::{
     Render, SharedString, Styled, Window, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Disableable as _, Sizable, h_flex, label::Label, switch::Switch, v_flex,
 };
 

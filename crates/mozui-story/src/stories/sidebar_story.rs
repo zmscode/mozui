@@ -5,7 +5,7 @@ use mozui::{
     Render, SharedString, Styled, Window, div, prelude::FluentBuilder, px, relative,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Icon, IconName, Side, Sizable,
     badge::Badge,
     breadcrumb::{Breadcrumb, BreadcrumbItem},

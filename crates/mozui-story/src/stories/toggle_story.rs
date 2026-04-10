@@ -3,7 +3,7 @@ use mozui::{
     Render, Styled as _, Window,
 };
 
-use mozui_ui::{
+use mozui_components::{
     IconName, Sizable, StyledExt,
     button::{Toggle, ToggleGroup, ToggleVariants},
     v_flex,

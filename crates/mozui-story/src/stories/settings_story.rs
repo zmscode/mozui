@@ -3,7 +3,7 @@ use mozui::{
     ParentElement as _, Render, SharedString, Styled, Window, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Icon, IconName, Sizable, Size, Theme, ThemeMode,
     button::Button,
     group_box::GroupBoxVariant,

@@ -2,7 +2,7 @@ use mozui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window,
 };
-use mozui_ui::{
+use mozui_components::{
     Disableable, Selectable as _, Sizable, Size,
     button::{Button, ButtonGroup},
     pagination::Pagination,

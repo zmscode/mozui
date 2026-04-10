@@ -4,7 +4,7 @@ use mozui::{
 };
 
 use crate::section;
-use mozui_ui::{
+use mozui_components::{
     Sizable,
     button::Button,
     h_flex,

@@ -2,7 +2,7 @@ use mozui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window,
 };
-use mozui_ui::{
+use mozui_components::{
     button::{Button, ButtonVariant, ButtonVariants},
     dock::PanelControl,
     h_flex, neutral_500, v_flex, ActiveTheme as _, Icon, IconName, Sizable,

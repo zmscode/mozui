@@ -2,7 +2,7 @@ use mozui::{
     Action, App, AppContext, Context, Corner, Entity, InteractiveElement, IntoElement, KeyBinding,
     ParentElement as _, Render, SharedString, Styled as _, Window, actions, div, px,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme as _, IconName, Side, StyledExt,
     button::Button,
     h_flex,

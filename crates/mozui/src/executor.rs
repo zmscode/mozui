@@ -1,15 +1,17 @@
+use crate::scheduler::Instant;
+use crate::scheduler::Scheduler;
+use crate::util::TryFutureExt;
 use crate::{App, PlatformDispatcher, PlatformScheduler};
 use futures::channel::mpsc;
 use futures::prelude::*;
-use crate::util::TryFutureExt;
-use crate::scheduler::Instant;
-use crate::scheduler::Scheduler;
 use std::{
     fmt::Debug, future::Future, marker::PhantomData, mem, pin::Pin, rc::Rc, sync::Arc,
     time::Duration,
 };
 
-pub use crate::scheduler::{FallibleTask, ForegroundExecutor as SchedulerForegroundExecutor, Priority};
+pub use crate::scheduler::{
+    FallibleTask, ForegroundExecutor as SchedulerForegroundExecutor, Priority,
+};
 
 /// A pointer to the executor that is currently running,
 /// for spawning background tasks.

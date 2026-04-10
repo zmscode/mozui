@@ -1,5 +1,5 @@
 use mozui::*;
-use mozui_ui::ActiveTheme as _;
+use mozui_components::ActiveTheme as _;
 
 #[derive(IntoElement)]
 pub struct Checkerboard {

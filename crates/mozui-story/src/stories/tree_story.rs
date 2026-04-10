@@ -6,7 +6,7 @@ use mozui::{
     Styled, Window, actions, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme as _, IconName, StyledExt as _,
     button::Button,
     dock::PanelControl,

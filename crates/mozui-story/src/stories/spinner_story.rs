@@ -2,7 +2,7 @@ use mozui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled,
     Window, px,
 };
-use mozui_ui::{ActiveTheme as _, IconName, Sizable, spinner::Spinner, v_flex};
+use mozui_components::{ActiveTheme as _, IconName, Sizable, spinner::Spinner, v_flex};
 
 use crate::section;
 

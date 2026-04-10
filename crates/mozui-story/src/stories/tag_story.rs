@@ -3,7 +3,7 @@ use mozui::{
     Styled, Window, px,
 };
 
-use mozui_ui::{ColorName, Sizable, h_flex, indigo_50, indigo_500, tag::Tag, v_flex};
+use mozui_components::{ColorName, Sizable, h_flex, indigo_50, indigo_500, tag::Tag, v_flex};
 
 use crate::section;
 

@@ -5,7 +5,7 @@ use mozui::{
 use serde::Deserialize;
 
 use crate::section;
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Disableable, Selectable as _, Sizable as _, Theme,
     button::{Button, ButtonVariants as _, DropdownButton},
     checkbox::Checkbox,

@@ -5,7 +5,7 @@ use mozui::{
     WindowBounds, WindowKind, WindowOptions, actions, div, prelude::FluentBuilder as _, px, rems,
     size,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, IconName, Root, TitleBar, WindowExt,
     button::Button,
     dock::{Panel, PanelControl, PanelEvent, PanelInfo, PanelState, TitleStyle, register_panel},
@@ -178,7 +178,7 @@ pub fn init(cx: &mut App) {
             .try_init();
     }
 
-    mozui_ui::init(cx);
+    mozui_components::init(cx);
     AppState::init(cx);
     themes::init(cx);
     stories::init(cx);

@@ -1,5 +1,5 @@
 use mozui::{prelude::*, *};
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme as _, Icon, IconName, h_flex,
     input::{Input, InputEvent, InputState},
     resizable::{h_resizable, resizable_panel},

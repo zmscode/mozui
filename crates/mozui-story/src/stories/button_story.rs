@@ -3,7 +3,7 @@ use mozui::{
     IntoElement, ParentElement as _, Render, Styled as _, Window, prelude::FluentBuilder, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Disableable as _, Icon, IconName, Selectable as _, Sizable as _, Theme,
     button::{Button, ButtonCustomVariant, ButtonGroup, ButtonVariants as _},
     checkbox::Checkbox,

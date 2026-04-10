@@ -3,7 +3,7 @@ use mozui::{
     Styled, Window,
 };
 
-use mozui_ui::{
+use mozui_components::{
     WindowExt,
     clipboard::Clipboard,
     h_flex,

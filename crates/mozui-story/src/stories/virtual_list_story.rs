@@ -4,7 +4,7 @@ use mozui::{
     App, AppContext, Context, Div, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement, Pixels, Render, ScrollStrategy, Size, Styled, Window, div, px, size,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme as _, Selectable, Sizable, VirtualListScrollHandle,
     button::{Button, ButtonGroup},
     divider::Divider,

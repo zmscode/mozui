@@ -2,7 +2,7 @@ use mozui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _,
     Render, Styled as _, Window,
 };
-use mozui_ui::{
+use mozui_components::{
     calendar::{Calendar, CalendarState},
     v_flex,
 };

@@ -1,5 +1,5 @@
 use mozui::{App, Entity, Menu, MenuItem, SharedString};
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme as _, GlobalState, Theme, ThemeMode, ThemeRegistry, menu::AppMenuBar,
 };
 
@@ -79,26 +79,26 @@ fn build_menus(title: impl Into<SharedString>, cx: &App) -> Vec<Menu> {
         Menu {
             name: "Edit".into(),
             items: vec![
-                MenuItem::action("Undo", mozui_ui::input::Undo),
-                MenuItem::action("Redo", mozui_ui::input::Redo),
+                MenuItem::action("Undo", mozui_components::input::Undo),
+                MenuItem::action("Redo", mozui_components::input::Redo),
                 MenuItem::separator(),
-                MenuItem::action("Cut", mozui_ui::input::Cut),
-                MenuItem::action("Copy", mozui_ui::input::Copy),
-                MenuItem::action("Paste", mozui_ui::input::Paste),
+                MenuItem::action("Cut", mozui_components::input::Cut),
+                MenuItem::action("Copy", mozui_components::input::Copy),
+                MenuItem::action("Paste", mozui_components::input::Paste),
                 MenuItem::separator(),
-                MenuItem::action("Delete", mozui_ui::input::Delete),
+                MenuItem::action("Delete", mozui_components::input::Delete),
                 MenuItem::action(
                     "Delete Previous Word",
-                    mozui_ui::input::DeleteToPreviousWordStart,
+                    mozui_components::input::DeleteToPreviousWordStart,
                 ),
                 MenuItem::action(
                     "Delete Next Word",
-                    mozui_ui::input::DeleteToNextWordEnd,
+                    mozui_components::input::DeleteToNextWordEnd,
                 ),
                 MenuItem::separator(),
-                MenuItem::action("Find", mozui_ui::input::Search),
+                MenuItem::action("Find", mozui_components::input::Search),
                 MenuItem::separator(),
-                MenuItem::action("Select All", mozui_ui::input::SelectAll),
+                MenuItem::action("Select All", mozui_components::input::SelectAll),
             ],
             disabled: false,
         },

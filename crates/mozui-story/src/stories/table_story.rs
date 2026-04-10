@@ -2,7 +2,7 @@ use mozui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
     Render, Styled, Window, prelude::FluentBuilder as _, px,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Selectable as _, Sizable, Size,
     button::{Button, ButtonGroup},
     h_flex,

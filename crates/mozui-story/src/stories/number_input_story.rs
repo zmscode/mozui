@@ -5,7 +5,7 @@ use mozui::{
 use regex::Regex;
 
 use crate::section;
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Disableable, IconName, Sizable,
     button::{Button, ButtonVariants},
     input::{InputEvent, InputState, MaskPattern, NumberInput, NumberInputEvent, StepAction},

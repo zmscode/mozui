@@ -3,7 +3,7 @@ use mozui::{
     Window, div, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Sizable, h_flex,
     radio::{Radio, RadioGroup},
     v_flex,

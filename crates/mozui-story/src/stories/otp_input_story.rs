@@ -3,7 +3,7 @@ use mozui::{
     InteractiveElement, IntoElement, ParentElement as _, Render, SharedString, Styled,
     Subscription, Window,
 };
-use mozui_ui::{
+use mozui_components::{
     checkbox::Checkbox,
     h_flex,
     input::{InputEvent, OtpInput, OtpState},

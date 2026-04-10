@@ -7,7 +7,7 @@ use mozui::{
     Subscription, Task, Window, actions, div, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Icon, IconName, IndexPath, Selectable, Sizable,
     button::Button,
     checkbox::Checkbox,

@@ -7,7 +7,7 @@ use mozui::{
     prelude::FluentBuilder as _, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme as _, Icon, IconName, IndexPath, Placement, WindowExt,
     button::{Button, ButtonVariant, ButtonVariants as _},
     checkbox::Checkbox,

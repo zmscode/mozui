@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-default-members = ["crates/mozui-ui", "crates/mozui-story", "crates/mozui-assets"]
+default-members = ["crates/mozui-components", "crates/mozui-story", "crates/mozui-assets"]
 members = [
     # mozui core
     "crates/mozui",
@@ -13,9 +13,9 @@ members = [
     "crates/mozui-util-macros",
 
     # mozui UI component library
-    "crates/mozui-ui-macros",
+    "crates/mozui-components-macros",
     "crates/mozui-story",
-    "crates/mozui-ui",
+    "crates/mozui-components",
     "crates/mozui-assets",
     "crates/mozui-webview",
 ]
@@ -37,8 +37,8 @@ mozui-util-macros = { path = "crates/mozui-util-macros" }
 #
 # Local workspace crates (mozui UI component library)
 #
-mozui-ui = { path = "crates/mozui-ui", version = "0.5.1" }
-mozui-ui-macros = { path = "crates/mozui-ui-macros", version = "0.5.1" }
+mozui-components = { path = "crates/mozui-components", version = "0.5.1" }
+mozui-components-macros = { path = "crates/mozui-components-macros", version = "0.5.1" }
 mozui-assets = { path = "crates/mozui-assets", version = "0.5.1" }
 mozui-story = { path = "crates/mozui-story" }
 

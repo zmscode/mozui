@@ -3,7 +3,7 @@ use mozui::{
     Half, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement as _, Render,
     Styled as _, Window, actions, div, px,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Anchor, StyledExt, WindowExt,
     button::{Button, ButtonVariants as _},
     divider::Divider,
@@ -76,7 +76,7 @@ impl ListDelegate for DropdownListDelegate {
 
     fn render_item(
         &mut self,
-        ix: mozui_ui::IndexPath,
+        ix: mozui_components::IndexPath,
         _: &mut Window,
         _: &mut Context<ListState<Self>>,
     ) -> Option<Self::Item> {
@@ -85,9 +85,9 @@ impl ListDelegate for DropdownListDelegate {
 
     fn set_selected_index(
         &mut self,
-        _: Option<mozui_ui::IndexPath>,
+        _: Option<mozui_components::IndexPath>,
         _: &mut Window,
-        _: &mut Context<mozui_ui::list::ListState<Self>>,
+        _: &mut Context<mozui_components::list::ListState<Self>>,
     ) {
     }
 

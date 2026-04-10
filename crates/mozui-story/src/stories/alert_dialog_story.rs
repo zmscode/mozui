@@ -3,7 +3,7 @@ use mozui::{
     ParentElement, Render, Styled, Window, div, px,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Icon, IconName, StyledExt, WindowExt as _,
     button::{Button, ButtonVariant, ButtonVariants},
     dialog::{
@@ -99,7 +99,7 @@ impl Render for AlertDialogStory {
                 .child(section("With open_alert_dialog").child(
                     Button::new("confirm-alert").outline().label("Show Confirmation").on_click(cx.listener(
                         |_, _, window, cx| {
-                            use mozui_ui::dialog::DialogButtonProps;
+                            use mozui_components::dialog::DialogButtonProps;
 
                             window.open_alert_dialog(cx, |alert, _, _| {
                                 alert

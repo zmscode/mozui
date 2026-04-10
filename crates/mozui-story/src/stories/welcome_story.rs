@@ -2,7 +2,7 @@ use mozui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, Render, Styled as _, Window, px,
 };
 
-use mozui_ui::{dock::PanelControl, text::markdown};
+use mozui_components::{dock::PanelControl, text::markdown};
 
 use crate::Story;
 

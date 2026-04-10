@@ -3,7 +3,7 @@ use mozui::{
     ParentElement, Render, Styled, Window,
 };
 
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme, Anchor, Theme, WindowExt as _,
     button::{Button, ButtonVariants},
     h_flex,

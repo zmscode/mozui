@@ -3,8 +3,8 @@ use mozui::{
     Action, App, AppContext, Axis, Context, Entity, FocusHandle, Focusable, IntoElement,
     ParentElement, Render, Styled, Window,
 };
-use mozui_ui::{AxisExt, h_flex, menu::DropdownMenu as _};
-use mozui_ui::{
+use mozui_components::{AxisExt, h_flex, menu::DropdownMenu as _};
+use mozui_components::{
     Sizable as _, Size,
     button::Button,
     checkbox::Checkbox,

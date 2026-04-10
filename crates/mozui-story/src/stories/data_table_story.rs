@@ -11,7 +11,7 @@ use mozui::{
     StatefulInteractiveElement, Styled, Subscription, Task, TextAlign, Window, div,
     prelude::FluentBuilder as _,
 };
-use mozui_ui::{
+use mozui_components::{
     ActiveTheme as _, Selectable, Sizable as _, Size, StyleSized as _, StyledExt,
     button::Button,
     checkbox::Checkbox,
