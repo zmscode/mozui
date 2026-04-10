@@ -14,9 +14,11 @@ members = [
     "crates/mozui-text",
     "crates/mozui-icons",
     "crates/mozui-devtools",
+    "crates/mozui-fork",
 ]
 exclude = [
     "web",
+    "vendor",
 ]
 
 [workspace.package]
