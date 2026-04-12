@@ -1,0 +1,46 @@
+[package]
+name = "mozui-native"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+description = "Native macOS/iOS components for the mozui UI framework"
+
+[lints]
+workspace = true
+
+[dependencies]
+mozui = { workspace = true }
+raw-window-handle = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = { workspace = true }
+objc = { workspace = true }
+objc2 = "0.6"
+objc2-foundation = { workspace = true, features = [
+    "NSString",
+    "NSGeometry",
+    "NSObjCRuntime",
+] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "NSButton",
+    "NSButtonCell",
+    "NSControl",
+    "NSActionCell",
+    "NSTextField",
+    "NSSwitch",
+    "NSVisualEffectView",
+    "NSView",
+    "NSResponder",
+    "NSColor",
+    "NSFont",
+    "NSCell",
+    "NSGraphics",
+    "NSWindow",
+    "NSImage",
+    "NSImageView",
+    "NSToolbar",
+    "NSToolbarItem",
+    "NSSplitView",
+    "NSApplication",
+] }

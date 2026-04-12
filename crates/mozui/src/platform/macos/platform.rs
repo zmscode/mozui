@@ -43,7 +43,6 @@ use objc::{
 };
 use parking_lot::Mutex;
 use ptr::null_mut;
-use semver::Version;
 use std::{
     cell::Cell,
     ffi::{CStr, OsStr, c_void},
@@ -369,7 +368,7 @@ impl MacPlatform {
                                     ns_string(key_to_native(keystroke.key()).as_ref()),
                                 )
                                 .autorelease();
-                            if Self::os_version() >= Version::new(12, 0, 0) {
+                            if Self::os_version() >= (12, 0, 0) {
                                 let _: () = msg_send![item, setAllowsAutomaticKeyEquivalentLocalization: NO];
                             }
                             item.setKeyEquivalentModifierMask_(mask);
@@ -438,15 +437,15 @@ impl MacPlatform {
         }
     }
 
-    fn os_version() -> Version {
+    fn os_version() -> (u64, u64, u64) {
         let version = unsafe {
             let process_info = NSProcessInfo::processInfo(nil);
             process_info.operatingSystemVersion()
         };
-        Version::new(
-            version.majorVersion,
-            version.minorVersion,
-            version.patchVersion,
+        (
+            version.majorVersion as u64,
+            version.minorVersion as u64,
+            version.patchVersion as u64,
         )
     }
 }
@@ -592,7 +591,7 @@ impl Platform for MacPlatform {
 
     #[cfg(feature = "screen-capture")]
     fn is_screen_capture_supported(&self) -> bool {
-        let min_version = cocoa::foundation::NSOperatingSystemVersion::new(12, 3, 0);
+        let min_version = cocoa::foundation::NSOperatingSystem(12, 3, 0);
         crate::is_macos_version_at_least(min_version)
     }
 
@@ -653,7 +652,7 @@ impl Platform for MacPlatform {
         // API only available post Monterey
         // https://developer.apple.com/documentation/appkit/nsworkspace/3753004-setdefaultapplicationaturl
         let (done_tx, done_rx) = oneshot::channel();
-        if Self::os_version() < Version::new(12, 0, 0) {
+        if Self::os_version() < (12, 0, 0) {
             return Task::ready(Err(anyhow!(
                 "macOS 12.0 or later is required to register URL schemes"
             )));
@@ -797,7 +796,7 @@ impl Platform for MacPlatform {
                                     // to break that use-case than breaking `a.sql`.
                                     if chunks.len() == 3
                                         && chunks[1].starts_with(chunks[2])
-                                        && Self::os_version() >= Version::new(15, 0, 0)
+                                        && Self::os_version() >= (15, 0, 0)
                                     {
                                         let new_filename = OsStr::from_bytes(
                                             &filename.as_bytes()
