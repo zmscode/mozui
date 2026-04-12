@@ -28,24 +28,24 @@ impl Default for BreadcrumbConfig {
     }
 }
 
-/// Installs an `NSPathControl` at the bottom of the content area.
+/// Installs an `NSPathControl` at the bottom of the content pane.
 ///
-/// Uses the native macOS path bar widget with proper styling,
-/// click-through navigation, and icon support.
+/// Must be called after `install_sidebar` if using a sidebar, so the
+/// breadcrumb attaches to the content pane (not the full window).
 pub fn install_breadcrumb(window: &Window, config: BreadcrumbConfig) {
     let ns_view = get_raw_ns_view(window);
 
     unsafe {
-        let ns_window: id = msg_send![ns_view, window];
-        let content_view: id = msg_send![ns_window, contentView];
+        // The mozui Metal view's superview is the content pane
+        // (either the window's contentView or the split view's content pane)
+        let content_pane: id = msg_send![ns_view, superview];
 
         // Create NSPathControl
         let path_control: id = msg_send![class!(NSPathControl), alloc];
         let path_control: id = msg_send![path_control, init];
-        let _: () = msg_send![path_control, setPathStyle: 1_isize]; // NSPathStylePopUp = 1 (standard bar)
+        let _: () = msg_send![path_control, setPathStyle: 0_isize]; // NSPathStyleStandard
         let _: () =
             msg_send![path_control, setTranslatesAutoresizingMaskIntoConstraints: false];
-        let _: () = msg_send![path_control, setBackgroundColor: nil]; // Transparent
 
         // Build path items
         let items = create_path_items(&config.items);
@@ -56,27 +56,28 @@ pub fn install_breadcrumb(window: &Window, config: BreadcrumbConfig) {
         ];
         let _: () = msg_send![path_control, setPathItems: ns_array];
 
-        // Add to content view
-        let _: () = msg_send![content_view, addSubview: path_control];
+        // Add to content pane
+        let _: () = msg_send![content_pane, addSubview: path_control];
 
-        // Pin to bottom, full width
+        // Pin to bottom of content pane, full width
         let bottom: id = msg_send![path_control, bottomAnchor];
-        let parent_bottom: id = msg_send![content_view, bottomAnchor];
+        let parent_bottom: id = msg_send![content_pane, bottomAnchor];
         let constraint: id = msg_send![bottom, constraintEqualToAnchor: parent_bottom];
         let _: () = msg_send![constraint, setActive: true];
 
         let leading: id = msg_send![path_control, leadingAnchor];
-        let parent_leading: id = msg_send![content_view, leadingAnchor];
+        let parent_leading: id = msg_send![content_pane, leadingAnchor];
         let constraint: id = msg_send![leading, constraintEqualToAnchor: parent_leading];
         let _: () = msg_send![constraint, setActive: true];
 
         let trailing: id = msg_send![path_control, trailingAnchor];
-        let parent_trailing: id = msg_send![content_view, trailingAnchor];
+        let parent_trailing: id = msg_send![content_pane, trailingAnchor];
         let constraint: id = msg_send![trailing, constraintEqualToAnchor: parent_trailing];
         let _: () = msg_send![constraint, setActive: true];
 
-        let height: id = msg_send![path_control, heightAnchor];
-        let constraint: id = msg_send![height, constraintEqualToConstant: config.height];
+        let height_anchor: id = msg_send![path_control, heightAnchor];
+        let constraint: id =
+            msg_send![height_anchor, constraintEqualToConstant: config.height];
         let _: () = msg_send![constraint, setActive: true];
     }
 }

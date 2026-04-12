@@ -24,7 +24,7 @@ pub enum ToolbarItemId {
         id: String,
         symbol: String,
         label: String,
-        /// If true, marks the item as navigational (own Liquid Glass pill, like back/forward).
+        /// If true, marks the item as navigational (left-side, own Liquid Glass pill).
         navigational: bool,
     },
 }
@@ -55,10 +55,15 @@ struct ToolbarItemConfig {
 /// Installs an `NSToolbar` on the window associated with the given mozui `Window`.
 ///
 /// On macOS 26+, the toolbar automatically adopts Liquid Glass appearance.
+/// Each `SymbolButton` renders as an individual NSButton, giving it its own
+/// Liquid Glass pill rather than merging with adjacent items.
 pub fn install_toolbar(window: &Window, items: &[ToolbarItemId]) {
     let ns_view = get_raw_ns_view(window);
     unsafe {
         let ns_window: id = msg_send![ns_view, window];
+
+        // Show the window title in the toolbar area
+        let _: () = msg_send![ns_window, setTitleVisibility: 0_isize]; // NSWindowTitleVisible
 
         let toolbar_id = CocoaNSString::alloc(nil).init_str("mozui-main-toolbar");
         let toolbar: id = msg_send![class!(NSToolbar), alloc];
@@ -161,26 +166,35 @@ unsafe fn create_toolbar_delegate(
                 let id_str = std::ffi::CStr::from_ptr(utf8).to_str().unwrap_or("");
 
                 if let Some(config) = configs.get(id_str) {
-                    // Set SF Symbol image
+                    // Create SF Symbol image
                     let ns_symbol = CocoaNSString::alloc(nil).init_str(&config.symbol);
                     let image: id = msg_send![
                         class!(NSImage),
                         imageWithSystemSymbolName: ns_symbol
                         accessibilityDescription: nil
                     ];
+
                     if image != nil {
-                        let _: () = msg_send![item, setImage: image];
+                        // Create NSButton with the image as a custom view.
+                        // Using a button view gives each item its own Liquid Glass
+                        // pill instead of merging with adjacent bordered items.
+                        let button: id = msg_send![
+                            class!(NSButton),
+                            buttonWithImage: image
+                            target: nil
+                            action: nil
+                        ];
+                        let _: () = msg_send![button, setBezelStyle: 0_isize]; // Automatic
+                        let _: () = msg_send![button, setBordered: false];
+                        let _: () = msg_send![item, setView: button];
                     }
 
-                    // Set label
+                    // Set label and tooltip
                     let ns_label = CocoaNSString::alloc(nil).init_str(&config.label);
                     let _: () = msg_send![item, setLabel: ns_label];
                     let _: () = msg_send![item, setToolTip: ns_label];
 
-                    // Make it behave as a button
-                    let _: () = msg_send![item, setBordered: true];
-
-                    // Navigational items get their own Liquid Glass pill
+                    // Navigational items get their own section on the left
                     if config.navigational {
                         let _: () = msg_send![item, setNavigational: true];
                     }
