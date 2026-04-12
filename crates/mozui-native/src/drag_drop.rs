@@ -50,16 +50,9 @@ pub fn register_drop_target(window: &Window, types: &[DragType], handler: DropHa
         ];
         let _: () = msg_send![ns_view, registerForDraggedTypes: types_arr];
 
-        // Install a drag delegate via method swizzling / associated object
-        let delegate = create_drop_delegate(handler);
-
-        // Store the delegate as an associated object on the view
-        let key = CocoaNSString::alloc(nil).init_str("MozuiDropDelegate");
-        let _: () = msg_send![ns_view,
-            setAssociatedObject: delegate
-            forKey: key
-            policy: 1_isize  // OBJC_ASSOCIATION_RETAIN_NONATOMIC
-        ];
+        // Create the drop delegate and leak it — it lives for the window's lifetime,
+        // same pattern as the toolbar delegate in toolbar.rs.
+        let _delegate = create_drop_delegate(handler);
     }
 }
 

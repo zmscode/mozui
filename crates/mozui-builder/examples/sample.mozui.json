@@ -1,0 +1,368 @@
+{
+  "version": "0.1.0",
+  "root": "root",
+  "nodes": {
+    "btn-danger": {
+      "component": {
+        "type": "Button",
+        "label": "Danger",
+        "variant": "Danger"
+      },
+      "style": {},
+      "children": [],
+      "name": "btn-danger",
+      "visible": true
+    },
+    "input-field": {
+      "component": {
+        "type": "Input",
+        "placeholder": "you@example.com"
+      },
+      "style": {
+        "flex_grow": 1.0
+      },
+      "children": [],
+      "name": "input-field",
+      "visible": true
+    },
+    "welcome-heading": {
+      "component": {
+        "type": "Text",
+        "content": "Welcome to mozui-builder"
+      },
+      "style": {
+        "font_size": 28.0,
+        "font_weight": 700.0,
+        "text_color": {
+          "h": 0.0,
+          "s": 0.0,
+          "l": 0.95,
+          "a": 1.0
+        }
+      },
+      "children": [],
+      "name": "welcome-heading",
+      "visible": true
+    },
+    "description": {
+      "component": {
+        "type": "Text",
+        "content": "This UI was loaded from a .mozui.json file."
+      },
+      "style": {
+        "font_size": 14.0,
+        "text_color": {
+          "h": 0.0,
+          "s": 0.0,
+          "l": 0.65,
+          "a": 1.0
+        }
+      },
+      "children": [],
+      "name": "description",
+      "visible": true
+    },
+    "footer": {
+      "component": {
+        "type": "Container"
+      },
+      "style": {
+        "display": "Flex",
+        "flex_direction": "Row",
+        "justify_content": "Center",
+        "padding": {
+          "top": {
+            "Px": 8.0
+          },
+          "right": {
+            "Px": 8.0
+          },
+          "bottom": {
+            "Px": 8.0
+          },
+          "left": {
+            "Px": 8.0
+          }
+        },
+        "border_widths": {
+          "top": {
+            "Px": 1.0
+          }
+        },
+        "border_color": {
+          "h": 0.0,
+          "s": 0.0,
+          "l": 0.25,
+          "a": 1.0
+        }
+      },
+      "children": [
+        "footer-text"
+      ],
+      "name": "footer",
+      "visible": true
+    },
+    "btn-primary": {
+      "component": {
+        "type": "Button",
+        "label": "Primary",
+        "variant": "Primary"
+      },
+      "style": {},
+      "children": [],
+      "name": "btn-primary",
+      "visible": true
+    },
+    "header": {
+      "component": {
+        "type": "Container"
+      },
+      "style": {
+        "display": "Flex",
+        "flex_direction": "Row",
+        "align_items": "Center",
+        "justify_content": "SpaceBetween",
+        "padding": {
+          "top": {
+            "Px": 12.0
+          },
+          "right": {
+            "Px": 16.0
+          },
+          "bottom": {
+            "Px": 12.0
+          },
+          "left": {
+            "Px": 16.0
+          }
+        },
+        "corner_radii": {
+          "top_left": 8.0,
+          "top_right": 8.0,
+          "bottom_right": 8.0,
+          "bottom_left": 8.0
+        },
+        "background": {
+          "h": 0.61,
+          "s": 0.2,
+          "l": 0.15,
+          "a": 1.0
+        }
+      },
+      "children": [
+        "app-title",
+        "version-badge"
+      ],
+      "name": "header",
+      "visible": true
+    },
+    "root": {
+      "component": {
+        "type": "Container"
+      },
+      "style": {
+        "display": "Flex",
+        "flex_direction": "Column",
+        "gap": {
+          "width": {
+            "Px": 16.0
+          },
+          "height": {
+            "Px": 16.0
+          }
+        },
+        "padding": {
+          "top": {
+            "Px": 24.0
+          },
+          "right": {
+            "Px": 24.0
+          },
+          "bottom": {
+            "Px": 24.0
+          },
+          "left": {
+            "Px": 24.0
+          }
+        },
+        "background": {
+          "h": 0.61,
+          "s": 0.15,
+          "l": 0.1,
+          "a": 1.0
+        }
+      },
+      "children": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "name": "root",
+      "visible": true
+    },
+    "version-badge": {
+      "component": {
+        "type": "Badge",
+        "text": "v0.1"
+      },
+      "style": {},
+      "children": [],
+      "name": "version-badge",
+      "visible": true
+    },
+    "footer-text": {
+      "component": {
+        "type": "Text",
+        "content": "Built with mozui-builder"
+      },
+      "style": {
+        "font_size": 12.0,
+        "text_color": {
+          "h": 0.0,
+          "s": 0.0,
+          "l": 0.5,
+          "a": 1.0
+        }
+      },
+      "children": [],
+      "name": "footer-text",
+      "visible": true
+    },
+    "input-row": {
+      "component": {
+        "type": "Container"
+      },
+      "style": {
+        "display": "Flex",
+        "flex_direction": "Row",
+        "align_items": "Center",
+        "gap": {
+          "width": {
+            "Px": 8.0
+          },
+          "height": {
+            "Px": 8.0
+          }
+        }
+      },
+      "children": [
+        "input-label",
+        "input-field"
+      ],
+      "name": "input-row",
+      "visible": true
+    },
+    "app-title": {
+      "component": {
+        "type": "Text",
+        "content": "My Application"
+      },
+      "style": {
+        "font_size": 20.0,
+        "font_weight": 700.0,
+        "text_color": {
+          "h": 0.0,
+          "s": 0.0,
+          "l": 0.95,
+          "a": 1.0
+        }
+      },
+      "children": [],
+      "name": "app-title",
+      "visible": true
+    },
+    "btn-secondary": {
+      "component": {
+        "type": "Button",
+        "label": "Secondary",
+        "variant": "Secondary"
+      },
+      "style": {},
+      "children": [],
+      "name": "btn-secondary",
+      "visible": true
+    },
+    "content": {
+      "component": {
+        "type": "Container"
+      },
+      "style": {
+        "display": "Flex",
+        "flex_direction": "Column",
+        "flex_grow": 1.0,
+        "gap": {
+          "width": {
+            "Px": 12.0
+          },
+          "height": {
+            "Px": 12.0
+          }
+        },
+        "padding": {
+          "top": {
+            "Px": 16.0
+          },
+          "right": {
+            "Px": 16.0
+          },
+          "bottom": {
+            "Px": 16.0
+          },
+          "left": {
+            "Px": 16.0
+          }
+        }
+      },
+      "children": [
+        "welcome-heading",
+        "description",
+        "button-row",
+        "input-row"
+      ],
+      "name": "content",
+      "visible": true
+    },
+    "button-row": {
+      "component": {
+        "type": "Container"
+      },
+      "style": {
+        "display": "Flex",
+        "flex_direction": "Row",
+        "gap": {
+          "width": {
+            "Px": 8.0
+          },
+          "height": {
+            "Px": 8.0
+          }
+        }
+      },
+      "children": [
+        "btn-primary",
+        "btn-secondary",
+        "btn-danger"
+      ],
+      "name": "button-row",
+      "visible": true
+    },
+    "input-label": {
+      "component": {
+        "type": "Text",
+        "content": "Email:"
+      },
+      "style": {
+        "font_size": 14.0,
+        "text_color": {
+          "h": 0.0,
+          "s": 0.0,
+          "l": 0.8,
+          "a": 1.0
+        }
+      },
+      "children": [],
+      "name": "input-label",
+      "visible": true
+    }
+  }
+}

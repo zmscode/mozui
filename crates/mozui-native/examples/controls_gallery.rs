@@ -10,7 +10,9 @@ struct ControlsGallery;
 impl Render for ControlsGallery {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
+            .id("gallery")
             .size_full()
+            .overflow_y_scroll()
             .flex()
             .flex_col()
             .bg(hsla(0.0, 0.0, 0.15, 1.0))
