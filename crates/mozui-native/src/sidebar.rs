@@ -187,9 +187,10 @@ fn populate_sidebar(sidebar_view: id, sections: &[SidebarSection]) {
         // Add stack view to sidebar
         let _: () = msg_send![sidebar_view, addSubview: stack];
 
-        // Pin stack to sidebar edges
+        // Pin stack to sidebar edges, using safe area for top to clear traffic lights
         let stack_top: id = msg_send![stack, topAnchor];
-        let parent_top: id = msg_send![sidebar_view, topAnchor];
+        let safe_area: id = msg_send![sidebar_view, safeAreaLayoutGuide];
+        let parent_top: id = msg_send![safe_area, topAnchor];
         let constraint: id = msg_send![stack_top, constraintEqualToAnchor: parent_top];
         let _: () = msg_send![constraint, setActive: true];
 

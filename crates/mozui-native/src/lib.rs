@@ -1,4 +1,6 @@
 #[cfg(target_os = "macos")]
+mod breadcrumb;
+#[cfg(target_os = "macos")]
 mod native_view;
 #[cfg(target_os = "macos")]
 mod sidebar;
@@ -18,6 +20,8 @@ mod symbol;
 #[cfg(target_os = "macos")]
 mod visual_effect;
 
+#[cfg(target_os = "macos")]
+pub use breadcrumb::*;
 #[cfg(target_os = "macos")]
 pub use button::*;
 #[cfg(target_os = "macos")]

@@ -24,6 +24,8 @@ pub enum ToolbarItemId {
         id: String,
         symbol: String,
         label: String,
+        /// If true, marks the item as navigational (own Liquid Glass pill, like back/forward).
+        navigational: bool,
     },
 }
 
@@ -47,6 +49,7 @@ impl ToolbarItemId {
 struct ToolbarItemConfig {
     symbol: String,
     label: String,
+    navigational: bool,
 }
 
 /// Installs an `NSToolbar` on the window associated with the given mozui `Window`.
@@ -67,12 +70,19 @@ pub fn install_toolbar(window: &Window, items: &[ToolbarItemId]) {
         // Build config map for custom items
         let mut configs: HashMap<String, ToolbarItemConfig> = HashMap::new();
         for item in items {
-            if let ToolbarItemId::SymbolButton { id, symbol, label } = item {
+            if let ToolbarItemId::SymbolButton {
+                id,
+                symbol,
+                label,
+                navigational,
+            } = item
+            {
                 configs.insert(
                     id.clone(),
                     ToolbarItemConfig {
                         symbol: symbol.clone(),
                         label: label.clone(),
+                        navigational: *navigational,
                     },
                 );
             }
@@ -169,6 +179,11 @@ unsafe fn create_toolbar_delegate(
 
                     // Make it behave as a button
                     let _: () = msg_send![item, setBordered: true];
+
+                    // Navigational items get their own Liquid Glass pill
+                    if config.navigational {
+                        let _: () = msg_send![item, setNavigational: true];
+                    }
                 }
 
                 item

@@ -14,12 +14,13 @@ impl Render for FinderDemo {
             .flex()
             .flex_col()
             .bg(hsla(0.0, 0.0, 0.12, 1.0))
-            // Content grid
+            // Content grid — pad top for toolbar, bottom for breadcrumb + status bar
             .child(
                 div()
                     .flex_1()
                     .p(px(24.0))
-                    .pt(px(12.0))
+                    .pt(px(52.0))
+                    .pb(px(52.0))
                     .flex()
                     .flex_row()
                     .flex_wrap()
@@ -32,26 +33,6 @@ impl Render for FinderDemo {
                     .child(folder_item("Pictures"))
                     .child(folder_item("Music"))
                     .child(folder_item("Movies")),
-            )
-            // Path bar
-            .child(
-                div()
-                    .w_full()
-                    .h(px(28.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(4.0))
-                    .border_t_1()
-                    .border_color(hsla(0.0, 0.0, 0.3, 0.3))
-                    .bg(hsla(0.0, 0.0, 0.1, 1.0))
-                    .child(path_segment("Macintosh HD"))
-                    .child(path_separator())
-                    .child(path_segment("Users"))
-                    .child(path_separator())
-                    .child(path_segment("zac"))
-                    .child(path_separator())
-                    .child(path_segment("Documents")),
             )
             // Status bar
             .child(
@@ -76,13 +57,13 @@ impl Render for FinderDemo {
 
 fn folder_item(name: &str) -> impl IntoElement {
     div()
-        .w(px(80.0))
+        .w(px(100.0))
         .flex()
         .flex_col()
         .items_center()
         .gap(px(4.0))
         .child(
-            div().w(px(48.0)).h(px(40.0)).child(
+            div().w(px(64.0)).h(px(56.0)).child(
                 NativeSymbol::new(format!("folder-icon-{}", name), "folder.fill")
                     .weight(SymbolWeight::Regular)
                     .scale(SymbolScale::Large)
@@ -91,28 +72,10 @@ fn folder_item(name: &str) -> impl IntoElement {
         )
         .child(
             div()
-                .text_xs()
+                .text_sm()
                 .text_color(hsla(0.0, 0.0, 0.85, 1.0))
                 .child(SharedString::from(name.to_string())),
         )
-}
-
-fn path_segment(name: &str) -> impl IntoElement {
-    div()
-        .px(px(8.0))
-        .py(px(2.0))
-        .rounded(px(4.0))
-        .bg(hsla(0.0, 0.0, 0.2, 1.0))
-        .text_xs()
-        .text_color(hsla(0.0, 0.0, 0.75, 1.0))
-        .child(SharedString::from(name.to_string()))
-}
-
-fn path_separator() -> impl IntoElement {
-    div()
-        .text_xs()
-        .text_color(hsla(0.0, 0.0, 0.4, 1.0))
-        .child(SharedString::from("\u{203A}"))
 }
 
 fn main() {
@@ -135,9 +98,8 @@ fn main() {
             .open_window(options, |_window, cx| cx.new(|_cx| FinderDemo))
             .unwrap();
 
-        // Install native toolbar and sidebar after window creation
         cx.update_window(window_handle.into(), |_view, window, _cx| {
-            // Install native toolbar with Finder-like items
+            // Toolbar: back/forward as navigational (own glass pill), rest grouped naturally
             install_toolbar(
                 window,
                 &[
@@ -147,41 +109,43 @@ fn main() {
                         id: "back".into(),
                         symbol: "chevron.backward".into(),
                         label: "Back".into(),
+                        navigational: true,
                     },
-                    ToolbarItemId::Space,
                     ToolbarItemId::SymbolButton {
                         id: "forward".into(),
                         symbol: "chevron.forward".into(),
                         label: "Forward".into(),
+                        navigational: true,
                     },
                     ToolbarItemId::FlexibleSpace,
                     ToolbarItemId::SymbolButton {
                         id: "view-mode".into(),
                         symbol: "square.grid.2x2".into(),
                         label: "View".into(),
+                        navigational: false,
                     },
-                    ToolbarItemId::Space,
                     ToolbarItemId::SymbolButton {
                         id: "group".into(),
                         symbol: "rectangle.3.group".into(),
                         label: "Group".into(),
+                        navigational: false,
                     },
-                    ToolbarItemId::Space,
                     ToolbarItemId::SymbolButton {
                         id: "share".into(),
                         symbol: "square.and.arrow.up".into(),
                         label: "Share".into(),
+                        navigational: false,
                     },
-                    ToolbarItemId::Space,
                     ToolbarItemId::SymbolButton {
                         id: "search".into(),
                         symbol: "magnifyingglass".into(),
                         label: "Search".into(),
+                        navigational: false,
                     },
                 ],
             );
 
-            // Install NSSplitViewController-based sidebar
+            // Sidebar
             install_sidebar(
                 window,
                 SidebarConfig {
@@ -234,6 +198,32 @@ fn main() {
                                 title: "Macintosh HD".into(),
                                 symbol: "internaldrive".into(),
                             }],
+                        },
+                    ],
+                    ..Default::default()
+                },
+            );
+
+            // Native path bar (breadcrumb)
+            install_breadcrumb(
+                window,
+                BreadcrumbConfig {
+                    items: vec![
+                        BreadcrumbItem {
+                            title: "Macintosh HD".into(),
+                            symbol: Some("internaldrive".into()),
+                        },
+                        BreadcrumbItem {
+                            title: "Users".into(),
+                            symbol: Some("person.fill".into()),
+                        },
+                        BreadcrumbItem {
+                            title: "zac".into(),
+                            symbol: Some("house.fill".into()),
+                        },
+                        BreadcrumbItem {
+                            title: "Documents".into(),
+                            symbol: Some("folder.fill".into()),
                         },
                     ],
                     ..Default::default()
