@@ -8,7 +8,7 @@ use mozui::{
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::sel;
-use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
+use objc2::{AnyThread, ClassType, DefinedClass, MainThreadMarker, define_class, msg_send};
 use objc2_app_kit::{NSBezelStyle, NSButton, NSControl};
 use objc2_foundation::{NSObject, NSObjectProtocol, NSString};
 
@@ -72,6 +72,9 @@ pub struct NativeButton {
     id: ElementId,
     title: String,
     style: NativeButtonStyle,
+    enabled: bool,
+    symbol: Option<String>,
+    key_equivalent: Option<String>,
     on_click: Option<Box<dyn Fn()>>,
 }
 
@@ -81,12 +84,32 @@ impl NativeButton {
             id: id.into(),
             title: title.into(),
             style: NativeButtonStyle::default(),
+            enabled: true,
+            symbol: None,
+            key_equivalent: None,
             on_click: None,
         }
     }
 
     pub fn style(mut self, style: NativeButtonStyle) -> Self {
         self.style = style;
+        self
+    }
+
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    /// Set an SF Symbol image on the button.
+    pub fn symbol(mut self, name: impl Into<String>) -> Self {
+        self.symbol = Some(name.into());
+        self
+    }
+
+    /// Set a keyboard shortcut (e.g., "\r" for Return, "q" for Cmd+Q).
+    pub fn key_equivalent(mut self, key: impl Into<String>) -> Self {
+        self.key_equivalent = Some(key.into());
         self
     }
 
@@ -150,6 +173,9 @@ impl Element for NativeButton {
         let global_id = id.unwrap();
         let title = self.title.clone();
         let button_style = self.style;
+        let enabled = self.enabled;
+        let symbol = self.symbol.clone();
+        let key_equivalent = self.key_equivalent.clone();
         let on_click = self.on_click.take();
 
         window.with_element_state(
@@ -164,6 +190,28 @@ impl Element for NativeButton {
                         NSButton::buttonWithTitle_target_action(&ns_title, None, None, mtm)
                     };
                     button.setBezelStyle(button_style.to_ns());
+                    button.setEnabled(enabled);
+
+                    if let Some(ref sym) = symbol {
+                        let ns_sym = NSString::from_str(sym);
+                        unsafe {
+                            let image: Option<Retained<objc2_app_kit::NSImage>> = msg_send![
+                                objc2_app_kit::NSImage::class(),
+                                imageWithSystemSymbolName: &*ns_sym,
+                                accessibilityDescription: std::ptr::null::<NSString>()
+                            ];
+                            if let Some(img) = image {
+                                button.setImage(Some(&img));
+                                // NSCellImagePosition::ImageLeading = 8
+                                let _: () = msg_send![&button, setImagePosition: 8_isize];
+                            }
+                        }
+                    }
+
+                    if let Some(ref key) = key_equivalent {
+                        let ns_key = NSString::from_str(key);
+                        button.setKeyEquivalent(&ns_key);
+                    }
 
                     let callback: ActionCallback = Rc::new(RefCell::new(on_click));
                     let action_target = ActionTarget::new(callback, mtm);

@@ -9,93 +9,103 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::sel;
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
-use objc2_app_kit::{NSControl, NSControlStateValueOff, NSControlStateValueOn, NSSwitch};
-use objc2_foundation::{NSInteger, NSObject, NSObjectProtocol};
+use objc2_app_kit::{NSControl, NSStepper};
+use objc2_foundation::{NSObject, NSObjectProtocol};
 
 use crate::native_view::{NativeViewState, parent_ns_view};
 
-type ToggleCallback = Rc<RefCell<Option<Box<dyn Fn(bool)>>>>;
+type StepperCallback = Rc<RefCell<Option<Box<dyn Fn(f64)>>>>;
 
-struct SwitchTargetIvars {
-    callback: ToggleCallback,
+struct StepperTargetIvars {
+    callback: StepperCallback,
 }
 
 define_class!(
     #[unsafe(super(NSObject))]
-    #[ivars = SwitchTargetIvars]
-    #[name = "MozuiSwitchTarget"]
-    struct SwitchTarget;
+    #[ivars = StepperTargetIvars]
+    #[name = "MozuiStepperTarget"]
+    struct StepperTarget;
 
-    impl SwitchTarget {
-        #[unsafe(method(switchToggled:))]
-        fn __switch_toggled(&self, sender: &AnyObject) {
-            let state: NSInteger = unsafe { msg_send![sender, state] };
-            let is_on = state == NSControlStateValueOn;
+    impl StepperTarget {
+        #[unsafe(method(stepperChanged:))]
+        fn __stepper_changed(&self, sender: &AnyObject) {
+            let value: f64 = unsafe { msg_send![sender, doubleValue] };
             let cb = self.ivars().callback.borrow();
             if let Some(ref f) = *cb {
-                f(is_on);
+                f(value);
             }
         }
     }
 
-    unsafe impl NSObjectProtocol for SwitchTarget {}
+    unsafe impl NSObjectProtocol for StepperTarget {}
 );
 
-impl SwitchTarget {
-    fn new(callback: ToggleCallback, _mtm: MainThreadMarker) -> Retained<Self> {
-        let this = Self::alloc().set_ivars(SwitchTargetIvars { callback });
+impl StepperTarget {
+    fn new(callback: StepperCallback, _mtm: MainThreadMarker) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(StepperTargetIvars { callback });
         unsafe { msg_send![super(this), init] }
     }
 }
 
-/// A native macOS `NSSwitch` toggle element.
-pub struct NativeSwitch {
+/// A native macOS `NSStepper` element.
+///
+/// Maps to SwiftUI's `Stepper`.
+pub struct NativeStepper {
     id: ElementId,
-    is_on: bool,
-    enabled: bool,
-    on_toggle: Option<Box<dyn Fn(bool)>>,
+    min: f64,
+    max: f64,
+    value: f64,
+    increment: f64,
+    on_change: Option<Box<dyn Fn(f64)>>,
 }
 
-impl NativeSwitch {
+impl NativeStepper {
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
             id: id.into(),
-            is_on: false,
-            enabled: true,
-            on_toggle: None,
+            min: 0.0,
+            max: 100.0,
+            value: 0.0,
+            increment: 1.0,
+            on_change: None,
         }
     }
 
-    pub fn is_on(mut self, on: bool) -> Self {
-        self.is_on = on;
+    pub fn range(mut self, min: f64, max: f64) -> Self {
+        self.min = min;
+        self.max = max;
         self
     }
 
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
+    pub fn value(mut self, value: f64) -> Self {
+        self.value = value;
         self
     }
 
-    pub fn on_toggle(mut self, callback: impl Fn(bool) + 'static) -> Self {
-        self.on_toggle = Some(Box::new(callback));
+    pub fn increment(mut self, increment: f64) -> Self {
+        self.increment = increment;
+        self
+    }
+
+    pub fn on_change(mut self, callback: impl Fn(f64) + 'static) -> Self {
+        self.on_change = Some(Box::new(callback));
         self
     }
 }
 
-struct NativeSwitchPersistentState {
+struct NativeStepperPersistentState {
     view_state: NativeViewState,
-    _target: Retained<SwitchTarget>,
+    _target: Retained<StepperTarget>,
 }
 
-impl IntoElement for NativeSwitch {
+impl IntoElement for NativeStepper {
     type Element = Self;
-
-    fn into_element(self) -> Self::Element {
+    fn into_element(self) -> Self {
         self
     }
 }
 
-impl Element for NativeSwitch {
+impl Element for NativeStepper {
     type RequestLayoutState = ();
     type PrepaintState = Option<Hitbox>;
 
@@ -133,41 +143,46 @@ impl Element for NativeSwitch {
         _cx: &mut App,
     ) -> Self::PrepaintState {
         let global_id = id.unwrap();
-        let is_on = self.is_on;
-        let enabled = self.enabled;
-        let on_toggle = self.on_toggle.take();
+        let min = self.min;
+        let max = self.max;
+        let value = self.value;
+        let increment = self.increment;
+        let on_change = self.on_change.take();
 
         window.with_element_state(
             global_id,
-            |state: Option<NativeSwitchPersistentState>, window| {
+            |state: Option<NativeStepperPersistentState>, window| {
                 let parent = parent_ns_view(window);
 
                 let mut state = state.unwrap_or_else(|| {
                     let mtm = unsafe { MainThreadMarker::new_unchecked() };
-                    let switch = NSSwitch::new(mtm);
 
-                    let initial_state = if is_on {
-                        NSControlStateValueOn
-                    } else {
-                        NSControlStateValueOff
+                    let stepper = {
+                        let stepper = NSStepper::initWithFrame(
+                            mtm.alloc(),
+                            objc2_foundation::NSRect::ZERO,
+                        );
+                        stepper.setMinValue(min);
+                        stepper.setMaxValue(max);
+                        stepper.setDoubleValue(value);
+                        stepper.setIncrement(increment);
+                        stepper
                     };
-                    switch.setState(initial_state);
-                    switch.setEnabled(enabled);
 
-                    let callback: ToggleCallback = Rc::new(RefCell::new(on_toggle));
-                    let target = SwitchTarget::new(callback, mtm);
+                    let callback: StepperCallback = Rc::new(RefCell::new(on_change));
+                    let target = StepperTarget::new(callback, mtm);
 
                     unsafe {
                         let target_obj: &AnyObject = &target;
-                        NSControl::setTarget(&switch, Some(target_obj));
-                        NSControl::setAction(&switch, Some(sel!(switchToggled:)));
+                        NSControl::setTarget(&stepper, Some(target_obj));
+                        NSControl::setAction(&stepper, Some(sel!(stepperChanged:)));
                     }
 
                     let view_state = NativeViewState::new(unsafe {
-                        objc2::rc::Retained::cast_unchecked(switch)
+                        objc2::rc::Retained::cast_unchecked(stepper)
                     });
 
-                    NativeSwitchPersistentState {
+                    NativeStepperPersistentState {
                         view_state,
                         _target: target,
                     }

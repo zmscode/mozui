@@ -67,11 +67,35 @@ impl VisualEffectBlending {
     }
 }
 
+/// The active state for a [`NativeVisualEffect`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VisualEffectActiveState {
+    /// Follows window active state.
+    FollowsWindowActiveState,
+    /// Always active (blur visible even when window is inactive).
+    #[default]
+    Active,
+    /// Inactive.
+    Inactive,
+}
+
+impl VisualEffectActiveState {
+    fn to_ns(self) -> NSVisualEffectState {
+        match self {
+            Self::FollowsWindowActiveState => NSVisualEffectState::FollowsWindowActiveState,
+            Self::Active => NSVisualEffectState::Active,
+            Self::Inactive => NSVisualEffectState::Inactive,
+        }
+    }
+}
+
 /// A native `NSVisualEffectView` element for blur and vibrancy effects.
 pub struct NativeVisualEffect {
     id: ElementId,
     material: VisualEffectMaterial,
     blending: VisualEffectBlending,
+    state: VisualEffectActiveState,
+    is_emphasized: bool,
 }
 
 impl NativeVisualEffect {
@@ -80,6 +104,8 @@ impl NativeVisualEffect {
             id: id.into(),
             material: VisualEffectMaterial::default(),
             blending: VisualEffectBlending::default(),
+            state: VisualEffectActiveState::default(),
+            is_emphasized: false,
         }
     }
 
@@ -90,6 +116,17 @@ impl NativeVisualEffect {
 
     pub fn blending(mut self, blending: VisualEffectBlending) -> Self {
         self.blending = blending;
+        self
+    }
+
+    pub fn state(mut self, state: VisualEffectActiveState) -> Self {
+        self.state = state;
+        self
+    }
+
+    /// When true, emphasizes the visual effect (e.g., for a selected source list row).
+    pub fn is_emphasized(mut self, emphasized: bool) -> Self {
+        self.is_emphasized = emphasized;
         self
     }
 }
@@ -142,6 +179,8 @@ impl Element for NativeVisualEffect {
         let global_id = id.unwrap();
         let material = self.material;
         let blending = self.blending;
+        let active_state = self.state;
+        let is_emphasized = self.is_emphasized;
 
         window.with_element_state(global_id, |state: Option<NativeViewState>, window| {
             let parent = parent_ns_view(window);
@@ -151,7 +190,8 @@ impl Element for NativeVisualEffect {
                 let effect_view = NSVisualEffectView::new(mtm);
                 effect_view.setMaterial(material.to_ns());
                 effect_view.setBlendingMode(blending.to_ns());
-                effect_view.setState(NSVisualEffectState::Active);
+                effect_view.setState(active_state.to_ns());
+                effect_view.setEmphasized(is_emphasized);
                 NativeViewState::new(unsafe { objc2::rc::Retained::cast_unchecked(effect_view) })
             });
 

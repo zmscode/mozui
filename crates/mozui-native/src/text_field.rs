@@ -8,7 +8,7 @@ use mozui::{
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::sel;
-use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
+use objc2::{AnyThread, ClassType, DefinedClass, MainThreadMarker, define_class, msg_send};
 use objc2_app_kit::{NSControl, NSTextField};
 use objc2_foundation::{NSObject, NSObjectProtocol, NSString};
 
@@ -53,6 +53,10 @@ pub struct NativeTextField {
     id: ElementId,
     placeholder: Option<String>,
     value: Option<String>,
+    editable: bool,
+    selectable: bool,
+    bezeled: bool,
+    font_size: Option<f64>,
     on_change: Option<Box<dyn Fn(String)>>,
 }
 
@@ -62,6 +66,10 @@ impl NativeTextField {
             id: id.into(),
             placeholder: None,
             value: None,
+            editable: true,
+            selectable: true,
+            bezeled: true,
+            font_size: None,
             on_change: None,
         }
     }
@@ -76,9 +84,43 @@ impl NativeTextField {
         self
     }
 
+    pub fn editable(mut self, editable: bool) -> Self {
+        self.editable = editable;
+        self
+    }
+
+    pub fn selectable(mut self, selectable: bool) -> Self {
+        self.selectable = selectable;
+        self
+    }
+
+    pub fn bezeled(mut self, bezeled: bool) -> Self {
+        self.bezeled = bezeled;
+        self
+    }
+
+    pub fn font_size(mut self, size: f64) -> Self {
+        self.font_size = Some(size);
+        self
+    }
+
     pub fn on_change(mut self, callback: impl Fn(String) + 'static) -> Self {
         self.on_change = Some(Box::new(callback));
         self
+    }
+
+    /// Create a non-editable label (wrapping NSTextField).
+    pub fn label(id: impl Into<ElementId>, text: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            placeholder: None,
+            value: Some(text.into()),
+            editable: false,
+            selectable: false,
+            bezeled: false,
+            font_size: None,
+            on_change: None,
+        }
     }
 }
 
@@ -135,6 +177,10 @@ impl Element for NativeTextField {
         let global_id = id.unwrap();
         let placeholder = self.placeholder.clone();
         let value = self.value.clone();
+        let editable = self.editable;
+        let selectable = self.selectable;
+        let bezeled = self.bezeled;
+        let font_size = self.font_size;
         let on_change = self.on_change.take();
 
         window.with_element_state(
@@ -145,6 +191,24 @@ impl Element for NativeTextField {
                 let mut state = state.unwrap_or_else(|| {
                     let mtm = unsafe { MainThreadMarker::new_unchecked() };
                     let text_field = NSTextField::new(mtm);
+
+                    text_field.setEditable(editable);
+                    text_field.setSelectable(selectable);
+                    text_field.setBezeled(bezeled);
+
+                    if !bezeled {
+                        text_field.setDrawsBackground(false);
+                    }
+
+                    if let Some(size) = font_size {
+                        unsafe {
+                            let font: objc2::rc::Retained<objc2_app_kit::NSFont> = msg_send![
+                                objc2_app_kit::NSFont::class(),
+                                systemFontOfSize: size
+                            ];
+                            text_field.setFont(Some(&font));
+                        }
+                    }
 
                     if let Some(ref placeholder) = placeholder {
                         let ns_placeholder = NSString::from_str(placeholder);

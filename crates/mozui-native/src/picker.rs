@@ -9,93 +9,88 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::sel;
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
-use objc2_app_kit::{NSControl, NSControlStateValueOff, NSControlStateValueOn, NSSwitch};
-use objc2_foundation::{NSInteger, NSObject, NSObjectProtocol};
+use objc2_app_kit::{NSControl, NSPopUpButton};
+use objc2_foundation::{NSInteger, NSObject, NSObjectProtocol, NSString};
 
 use crate::native_view::{NativeViewState, parent_ns_view};
 
-type ToggleCallback = Rc<RefCell<Option<Box<dyn Fn(bool)>>>>;
+type SelectCallback = Rc<RefCell<Option<Box<dyn Fn(usize)>>>>;
 
-struct SwitchTargetIvars {
-    callback: ToggleCallback,
+struct PickerTargetIvars {
+    callback: SelectCallback,
 }
 
 define_class!(
     #[unsafe(super(NSObject))]
-    #[ivars = SwitchTargetIvars]
-    #[name = "MozuiSwitchTarget"]
-    struct SwitchTarget;
+    #[ivars = PickerTargetIvars]
+    #[name = "MozuiPickerTarget"]
+    struct PickerTarget;
 
-    impl SwitchTarget {
-        #[unsafe(method(switchToggled:))]
-        fn __switch_toggled(&self, sender: &AnyObject) {
-            let state: NSInteger = unsafe { msg_send![sender, state] };
-            let is_on = state == NSControlStateValueOn;
+    impl PickerTarget {
+        #[unsafe(method(selectionChanged:))]
+        fn __selection_changed(&self, sender: &AnyObject) {
+            let index: NSInteger = unsafe { msg_send![sender, indexOfSelectedItem] };
             let cb = self.ivars().callback.borrow();
             if let Some(ref f) = *cb {
-                f(is_on);
+                f(index as usize);
             }
         }
     }
 
-    unsafe impl NSObjectProtocol for SwitchTarget {}
+    unsafe impl NSObjectProtocol for PickerTarget {}
 );
 
-impl SwitchTarget {
-    fn new(callback: ToggleCallback, _mtm: MainThreadMarker) -> Retained<Self> {
-        let this = Self::alloc().set_ivars(SwitchTargetIvars { callback });
+impl PickerTarget {
+    fn new(callback: SelectCallback, _mtm: MainThreadMarker) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(PickerTargetIvars { callback });
         unsafe { msg_send![super(this), init] }
     }
 }
 
-/// A native macOS `NSSwitch` toggle element.
-pub struct NativeSwitch {
+/// A native macOS dropdown/popup button rendered as a mozui element.
+///
+/// Maps to SwiftUI's `Picker` with `.menu` style.
+pub struct NativePicker {
     id: ElementId,
-    is_on: bool,
-    enabled: bool,
-    on_toggle: Option<Box<dyn Fn(bool)>>,
+    items: Vec<String>,
+    selected: usize,
+    on_change: Option<Box<dyn Fn(usize)>>,
 }
 
-impl NativeSwitch {
-    pub fn new(id: impl Into<ElementId>) -> Self {
+impl NativePicker {
+    pub fn new(id: impl Into<ElementId>, items: Vec<String>) -> Self {
         Self {
             id: id.into(),
-            is_on: false,
-            enabled: true,
-            on_toggle: None,
+            items,
+            selected: 0,
+            on_change: None,
         }
     }
 
-    pub fn is_on(mut self, on: bool) -> Self {
-        self.is_on = on;
+    pub fn selected(mut self, index: usize) -> Self {
+        self.selected = index;
         self
     }
 
-    pub fn enabled(mut self, enabled: bool) -> Self {
-        self.enabled = enabled;
-        self
-    }
-
-    pub fn on_toggle(mut self, callback: impl Fn(bool) + 'static) -> Self {
-        self.on_toggle = Some(Box::new(callback));
+    pub fn on_change(mut self, callback: impl Fn(usize) + 'static) -> Self {
+        self.on_change = Some(Box::new(callback));
         self
     }
 }
 
-struct NativeSwitchPersistentState {
+struct NativePickerPersistentState {
     view_state: NativeViewState,
-    _target: Retained<SwitchTarget>,
+    _target: Retained<PickerTarget>,
 }
 
-impl IntoElement for NativeSwitch {
+impl IntoElement for NativePicker {
     type Element = Self;
-
-    fn into_element(self) -> Self::Element {
+    fn into_element(self) -> Self {
         self
     }
 }
 
-impl Element for NativeSwitch {
+impl Element for NativePicker {
     type RequestLayoutState = ();
     type PrepaintState = Option<Hitbox>;
 
@@ -133,41 +128,46 @@ impl Element for NativeSwitch {
         _cx: &mut App,
     ) -> Self::PrepaintState {
         let global_id = id.unwrap();
-        let is_on = self.is_on;
-        let enabled = self.enabled;
-        let on_toggle = self.on_toggle.take();
+        let items = self.items.clone();
+        let selected = self.selected;
+        let on_change = self.on_change.take();
 
         window.with_element_state(
             global_id,
-            |state: Option<NativeSwitchPersistentState>, window| {
+            |state: Option<NativePickerPersistentState>, window| {
                 let parent = parent_ns_view(window);
 
                 let mut state = state.unwrap_or_else(|| {
                     let mtm = unsafe { MainThreadMarker::new_unchecked() };
-                    let switch = NSSwitch::new(mtm);
 
-                    let initial_state = if is_on {
-                        NSControlStateValueOn
-                    } else {
-                        NSControlStateValueOff
-                    };
-                    switch.setState(initial_state);
-                    switch.setEnabled(enabled);
+                    let popup = NSPopUpButton::initWithFrame_pullsDown(
+                        mtm.alloc(),
+                        objc2_foundation::NSRect::ZERO,
+                        false,
+                    );
 
-                    let callback: ToggleCallback = Rc::new(RefCell::new(on_toggle));
-                    let target = SwitchTarget::new(callback, mtm);
+                    for item_title in &items {
+                        let ns_title = NSString::from_str(item_title);
+                        popup.addItemWithTitle(&ns_title);
+                    }
+
+                    if selected < items.len() {
+                        popup.selectItemAtIndex(selected as NSInteger);
+                    }
+
+                    let callback: SelectCallback = Rc::new(RefCell::new(on_change));
+                    let target = PickerTarget::new(callback, mtm);
 
                     unsafe {
                         let target_obj: &AnyObject = &target;
-                        NSControl::setTarget(&switch, Some(target_obj));
-                        NSControl::setAction(&switch, Some(sel!(switchToggled:)));
+                        NSControl::setTarget(&popup, Some(target_obj));
+                        NSControl::setAction(&popup, Some(sel!(selectionChanged:)));
                     }
 
-                    let view_state = NativeViewState::new(unsafe {
-                        objc2::rc::Retained::cast_unchecked(switch)
-                    });
+                    let view_state =
+                        NativeViewState::new(unsafe { objc2::rc::Retained::cast_unchecked(popup) });
 
-                    NativeSwitchPersistentState {
+                    NativePickerPersistentState {
                         view_state,
                         _target: target,
                     }

@@ -28,6 +28,7 @@ pub struct NativeGlassEffect {
     id: ElementId,
     style: GlassEffectStyle,
     corner_radius: Option<f64>,
+    tint_color: Option<(f64, f64, f64, f64)>,
 }
 
 impl NativeGlassEffect {
@@ -36,6 +37,7 @@ impl NativeGlassEffect {
             id: id.into(),
             style: GlassEffectStyle::default(),
             corner_radius: None,
+            tint_color: None,
         }
     }
 
@@ -48,6 +50,12 @@ impl NativeGlassEffect {
         self.corner_radius = Some(radius);
         self
     }
+
+    /// Set a tint color for the glass effect as RGBA (0.0 to 1.0).
+    pub fn tint_color(mut self, r: f64, g: f64, b: f64, a: f64) -> Self {
+        self.tint_color = Some((r, g, b, a));
+        self
+    }
 }
 
 fn glass_effect_class() -> Option<&'static AnyClass> {
@@ -57,6 +65,7 @@ fn glass_effect_class() -> Option<&'static AnyClass> {
 fn create_glass_view(
     style: GlassEffectStyle,
     corner_radius: Option<f64>,
+    tint_color: Option<(f64, f64, f64, f64)>,
     mtm: MainThreadMarker,
 ) -> Retained<NSView> {
     if let Some(cls) = glass_effect_class() {
@@ -71,6 +80,18 @@ fn create_glass_view(
 
             if let Some(radius) = corner_radius {
                 let _: () = msg_send![&view, setCornerRadius: radius];
+            }
+
+            if let Some((r, g, b, a)) = tint_color {
+                use objc2::ClassType;
+                let color: Retained<NSView> = msg_send![
+                    objc2_app_kit::NSColor::class(),
+                    colorWithRed: r,
+                    green: g,
+                    blue: b,
+                    alpha: a
+                ];
+                let _: () = msg_send![&view, setTintColor: &*color];
             }
 
             view
@@ -133,13 +154,14 @@ impl Element for NativeGlassEffect {
         let global_id = id.unwrap();
         let glass_style = self.style;
         let corner_radius = self.corner_radius;
+        let tint_color = self.tint_color;
 
         window.with_element_state(global_id, |state: Option<NativeViewState>, window| {
             let parent = parent_ns_view(window);
 
             let mut state = state.unwrap_or_else(|| {
                 let mtm = unsafe { MainThreadMarker::new_unchecked() };
-                let view = create_glass_view(glass_style, corner_radius, mtm);
+                let view = create_glass_view(glass_style, corner_radius, tint_color, mtm);
                 NativeViewState::new(view)
             });
 

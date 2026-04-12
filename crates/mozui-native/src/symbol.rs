@@ -76,6 +76,7 @@ pub struct NativeSymbol {
     name: String,
     weight: SymbolWeight,
     scale: SymbolScale,
+    point_size: f64,
     tint: Option<(f64, f64, f64, f64)>, // r, g, b, a
 }
 
@@ -86,6 +87,7 @@ impl NativeSymbol {
             name: name.into(),
             weight: SymbolWeight::default(),
             scale: SymbolScale::default(),
+            point_size: 0.0,
             tint: None,
         }
     }
@@ -100,6 +102,12 @@ impl NativeSymbol {
         self
     }
 
+    /// Set explicit point size for the symbol. If 0, uses system default.
+    pub fn point_size(mut self, size: f64) -> Self {
+        self.point_size = size;
+        self
+    }
+
     /// Set tint color as RGBA (0.0 to 1.0).
     pub fn tint(mut self, r: f64, g: f64, b: f64, a: f64) -> Self {
         self.tint = Some((r, g, b, a));
@@ -111,6 +119,7 @@ fn create_symbol_image_view(
     name: &str,
     weight: SymbolWeight,
     scale: SymbolScale,
+    point_size: f64,
     tint: Option<(f64, f64, f64, f64)>,
     mtm: MainThreadMarker,
 ) -> Option<Retained<NSView>> {
@@ -134,7 +143,7 @@ fn create_symbol_image_view(
     let config: Retained<NSImageSymbolConfiguration> = unsafe {
         msg_send![
             NSImageSymbolConfiguration::class(),
-            configurationWithPointSize: 0.0_f64,
+            configurationWithPointSize: point_size,
             weight: weight_value,
             scale: scale_value
         ]
@@ -212,6 +221,7 @@ impl Element for NativeSymbol {
         let name = self.name.clone();
         let weight = self.weight;
         let scale = self.scale;
+        let point_size = self.point_size;
         let tint = self.tint;
 
         window.with_element_state(global_id, |state: Option<NativeViewState>, window| {
@@ -219,7 +229,7 @@ impl Element for NativeSymbol {
 
             let mut state = state.unwrap_or_else(|| {
                 let mtm = unsafe { MainThreadMarker::new_unchecked() };
-                let view = create_symbol_image_view(&name, weight, scale, tint, mtm)
+                let view = create_symbol_image_view(&name, weight, scale, point_size, tint, mtm)
                     .expect("SF Symbol not found — check the symbol name");
                 NativeViewState::new(view)
             });

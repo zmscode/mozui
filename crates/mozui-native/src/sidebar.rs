@@ -1,17 +1,12 @@
 use cocoa::base::{id, nil};
 use cocoa::foundation::NSString as CocoaNSString;
 use mozui::Window;
+use objc::declare::ClassDecl;
+use objc::runtime::{BOOL, Class, Object, Sel};
 use objc::{class, msg_send, sel, sel_impl};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct NSEdgeInsets {
-    top: f64,
-    left: f64,
-    bottom: f64,
-    right: f64,
-}
+use std::os::raw::c_void;
+use std::sync::Once;
 
 /// Configuration for a native sidebar installed on a mozui window.
 pub struct SidebarConfig {
@@ -26,12 +21,14 @@ pub struct SidebarConfig {
 }
 
 /// A section in the sidebar (e.g. "Favourites", "Locations").
+#[derive(Clone)]
 pub struct SidebarSection {
     pub title: String,
     pub items: Vec<SidebarItem>,
 }
 
 /// An item in a sidebar section.
+#[derive(Clone)]
 pub struct SidebarItem {
     pub title: String,
     /// SF Symbol name for the icon.
@@ -50,29 +47,22 @@ impl Default for SidebarConfig {
 }
 
 /// Installs an `NSSplitViewController` on the window, creating a sidebar pane
-/// with proper sidebar behavior and a content pane containing the existing
-/// mozui Metal view.
+/// with an `NSOutlineView` in source list style and a content pane containing
+/// the existing mozui Metal view.
 ///
-/// On macOS 26+, the sidebar automatically adopts Liquid Glass appearance.
+/// The source list style gives native sidebar appearance: proper row heights,
+/// selection highlighting, section headers, and Liquid Glass on macOS 26+.
 pub fn install_sidebar(window: &Window, config: SidebarConfig) {
     let mozui_view = get_raw_ns_view(window);
 
     unsafe {
         let ns_window: id = msg_send![mozui_view, window];
 
-        // Create the sidebar view controller
+        // Create the sidebar view controller with an NSOutlineView
         let sidebar_vc: id = msg_send![class!(NSViewController), alloc];
         let sidebar_vc: id = msg_send![sidebar_vc, init];
 
-        let sidebar_view: id = msg_send![class!(NSVisualEffectView), alloc];
-        let sidebar_view: id = msg_send![sidebar_view, init];
-        let _: () = msg_send![sidebar_view, setMaterial: 7_isize]; // Sidebar
-        let _: () = msg_send![sidebar_view, setBlendingMode: 0_isize]; // BehindWindow
-        let _: () = msg_send![sidebar_view, setState: 1_isize]; // Active
-
-        // Populate sidebar with content
-        populate_sidebar(sidebar_view, &config.sections);
-
+        let sidebar_view = create_outline_sidebar(&config.sections);
         let _: () = msg_send![sidebar_vc, setView: sidebar_view];
 
         // Create the content view controller wrapping the mozui Metal view
@@ -129,167 +119,353 @@ fn get_raw_ns_view(window: &Window) -> id {
     }
 }
 
-fn populate_sidebar(sidebar_view: id, sections: &[SidebarSection]) {
+// --- NSOutlineView source list sidebar ---
+
+/// Pre-created stable item objects for the outline view.
+/// Group items use tag -(section+1), child items use (section<<16)|item_idx.
+struct SidebarData {
+    sections: Vec<SidebarSection>,
+    /// One NSNumber per section header (value = -(section+1))
+    group_items: Vec<id>,
+    /// One NSNumber per item, indexed [section][item] (value = (section<<16)|item)
+    child_items: Vec<Vec<id>>,
+}
+
+static REGISTER_SIDEBAR_DS: Once = Once::new();
+static mut SIDEBAR_DS_CLASS: *const Class = std::ptr::null();
+
+const SIDEBAR_DATA_IVAR: &str = "_sidebarData";
+
+fn create_outline_sidebar(sections: &[SidebarSection]) -> id {
     unsafe {
-        // Create a vertical stack view to hold all sidebar content
-        let stack: id = msg_send![class!(NSStackView), alloc];
-        let stack: id = msg_send![stack, init];
-        let _: () = msg_send![stack, setOrientation: 1_isize]; // Vertical
-        let _: () = msg_send![stack, setAlignment: 5_isize]; // NSLayoutAttributeLeading
-        let _: () = msg_send![stack, setSpacing: 2.0_f64];
-        let _: () = msg_send![stack, setTranslatesAutoresizingMaskIntoConstraints: false];
+        // Create scroll view
+        let scroll_view: id = msg_send![class!(NSScrollView), alloc];
+        let scroll_view: id = msg_send![scroll_view, init];
+        let _: () = msg_send![scroll_view, setHasVerticalScroller: true];
+        let _: () = msg_send![scroll_view, setDrawsBackground: false];
+        let _: () = msg_send![scroll_view, setAutohidesScrollers: true];
 
-        // Edge insets for the stack
-        let _: () = msg_send![stack, setEdgeInsets: NSEdgeInsets {
-            top: 8.0, left: 12.0, bottom: 8.0, right: 12.0,
-        }];
+        // Create outline view
+        let outline: id = msg_send![class!(NSOutlineView), alloc];
+        let outline: id = msg_send![outline, init];
+        let _: () = msg_send![outline, setStyle: 1_isize]; // NSTableViewStyleSourceList
+        let _: () = msg_send![outline, setSelectionHighlightStyle: 6_isize]; // SourceList
+        let _: () = msg_send![outline, setHeaderView: nil];
+        let _: () = msg_send![outline, setFloatsGroupRows: false];
+        let _: () = msg_send![outline, setIndentationPerLevel: 0.0_f64];
+        let _: () = msg_send![outline, setRowSizeStyle: 2_isize]; // Medium
 
-        for (i, section) in sections.iter().enumerate() {
-            if i > 0 {
-                // Add spacing between sections
-                let spacer: id = msg_send![class!(NSView), alloc];
-                let spacer: id = msg_send![spacer, init];
-                let _: () =
-                    msg_send![spacer, setTranslatesAutoresizingMaskIntoConstraints: false];
-                let _: () = msg_send![stack, addArrangedSubview: spacer];
+        // Create a single column
+        let col_id = CocoaNSString::alloc(nil).init_str("SidebarColumn");
+        let column: id = msg_send![class!(NSTableColumn), alloc];
+        let column: id = msg_send![column, initWithIdentifier: col_id];
+        let _: () = msg_send![column, setEditable: false];
+        let _: () = msg_send![outline, addTableColumn: column];
+        let _: () = msg_send![outline, setOutlineTableColumn: column];
 
-                // Height constraint for spacer
-                let spacer_height: id = msg_send![spacer, heightAnchor];
-                let constraint: id =
-                    msg_send![spacer_height, constraintEqualToConstant: 8.0_f64];
-                let _: () = msg_send![constraint, setActive: true];
+        // Pre-create stable item objects
+        let mut group_items = Vec::new();
+        let mut child_items = Vec::new();
+        for (si, section) in sections.iter().enumerate() {
+            let group_tag = -((si as isize) + 1);
+            let group: id = msg_send![class!(NSNumber), numberWithInteger: group_tag];
+            group_items.push(group);
+
+            let mut items = Vec::new();
+            for ii in 0..section.items.len() {
+                let item_tag = ((si as isize) << 16) | (ii as isize);
+                let item: id = msg_send![class!(NSNumber), numberWithInteger: item_tag];
+                items.push(item);
             }
-
-            // Section header
-            let header = create_section_header(&section.title);
-            let _: () = msg_send![stack, addArrangedSubview: header];
-
-            // Section items
-            for item in &section.items {
-                let row = create_sidebar_row(&item.title, &item.symbol);
-                let _: () = msg_send![stack, addArrangedSubview: row];
-
-                // Make rows fill width
-                let row_leading: id = msg_send![row, leadingAnchor];
-                let stack_leading: id = msg_send![stack, leadingAnchor];
-                let constraint: id =
-                    msg_send![row_leading, constraintEqualToAnchor: stack_leading];
-                let _: () = msg_send![constraint, setActive: true];
-
-                let row_trailing: id = msg_send![row, trailingAnchor];
-                let stack_trailing: id = msg_send![stack, trailingAnchor];
-                let constraint: id =
-                    msg_send![row_trailing, constraintEqualToAnchor: stack_trailing];
-                let _: () = msg_send![constraint, setActive: true];
-            }
+            child_items.push(items);
         }
 
-        // Add stack view to sidebar
-        let _: () = msg_send![sidebar_view, addSubview: stack];
+        let data = SidebarData {
+            sections: sections.to_vec(),
+            group_items,
+            child_items,
+        };
 
-        // Pin stack to sidebar edges, using safe area for top to clear traffic lights
-        let stack_top: id = msg_send![stack, topAnchor];
-        let safe_area: id = msg_send![sidebar_view, safeAreaLayoutGuide];
-        let parent_top: id = msg_send![safe_area, topAnchor];
-        let constraint: id = msg_send![stack_top, constraintEqualToAnchor: parent_top];
-        let _: () = msg_send![constraint, setActive: true];
+        let ds = create_sidebar_data_source(data);
+        let _: () = msg_send![outline, setDataSource: ds];
+        let _: () = msg_send![outline, setDelegate: ds];
 
-        let stack_leading: id = msg_send![stack, leadingAnchor];
-        let parent_leading: id = msg_send![sidebar_view, leadingAnchor];
-        let constraint: id = msg_send![stack_leading, constraintEqualToAnchor: parent_leading];
-        let _: () = msg_send![constraint, setActive: true];
+        // Put outline in scroll view
+        let _: () = msg_send![scroll_view, setDocumentView: outline];
 
-        let stack_trailing: id = msg_send![stack, trailingAnchor];
-        let parent_trailing: id = msg_send![sidebar_view, trailingAnchor];
-        let constraint: id =
-            msg_send![stack_trailing, constraintEqualToAnchor: parent_trailing];
-        let _: () = msg_send![constraint, setActive: true];
+        // Expand all sections
+        let _: () = msg_send![outline, expandItem: nil expandChildren: true];
+
+        scroll_view
     }
 }
 
-fn create_section_header(title: &str) -> id {
+fn create_sidebar_data_source(data: SidebarData) -> id {
     unsafe {
-        let label: id = msg_send![class!(NSTextField), alloc];
-        let label: id = msg_send![label, init];
+        REGISTER_SIDEBAR_DS.call_once(|| {
+            let superclass = class!(NSObject);
+            let mut decl = ClassDecl::new("MozuiSidebarDataSource", superclass).unwrap();
+
+            decl.add_ivar::<*mut c_void>(SIDEBAR_DATA_IVAR);
+
+            // numberOfChildrenOfItem:
+            extern "C" fn number_of_children(
+                this: &Object,
+                _sel: Sel,
+                _outline: id,
+                item: id,
+            ) -> isize {
+                unsafe {
+                    let data = get_data(this);
+                    if item == nil {
+                        data.sections.len() as isize
+                    } else {
+                        let tag: isize = msg_send![item, integerValue];
+                        if tag < 0 {
+                            // Group item: return number of children
+                            let si = ((-tag) - 1) as usize;
+                            data.sections[si].items.len() as isize
+                        } else {
+                            0
+                        }
+                    }
+                }
+            }
+
+            // child:ofItem:
+            extern "C" fn child_of_item(
+                this: &Object,
+                _sel: Sel,
+                _outline: id,
+                index: isize,
+                item: id,
+            ) -> id {
+                unsafe {
+                    let data = get_data(this);
+                    if item == nil {
+                        data.group_items[index as usize]
+                    } else {
+                        let tag: isize = msg_send![item, integerValue];
+                        let si = ((-tag) - 1) as usize;
+                        data.child_items[si][index as usize]
+                    }
+                }
+            }
+
+            // isItemExpandable:
+            extern "C" fn is_expandable(_this: &Object, _sel: Sel, _outline: id, item: id) -> BOOL {
+                unsafe {
+                    if item == nil {
+                        return true;
+                    }
+                    let tag: isize = msg_send![item, integerValue];
+                    tag < 0
+                }
+            }
+
+            // isGroupItem:
+            extern "C" fn is_group_item(_this: &Object, _sel: Sel, _outline: id, item: id) -> BOOL {
+                unsafe {
+                    if item == nil {
+                        return false;
+                    }
+                    let tag: isize = msg_send![item, integerValue];
+                    tag < 0
+                }
+            }
+
+            // viewForTableColumn:item:
+            extern "C" fn view_for_item(
+                this: &Object,
+                _sel: Sel,
+                outline: id,
+                _column: id,
+                item: id,
+            ) -> id {
+                unsafe {
+                    let data = get_data(this);
+                    let tag: isize = msg_send![item, integerValue];
+
+                    if tag < 0 {
+                        let si = ((-tag) - 1) as usize;
+                        create_header_cell(outline, &data.sections[si].title)
+                    } else {
+                        let si = (tag >> 16) as usize;
+                        let ii = (tag & 0xFFFF) as usize;
+                        let sidebar_item = &data.sections[si].items[ii];
+                        create_item_cell(outline, &sidebar_item.title, &sidebar_item.symbol)
+                    }
+                }
+            }
+
+            // shouldSelectItem:
+            extern "C" fn should_select(_this: &Object, _sel: Sel, _outline: id, item: id) -> BOOL {
+                unsafe {
+                    let tag: isize = msg_send![item, integerValue];
+                    tag >= 0
+                }
+            }
+
+            decl.add_method(
+                sel!(outlineView:numberOfChildrenOfItem:),
+                number_of_children as extern "C" fn(&Object, Sel, id, id) -> isize,
+            );
+            decl.add_method(
+                sel!(outlineView:child:ofItem:),
+                child_of_item as extern "C" fn(&Object, Sel, id, isize, id) -> id,
+            );
+            decl.add_method(
+                sel!(outlineView:isItemExpandable:),
+                is_expandable as extern "C" fn(&Object, Sel, id, id) -> BOOL,
+            );
+            decl.add_method(
+                sel!(outlineView:isGroupItem:),
+                is_group_item as extern "C" fn(&Object, Sel, id, id) -> BOOL,
+            );
+            decl.add_method(
+                sel!(outlineView:viewForTableColumn:item:),
+                view_for_item as extern "C" fn(&Object, Sel, id, id, id) -> id,
+            );
+            decl.add_method(
+                sel!(outlineView:shouldSelectItem:),
+                should_select as extern "C" fn(&Object, Sel, id, id) -> BOOL,
+            );
+
+            SIDEBAR_DS_CLASS = decl.register();
+        });
+
+        let cls = SIDEBAR_DS_CLASS;
+        let ds: id = msg_send![cls, alloc];
+        let ds: id = msg_send![ds, init];
+
+        let data_box = Box::new(data);
+        let data_ptr = Box::into_raw(data_box) as *mut c_void;
+        (*ds).set_ivar(SIDEBAR_DATA_IVAR, data_ptr);
+
+        ds
+    }
+}
+
+fn get_data<'a>(obj: &Object) -> &'a SidebarData {
+    unsafe {
+        let ptr: *mut c_void = *obj.get_ivar(SIDEBAR_DATA_IVAR);
+        &*(ptr as *const SidebarData)
+    }
+}
+
+fn create_header_cell(outline: id, title: &str) -> id {
+    unsafe {
+        let cell_id = CocoaNSString::alloc(nil).init_str("HeaderCell");
+        let mut cell: id = msg_send![outline, makeViewWithIdentifier: cell_id owner: nil];
+        if cell == nil {
+            cell = msg_send![class!(NSTableCellView), alloc];
+            cell = msg_send![cell, init];
+            let _: () = msg_send![cell, setIdentifier: cell_id];
+
+            let label: id = msg_send![class!(NSTextField),
+                labelWithString: CocoaNSString::alloc(nil).init_str("")];
+            let _: () = msg_send![label, setTranslatesAutoresizingMaskIntoConstraints: false];
+            let font: id = msg_send![class!(NSFont), systemFontOfSize: 11.0_f64 weight: 0.3_f64];
+            let _: () = msg_send![label, setFont: font];
+            let color: id = msg_send![class!(NSColor), secondaryLabelColor];
+            let _: () = msg_send![label, setTextColor: color];
+            let _: () = msg_send![cell, addSubview: label];
+            let _: () = msg_send![cell, setTextField: label];
+
+            let l: id = msg_send![label, leadingAnchor];
+            let pl: id = msg_send![cell, leadingAnchor];
+            let c: id = msg_send![l, constraintEqualToAnchor: pl constant: 4.0_f64];
+            let _: () = msg_send![c, setActive: true];
+            let cy: id = msg_send![label, centerYAnchor];
+            let pcy: id = msg_send![cell, centerYAnchor];
+            let c: id = msg_send![cy, constraintEqualToAnchor: pcy];
+            let _: () = msg_send![c, setActive: true];
+        }
+
+        let tf: id = msg_send![cell, textField];
         let ns_title = CocoaNSString::alloc(nil).init_str(title);
-        let _: () = msg_send![label, setStringValue: ns_title];
-        let _: () = msg_send![label, setBezeled: false];
-        let _: () = msg_send![label, setDrawsBackground: false];
-        let _: () = msg_send![label, setEditable: false];
-        let _: () = msg_send![label, setSelectable: false];
-
-        // Small, semibold, secondary label color
-        let font: id = msg_send![class!(NSFont), systemFontOfSize: 11.0_f64 weight: 0.3_f64];
-        let _: () = msg_send![label, setFont: font];
-        let color: id = msg_send![class!(NSColor), secondaryLabelColor];
-        let _: () = msg_send![label, setTextColor: color];
-
-        let _: () = msg_send![label, setTranslatesAutoresizingMaskIntoConstraints: false];
-
-        label
+        let _: () = msg_send![tf, setStringValue: ns_title];
+        cell
     }
 }
 
-fn create_sidebar_row(title: &str, symbol_name: &str) -> id {
+fn create_item_cell(outline: id, title: &str, symbol_name: &str) -> id {
     unsafe {
-        let row: id = msg_send![class!(NSStackView), alloc];
-        let row: id = msg_send![row, init];
-        let _: () = msg_send![row, setOrientation: 0_isize]; // Horizontal
-        let _: () = msg_send![row, setAlignment: 10_isize]; // NSLayoutAttributeCenterY
-        let _: () = msg_send![row, setSpacing: 6.0_f64];
-        let _: () = msg_send![row, setTranslatesAutoresizingMaskIntoConstraints: false];
+        let cell_id = CocoaNSString::alloc(nil).init_str("ItemCell");
+        let mut cell: id = msg_send![outline, makeViewWithIdentifier: cell_id owner: nil];
+        if cell == nil {
+            cell = msg_send![class!(NSTableCellView), alloc];
+            cell = msg_send![cell, init];
+            let _: () = msg_send![cell, setIdentifier: cell_id];
 
-        // Edge insets
-        let _: () = msg_send![row, setEdgeInsets: NSEdgeInsets {
-            top: 3.0, left: 8.0, bottom: 3.0, right: 8.0,
-        }];
+            // Image view
+            let placeholder: id = msg_send![class!(NSImage), alloc];
+            let placeholder: id = msg_send![placeholder, init];
+            let iv: id = msg_send![class!(NSImageView), imageViewWithImage: placeholder];
+            let _: () = msg_send![iv, setTranslatesAutoresizingMaskIntoConstraints: false];
+            let tint: id = msg_send![class!(NSColor), controlAccentColor];
+            let _: () = msg_send![iv, setContentTintColor: tint];
+            let _: () = msg_send![cell, addSubview: iv];
+            let _: () = msg_send![cell, setImageView: iv];
 
-        // SF Symbol icon
+            let w: id = msg_send![iv, widthAnchor];
+            let c: id = msg_send![w, constraintEqualToConstant: 18.0_f64];
+            let _: () = msg_send![c, setActive: true];
+            let h: id = msg_send![iv, heightAnchor];
+            let c: id = msg_send![h, constraintEqualToConstant: 18.0_f64];
+            let _: () = msg_send![c, setActive: true];
+
+            // Text field
+            let label: id = msg_send![class!(NSTextField),
+                labelWithString: CocoaNSString::alloc(nil).init_str("")];
+            let _: () = msg_send![label, setTranslatesAutoresizingMaskIntoConstraints: false];
+            let font: id = msg_send![class!(NSFont), systemFontOfSize: 13.0_f64];
+            let _: () = msg_send![label, setFont: font];
+            let _: () = msg_send![cell, addSubview: label];
+            let _: () = msg_send![cell, setTextField: label];
+
+            // Layout: [4px][icon 18px][6px][label][4px]
+            let il: id = msg_send![iv, leadingAnchor];
+            let cl: id = msg_send![cell, leadingAnchor];
+            let c: id = msg_send![il, constraintEqualToAnchor: cl constant: 4.0_f64];
+            let _: () = msg_send![c, setActive: true];
+
+            let icy: id = msg_send![iv, centerYAnchor];
+            let ccy: id = msg_send![cell, centerYAnchor];
+            let c: id = msg_send![icy, constraintEqualToAnchor: ccy];
+            let _: () = msg_send![c, setActive: true];
+
+            let ll: id = msg_send![label, leadingAnchor];
+            let it: id = msg_send![iv, trailingAnchor];
+            let c: id = msg_send![ll, constraintEqualToAnchor: it constant: 6.0_f64];
+            let _: () = msg_send![c, setActive: true];
+
+            let lcy: id = msg_send![label, centerYAnchor];
+            let c: id = msg_send![lcy, constraintEqualToAnchor: ccy];
+            let _: () = msg_send![c, setActive: true];
+
+            let lt: id = msg_send![label, trailingAnchor];
+            let ct: id = msg_send![cell, trailingAnchor];
+            let c: id = msg_send![lt, constraintEqualToAnchor: ct constant: -4.0_f64];
+            let _: () = msg_send![c, setActive: true];
+        }
+
+        // Update image
+        let iv: id = msg_send![cell, imageView];
         let ns_symbol = CocoaNSString::alloc(nil).init_str(symbol_name);
         let image: id = msg_send![
             class!(NSImage),
             imageWithSystemSymbolName: ns_symbol
             accessibilityDescription: nil
         ];
-
         if image != nil {
-            let image_view: id = msg_send![class!(NSImageView), imageViewWithImage: image];
-            let _: () =
-                msg_send![image_view, setTranslatesAutoresizingMaskIntoConstraints: false];
-
-            // Tint the icon with accent color
-            let tint: id = msg_send![class!(NSColor), controlAccentColor];
-            let _: () = msg_send![image_view, setContentTintColor: tint];
-
-            // Size constraint
-            let w_anchor: id = msg_send![image_view, widthAnchor];
-            let constraint: id = msg_send![w_anchor, constraintEqualToConstant: 16.0_f64];
-            let _: () = msg_send![constraint, setActive: true];
-            let h_anchor: id = msg_send![image_view, heightAnchor];
-            let constraint: id = msg_send![h_anchor, constraintEqualToConstant: 16.0_f64];
-            let _: () = msg_send![constraint, setActive: true];
-
-            let _: () = msg_send![row, addArrangedSubview: image_view];
+            let _: () = msg_send![iv, setImage: image];
         }
 
-        // Text label
-        let label: id = msg_send![class!(NSTextField), alloc];
-        let label: id = msg_send![label, init];
+        // Update text
+        let tf: id = msg_send![cell, textField];
         let ns_title = CocoaNSString::alloc(nil).init_str(title);
-        let _: () = msg_send![label, setStringValue: ns_title];
-        let _: () = msg_send![label, setBezeled: false];
-        let _: () = msg_send![label, setDrawsBackground: false];
-        let _: () = msg_send![label, setEditable: false];
-        let _: () = msg_send![label, setSelectable: false];
-        let _: () = msg_send![label, setTranslatesAutoresizingMaskIntoConstraints: false];
-
-        let font: id = msg_send![class!(NSFont), systemFontOfSize: 13.0_f64];
-        let _: () = msg_send![label, setFont: font];
-        let color: id = msg_send![class!(NSColor), labelColor];
-        let _: () = msg_send![label, setTextColor: color];
-
-        let _: () = msg_send![row, addArrangedSubview: label];
-
-        row
+        let _: () = msg_send![tf, setStringValue: ns_title];
+        cell
     }
 }

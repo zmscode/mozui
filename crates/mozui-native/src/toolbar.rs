@@ -27,6 +27,13 @@ pub enum ToolbarItemId {
         /// If true, marks the item as navigational (left-side, own Liquid Glass pill).
         navigational: bool,
     },
+    /// A group of SF Symbol buttons displayed as a segmented control.
+    /// Items in a group share a single Liquid Glass pill.
+    SymbolGroup {
+        id: String,
+        /// (symbol_name, label) pairs for each segment.
+        items: Vec<(String, String)>,
+    },
 }
 
 impl ToolbarItemId {
@@ -37,6 +44,7 @@ impl ToolbarItemId {
             Self::FlexibleSpace => "NSToolbarFlexibleSpaceItemIdentifier",
             Self::Space => "NSToolbarSpaceItemIdentifier",
             Self::SymbolButton { id, .. } => id.as_str(),
+            Self::SymbolGroup { id, .. } => id.as_str(),
         }
     }
 
@@ -50,6 +58,11 @@ struct ToolbarItemConfig {
     symbol: String,
     label: String,
     navigational: bool,
+}
+
+/// Config for a toolbar item group (segmented control).
+struct ToolbarGroupConfig {
+    items: Vec<(String, String)>, // (symbol, label) pairs
 }
 
 /// Installs an `NSToolbar` on the window associated with the given mozui `Window`.
@@ -72,28 +85,39 @@ pub fn install_toolbar(window: &Window, items: &[ToolbarItemId]) {
         // Collect item identifiers
         let item_ids: Vec<id> = items.iter().map(|i| i.to_ns_string()).collect();
 
-        // Build config map for custom items
+        // Build config maps for custom items
         let mut configs: HashMap<String, ToolbarItemConfig> = HashMap::new();
+        let mut group_configs: HashMap<String, ToolbarGroupConfig> = HashMap::new();
         for item in items {
-            if let ToolbarItemId::SymbolButton {
-                id,
-                symbol,
-                label,
-                navigational,
-            } = item
-            {
-                configs.insert(
-                    id.clone(),
-                    ToolbarItemConfig {
-                        symbol: symbol.clone(),
-                        label: label.clone(),
-                        navigational: *navigational,
-                    },
-                );
+            match item {
+                ToolbarItemId::SymbolButton {
+                    id,
+                    symbol,
+                    label,
+                    navigational,
+                } => {
+                    configs.insert(
+                        id.clone(),
+                        ToolbarItemConfig {
+                            symbol: symbol.clone(),
+                            label: label.clone(),
+                            navigational: *navigational,
+                        },
+                    );
+                }
+                ToolbarItemId::SymbolGroup { id, items: group } => {
+                    group_configs.insert(
+                        id.clone(),
+                        ToolbarGroupConfig {
+                            items: group.clone(),
+                        },
+                    );
+                }
+                _ => {}
             }
         }
 
-        let delegate = create_toolbar_delegate(&item_ids, configs);
+        let delegate = create_toolbar_delegate(&item_ids, configs, group_configs);
 
         let _: () = msg_send![toolbar, setDelegate: delegate];
         let _: () = msg_send![toolbar, setDisplayMode: 2_isize]; // IconOnly
@@ -117,10 +141,12 @@ static mut DELEGATE_CLASS: *const Class = std::ptr::null();
 
 const ITEM_IDS_IVAR: &str = "_itemIdentifiers";
 const ITEM_CONFIGS_IVAR: &str = "_itemConfigs";
+const GROUP_CONFIGS_IVAR: &str = "_groupConfigs";
 
 unsafe fn create_toolbar_delegate(
     item_ids: &[id],
     configs: HashMap<String, ToolbarItemConfig>,
+    group_configs: HashMap<String, ToolbarGroupConfig>,
 ) -> id {
     REGISTER_DELEGATE.call_once(|| unsafe {
         let superclass = class!(NSObject);
@@ -128,6 +154,7 @@ unsafe fn create_toolbar_delegate(
 
         decl.add_ivar::<*mut c_void>(ITEM_IDS_IVAR);
         decl.add_ivar::<*mut c_void>(ITEM_CONFIGS_IVAR);
+        decl.add_ivar::<*mut c_void>(GROUP_CONFIGS_IVAR);
 
         extern "C" fn default_item_identifiers(_this: &Object, _sel: Sel, _toolbar: id) -> id {
             unsafe {
@@ -165,6 +192,49 @@ unsafe fn create_toolbar_delegate(
                 let utf8: *const i8 = msg_send![identifier, UTF8String];
                 let id_str = std::ffi::CStr::from_ptr(utf8).to_str().unwrap_or("");
 
+                // Check group configs first
+                let groups_ptr: *mut c_void = *_this.get_ivar(GROUP_CONFIGS_IVAR);
+                let groups = &*(groups_ptr as *const HashMap<String, ToolbarGroupConfig>);
+
+                if let Some(group) = groups.get(id_str) {
+                    // Create NSToolbarItemGroup with SF Symbol images
+                    let mut images: Vec<id> = Vec::new();
+                    let mut labels: Vec<id> = Vec::new();
+                    for (symbol, label) in &group.items {
+                        let ns_sym = CocoaNSString::alloc(nil).init_str(symbol);
+                        let img: id = msg_send![
+                            class!(NSImage),
+                            imageWithSystemSymbolName: ns_sym
+                            accessibilityDescription: nil
+                        ];
+                        images.push(img);
+                        labels.push(CocoaNSString::alloc(nil).init_str(label));
+                    }
+
+                    let images_arr: id = msg_send![
+                        class!(NSArray),
+                        arrayWithObjects: images.as_ptr()
+                        count: images.len()
+                    ];
+                    let labels_arr: id = msg_send![
+                        class!(NSArray),
+                        arrayWithObjects: labels.as_ptr()
+                        count: labels.len()
+                    ];
+
+                    // NSToolbarItemGroup with selectAny mode (0 = selectAny)
+                    let group_item: id = msg_send![
+                        class!(NSToolbarItemGroup),
+                        groupWithItemIdentifier: identifier
+                        images: images_arr
+                        selectionMode: 0_isize
+                        labels: labels_arr
+                        target: nil
+                        action: nil
+                    ];
+                    return group_item;
+                }
+
                 if let Some(config) = configs.get(id_str) {
                     // Create SF Symbol image
                     let ns_symbol = CocoaNSString::alloc(nil).init_str(&config.symbol);
@@ -175,18 +245,7 @@ unsafe fn create_toolbar_delegate(
                     ];
 
                     if image != nil {
-                        // Create NSButton with the image as a custom view.
-                        // Using a button view gives each item its own Liquid Glass
-                        // pill instead of merging with adjacent bordered items.
-                        let button: id = msg_send![
-                            class!(NSButton),
-                            buttonWithImage: image
-                            target: nil
-                            action: nil
-                        ];
-                        let _: () = msg_send![button, setBezelStyle: 0_isize]; // Automatic
-                        let _: () = msg_send![button, setBordered: false];
-                        let _: () = msg_send![item, setView: button];
+                        let _: () = msg_send![item, setImage: image];
                     }
 
                     // Set label and tooltip
@@ -194,7 +253,10 @@ unsafe fn create_toolbar_delegate(
                     let _: () = msg_send![item, setLabel: ns_label];
                     let _: () = msg_send![item, setToolTip: ns_label];
 
-                    // Navigational items get their own section on the left
+                    // Bordered gives Liquid Glass treatment
+                    let _: () = msg_send![item, setBordered: true];
+
+                    // Navigational items get their own glass pill on the left
                     if config.navigational {
                         let _: () = msg_send![item, setNavigational: true];
                     }
@@ -234,6 +296,11 @@ unsafe fn create_toolbar_delegate(
         let configs_box = Box::new(configs);
         let configs_ptr = Box::into_raw(configs_box) as *mut c_void;
         (*delegate).set_ivar(ITEM_CONFIGS_IVAR, configs_ptr);
+
+        // Store group configs
+        let groups_box = Box::new(group_configs);
+        let groups_ptr = Box::into_raw(groups_box) as *mut c_void;
+        (*delegate).set_ivar(GROUP_CONFIGS_IVAR, groups_ptr);
 
         delegate
     }

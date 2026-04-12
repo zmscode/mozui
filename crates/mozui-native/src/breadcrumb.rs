@@ -44,8 +44,7 @@ pub fn install_breadcrumb(window: &Window, config: BreadcrumbConfig) {
         let path_control: id = msg_send![class!(NSPathControl), alloc];
         let path_control: id = msg_send![path_control, init];
         let _: () = msg_send![path_control, setPathStyle: 0_isize]; // NSPathStyleStandard
-        let _: () =
-            msg_send![path_control, setTranslatesAutoresizingMaskIntoConstraints: false];
+        let _: () = msg_send![path_control, setTranslatesAutoresizingMaskIntoConstraints: false];
 
         // Build path items
         let items = create_path_items(&config.items);
@@ -76,8 +75,7 @@ pub fn install_breadcrumb(window: &Window, config: BreadcrumbConfig) {
         let _: () = msg_send![constraint, setActive: true];
 
         let height_anchor: id = msg_send![path_control, heightAnchor];
-        let constraint: id =
-            msg_send![height_anchor, constraintEqualToConstant: config.height];
+        let constraint: id = msg_send![height_anchor, constraintEqualToConstant: config.height];
         let _: () = msg_send![constraint, setActive: true];
     }
 }
@@ -102,7 +100,15 @@ fn create_path_item(item: &BreadcrumbItem) -> id {
                 accessibilityDescription: nil
             ];
             if image != nil {
-                let _: () = msg_send![path_item, setImage: image];
+                // Configure symbol at small scale for path bar
+                let config: id = msg_send![
+                    class!(NSImageSymbolConfiguration),
+                    configurationWithPointSize: 11.0_f64
+                    weight: 0.0_f64
+                    scale: 1_isize
+                ];
+                let sized: id = msg_send![image, imageWithSymbolConfiguration: config];
+                let _: () = msg_send![path_item, setImage: sized];
             }
         }
 
