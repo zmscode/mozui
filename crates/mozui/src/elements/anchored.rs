@@ -1,7 +1,9 @@
+use std::rc::Rc;
+
 use smallvec::SmallVec;
 
 use crate::{
-    AnyElement, App, Axis, Bounds, Corner, Display, Edges, Element, GlobalElementId,
+    Anchor, AnyElement, App, Axis, Bounds, Display, Edges, Element, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, ParentElement, Pixels, Point, Position, Size, Style,
     Window, point, px,
 };
@@ -15,9 +17,10 @@ pub struct AnchoredState {
 /// will avoid overflowing the window bounds.
 pub struct Anchored {
     children: SmallVec<[AnyElement; 2]>,
-    anchor_corner: Corner,
+    anchor_corner: Anchor,
     fit_mode: AnchoredFitMode,
     anchor_position: Option<Point<Pixels>>,
+    anchor_position_fn: Option<Rc<dyn Fn() -> Point<Pixels>>>,
     position_mode: AnchoredPositionMode,
     offset: Option<Point<Pixels>>,
 }
@@ -27,9 +30,10 @@ pub struct Anchored {
 pub fn anchored() -> Anchored {
     Anchored {
         children: SmallVec::new(),
-        anchor_corner: Corner::TopLeft,
+        anchor_corner: Anchor::TopLeft,
         fit_mode: AnchoredFitMode::SwitchAnchor,
         anchor_position: None,
+        anchor_position_fn: None,
         position_mode: AnchoredPositionMode::Window,
         offset: None,
     }
@@ -37,8 +41,8 @@ pub fn anchored() -> Anchored {
 
 impl Anchored {
     /// Sets which corner of the anchored element should be anchored to the current position.
-    pub fn anchor(mut self, anchor: Corner) -> Self {
-        self.anchor_corner = anchor;
+    pub fn anchor(mut self, anchor: impl Into<Anchor>) -> Self {
+        self.anchor_corner = anchor.into();
         self
     }
 
@@ -46,6 +50,14 @@ impl Anchored {
     /// (otherwise the location the anchored element is rendered is used)
     pub fn position(mut self, anchor: Point<Pixels>) -> Self {
         self.anchor_position = Some(anchor);
+        self
+    }
+
+    /// Sets a closure that will be called at prepaint time to get the position.
+    /// This takes precedence over [`Anchored::position`] when set, and is useful
+    /// when the position is not yet known at render time.
+    pub fn position_fn(mut self, f: impl Fn() -> Point<Pixels> + 'static) -> Self {
+        self.anchor_position_fn = Some(Rc::new(f));
         self
     }
 
@@ -141,8 +153,14 @@ impl Element for Anchored {
         }
         let size: Size<Pixels> = (child_max - child_min).into();
 
+        let anchor_position = self
+            .anchor_position_fn
+            .as_ref()
+            .map(|f| f())
+            .or(self.anchor_position);
+
         let (origin, mut desired) = self.position_mode.get_position_and_bounds(
-            self.anchor_position,
+            anchor_position,
             self.anchor_corner,
             size,
             bounds,
@@ -158,7 +176,7 @@ impl Element for Anchored {
             let mut anchor_corner = self.anchor_corner;
 
             if desired.left() < limits.left() || desired.right() > limits.right() {
-                let switched = Bounds::from_corner_and_size(
+                let switched = Bounds::from_anchor_and_size(
                     anchor_corner.other_side_corner_along(Axis::Horizontal),
                     origin,
                     size,
@@ -170,7 +188,7 @@ impl Element for Anchored {
             }
 
             if desired.top() < limits.top() || desired.bottom() > limits.bottom() {
-                let switched = Bounds::from_corner_and_size(
+                let switched = Bounds::from_anchor_and_size(
                     anchor_corner.other_side_corner_along(Axis::Vertical),
                     origin,
                     size,
@@ -264,7 +282,7 @@ impl AnchoredPositionMode {
     fn get_position_and_bounds(
         &self,
         anchor_position: Option<Point<Pixels>>,
-        anchor_corner: Corner,
+        anchor_corner: Anchor,
         size: Size<Pixels>,
         bounds: Bounds<Pixels>,
         offset: Option<Point<Pixels>>,
@@ -275,12 +293,12 @@ impl AnchoredPositionMode {
             AnchoredPositionMode::Window => {
                 let anchor_position = anchor_position.unwrap_or(bounds.origin);
                 let bounds =
-                    Bounds::from_corner_and_size(anchor_corner, anchor_position + offset, size);
+                    Bounds::from_anchor_and_size(anchor_corner, anchor_position + offset, size);
                 (anchor_position, bounds)
             }
             AnchoredPositionMode::Local => {
                 let anchor_position = anchor_position.unwrap_or_default();
-                let bounds = Bounds::from_corner_and_size(
+                let bounds = Bounds::from_anchor_and_size(
                     anchor_corner,
                     bounds.origin + anchor_position + offset,
                     size,

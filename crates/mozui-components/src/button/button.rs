@@ -7,7 +7,7 @@ use crate::{
 use mozui::{
     Action, AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, Hsla, InteractiveElement,
     Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, SharedString,
-    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div, native_button,
     prelude::FluentBuilder as _, px, relative, transparent_white,
 };
 
@@ -206,6 +206,7 @@ pub struct Button {
 
     tab_index: isize,
     tab_stop: bool,
+    native: bool,
 }
 
 impl From<Button> for AnyElement {
@@ -244,6 +245,7 @@ impl Button {
             dropdown_caret: false,
             tab_index: 0,
             tab_stop: true,
+            native: false,
         }
     }
 
@@ -363,6 +365,12 @@ impl Button {
         self
     }
 
+    /// Render the button using the platform-native button backend when possible.
+    pub fn native(mut self) -> Self {
+        self.native = true;
+        self
+    }
+
     #[inline]
     fn clickable(&self) -> bool {
         !(self.disabled || self.loading) && self.on_click.is_some()
@@ -371,6 +379,19 @@ impl Button {
     #[inline]
     fn hoverable(&self) -> bool {
         !(self.disabled || self.loading) && self.on_hover.is_some()
+    }
+
+    #[inline]
+    fn can_render_natively(&self) -> bool {
+        self.native
+            && self.label.is_some()
+            && self.icon.is_none()
+            && self.children.is_empty()
+            && !self.loading
+            && self.loading_icon.is_none()
+            && !self.dropdown_caret
+            && self.on_hover.is_none()
+            && !self.selected
     }
 }
 
@@ -426,6 +447,23 @@ impl InteractiveElement for Button {
 
 impl RenderOnce for Button {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.can_render_natively() {
+            let label = self
+                .label
+                .clone()
+                .expect("native button rendering checked label presence");
+            let button = native_button(self.id.clone(), label)
+                .button_style(self.variant.native_button_style())
+                .disabled(self.disabled)
+                .refine_style(&self.style);
+            let button = if let Some(on_click) = self.on_click.clone() {
+                button.on_click(move |event, window, cx| on_click(event, window, cx))
+            } else {
+                button
+            };
+            return button.into_any_element();
+        }
+
         let style: ButtonVariant = self.variant;
         let clickable = self.clickable();
         let is_disabled = self.disabled;
@@ -623,6 +661,7 @@ impl RenderOnce for Button {
                 })
             })
             .focus_ring(is_focused, px(0.), window, cx)
+            .into_any_element()
     }
 }
 
@@ -635,6 +674,14 @@ struct ButtonVariantStyle {
 }
 
 impl ButtonVariant {
+    fn native_button_style(&self) -> mozui::NativeButtonStyle {
+        match self {
+            Self::Primary => mozui::NativeButtonStyle::Filled,
+            Self::Ghost | Self::Link | Self::Text => mozui::NativeButtonStyle::Borderless,
+            _ => mozui::NativeButtonStyle::Rounded,
+        }
+    }
+
     fn bg_color(&self, outline: bool, cx: &mut App) -> Hsla {
         if outline {
             return cx.theme().input_background();

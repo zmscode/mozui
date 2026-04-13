@@ -8,13 +8,12 @@ mod display;
 mod display_link;
 mod events;
 mod keyboard;
+mod native_controls;
+mod native_window;
 mod pasteboard;
 
 mod media;
 mod media_bindings;
-
-#[cfg(feature = "screen-capture")]
-mod screen_capture;
 
 mod metal_atlas;
 pub mod metal_renderer;
@@ -28,6 +27,7 @@ mod open_type;
 mod text_system;
 
 mod platform;
+mod window_surface;
 mod window;
 mod window_appearance;
 
@@ -46,7 +46,9 @@ pub(crate) use dispatcher::*;
 pub(crate) use display::*;
 pub(crate) use display_link::*;
 pub(crate) use keyboard::*;
+pub(crate) use native_controls::*;
 pub(crate) use platform::*;
+pub(crate) use window_surface::*;
 pub(crate) use window::*;
 
 #[cfg(feature = "font-kit")]

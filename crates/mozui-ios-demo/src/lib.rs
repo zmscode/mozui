@@ -1,15 +1,23 @@
 use mozui::platform::ios::{IosDisplayMetrics, IosPlatform, IosTouchPhase};
 use mozui::prelude::*;
 use mozui::{
-    AnyWindowHandle, App, Application, Bounds, Pixels, Point, QuitMode, RequestFrameOptions,
-    Window, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowOptions, div, hsla,
-    point, px, size,
+    AnyWindowHandle, App, Application, Bounds, ClickEvent, Div, Entity, Pixels, Point, QuitMode,
+    RequestFrameOptions, TouchPhase, Window, WindowAppearance, WindowBackgroundAppearance,
+    WindowBounds, WindowOptions, div, hsla, point, px, size,
 };
 use mozui_components::{
+    Root, Sizable,
+    button::Button,
+    checkbox::Checkbox,
+    input::{Input, InputState},
+    progress::Progress,
+    radio::Radio,
+    scroll::ScrollableElement,
+    slider::{Slider, SliderState, SliderValue},
     switch::Switch as ComponentSwitch,
     theme::{Theme, ThemeMode},
 };
-use mozui_native::NativeSwitch;
+use mozui_native::{NativeButton, NativeProgress, NativeSlider, NativeSwitch};
 use std::{
     cell::RefCell,
     ffi::{CStr, CString, c_char, c_void},
@@ -18,14 +26,48 @@ use std::{
 };
 
 struct DemoRoot {
+    button_taps: usize,
+    component_checkbox_on: bool,
+    component_radio_on: bool,
     component_switch_on: bool,
+    input_state: Entity<InputState>,
+    slider_state: Entity<SliderState>,
 }
 
 impl DemoRoot {
-    fn new(_cx: &mut Context<Self>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
+            button_taps: 0,
+            component_checkbox_on: true,
+            component_radio_on: true,
             component_switch_on: true,
+            input_state: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder("Type here on iPhone…")
+                    .default_value("")
+            }),
+            slider_state: cx.new(|_| SliderState::new().min(0.0).max(100.0).default_value(42.0)),
         }
+    }
+
+    fn increment_button_taps(
+        &mut self,
+        _: &ClickEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.button_taps += 1;
+        cx.notify();
+    }
+
+    fn set_component_checkbox(
+        &mut self,
+        checked: &bool,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.component_checkbox_on = *checked;
+        cx.notify();
     }
 
     fn set_component_switch(
@@ -37,19 +79,93 @@ impl DemoRoot {
         self.component_switch_on = *checked;
         cx.notify();
     }
+
+    fn set_component_radio(
+        &mut self,
+        checked: &bool,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.component_radio_on = *checked;
+        cx.notify();
+    }
+}
+
+fn showcase_card(title: &'static str, subtitle: &'static str) -> Div {
+    div()
+        .w(px(280.0))
+        .rounded(px(24.0))
+        .border_1()
+        .border_color(hsla(0.0, 0.0, 1.0, 0.18))
+        .bg(hsla(0.60, 0.40, 0.17, 1.0))
+        .flex()
+        .flex_col()
+        .gap(px(12.0))
+        .p(px(16.0))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(4.0))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(hsla(0.0, 0.0, 1.0, 0.92))
+                        .child(title),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(hsla(0.0, 0.0, 1.0, 0.58))
+                        .child(subtitle),
+                ),
+        )
+}
+
+fn showcase_row(label: &'static str) -> Div {
+    div()
+        .w_full()
+        .rounded(px(18.0))
+        .bg(hsla(0.0, 0.0, 1.0, 0.04))
+        .border_1()
+        .border_color(hsla(0.0, 0.0, 1.0, 0.08))
+        .flex()
+        .flex_col()
+        .gap(px(10.0))
+        .p(px(14.0))
+        .child(
+            div()
+                .text_xs()
+                .text_color(hsla(0.0, 0.0, 1.0, 0.54))
+                .child(label),
+        )
+}
+
+fn native_unavailable(name: &'static str, note: &'static str) -> Div {
+    showcase_row(name).child(
+        div()
+            .rounded(px(14.0))
+            .bg(hsla(0.0, 0.0, 1.0, 0.05))
+            .border_1()
+            .border_color(hsla(0.0, 0.0, 1.0, 0.08))
+            .p(px(12.0))
+            .text_xs()
+            .text_color(hsla(0.0, 0.0, 1.0, 0.62))
+            .child(note),
+    )
 }
 
 impl Render for DemoRoot {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let slider_value = match self.slider_state.read(cx).value() {
+            SliderValue::Single(value) => value,
+            SliderValue::Range(_, value) => value,
+        };
+
         div()
             .size_full()
             .relative()
             .bg(hsla(0.58, 0.52, 0.12, 1.0))
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap(px(12.0))
             .child(
                 div()
                     .absolute()
@@ -61,89 +177,182 @@ impl Render for DemoRoot {
             )
             .child(
                 div()
-                    .w(px(220.0))
-                    .h(px(220.0))
-                    .rounded(px(28.0))
-                    .border_1()
-                    .border_color(hsla(0.0, 0.0, 1.0, 0.18))
-                    .bg(hsla(0.60, 0.40, 0.17, 1.0))
-                    .flex()
-                    .flex_col()
-                    .justify_between()
-                    .p(px(20.0))
+                    .size_full()
+                    .overflow_y_scrollbar()
                     .child(
                         div()
-                            .flex()
+                            .w_full()
                             .flex_col()
-                            .gap(px(4.0))
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(hsla(0.0, 0.0, 1.0, 0.96))
-                                    .child("mozui iOS"),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(hsla(0.0, 0.0, 1.0, 0.6))
-                                    .child("components + native"),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .w(px(72.0))
-                            .h(px(72.0))
-                            .rounded(px(36.0))
-                            .bg(hsla(0.12, 0.72, 0.60, 1.0)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(10.0))
-                            .child(
-                                div()
-                                    .w(px(140.0))
-                                    .h(px(18.0))
-                                    .rounded(px(9.0))
-                                    .bg(hsla(0.0, 0.0, 1.0, 0.18)),
-                            )
-                            .child(
-                                div()
-                                    .w(px(110.0))
-                                    .h(px(12.0))
-                                    .rounded(px(6.0))
-                                    .bg(hsla(0.12, 0.72, 0.60, 0.55)),
-                            ),
-                    )
-                    .child(
-                        div().w_full().pt(px(8.0)).child(
-                            ComponentSwitch::new("ios-demo-components-switch")
-                                .checked(self.component_switch_on)
-                                .color(hsla(0.12, 0.72, 0.60, 1.0))
-                                .on_click(cx.listener(Self::set_component_switch)),
-                        ),
-                    ),
-            )
-            .child(
-                div()
-                    .w(px(220.0))
-                    .h(px(80.0))
-                    .rounded(px(20.0))
-                    .border_1()
-                    .border_color(hsla(0.0, 0.0, 1.0, 0.18))
-                    .bg(hsla(0.60, 0.40, 0.17, 1.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .w(px(56.0))
-                            .h(px(34.0))
-                            .flex()
                             .items_center()
-                            .justify_center()
-                            .child(NativeSwitch::new("ios-demo-native-switch").is_on(true)),
+                            .gap(px(16.0))
+                            .p(px(24.0))
+                            .pb(px(120.0))
+                            .child(
+                                showcase_card("mozui iOS", "components + native showcase").child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(hsla(0.0, 0.0, 1.0, 0.62))
+                                        .child(
+                                            "Swipe to scroll, tap to interact, and compare each pair directly.",
+                                        ),
+                                ),
+                            )
+                            .child(
+                                showcase_card("Button", "mozui-components above, mozui-native below")
+                                    .child(
+                                        showcase_row("mozui-components").child(
+                                            Button::new("ios-demo-button")
+                                                .label(format!("Button taps: {}", self.button_taps))
+                                                .on_click(cx.listener(Self::increment_button_taps)),
+                                        ),
+                                    )
+                                    .child(
+                                        showcase_row("mozui-native").child(
+                                            div()
+                                                .h(px(36.0))
+                                                .flex()
+                                                .items_center()
+                                                .child(NativeButton::new(
+                                                    "ios-demo-native-button",
+                                                    "Native UIButton",
+                                                )),
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                showcase_card("Checkbox", "Component checkbox with current iOS native gap")
+                                    .child(
+                                        showcase_row("mozui-components").child(
+                                            Checkbox::new("ios-demo-checkbox")
+                                                .label("Checkbox")
+                                                .checked(self.component_checkbox_on)
+                                                .on_click(cx.listener(Self::set_component_checkbox)),
+                                        ),
+                                    )
+                                    .child(native_unavailable(
+                                        "mozui-native",
+                                        "No native iOS checkbox is exposed in mozui-native yet.",
+                                    )),
+                            )
+                            .child(
+                                showcase_card("Radio", "Component radio with current iOS native gap")
+                                    .child(
+                                        showcase_row("mozui-components").child(
+                                            Radio::new("ios-demo-radio")
+                                                .label("Radio")
+                                                .checked(self.component_radio_on)
+                                                .on_click(cx.listener(Self::set_component_radio)),
+                                        ),
+                                    )
+                                    .child(native_unavailable(
+                                        "mozui-native",
+                                        "UIKit has no built-in radio control and mozui-native does not have NativeRadio yet.",
+                                    )),
+                            )
+                            .child(
+                                showcase_card("Switch", "Component switch above, native UISwitch below")
+                                    .child(
+                                        showcase_row("mozui-components").child(
+                                            ComponentSwitch::new("ios-demo-components-switch")
+                                                .checked(self.component_switch_on)
+                                                .color(hsla(0.12, 0.72, 0.60, 1.0))
+                                                .on_click(cx.listener(Self::set_component_switch)),
+                                        ),
+                                    )
+                                    .child(
+                                        showcase_row("mozui-native").child(
+                                            div()
+                                                .h(px(36.0))
+                                                .flex()
+                                                .items_center()
+                                                .child(
+                                                    NativeSwitch::new("ios-demo-native-switch")
+                                                        .is_on(true),
+                                                ),
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                showcase_card("Slider", "Component slider above, native UISlider below")
+                                    .child(
+                                        showcase_row("mozui-components")
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(hsla(0.0, 0.0, 1.0, 0.62))
+                                                    .child(format!("Value: {:.0}", slider_value)),
+                                            )
+                                            .child(Slider::new(&self.slider_state).horizontal()),
+                                    )
+                                    .child(
+                                        showcase_row("mozui-native").child(
+                                            div()
+                                                .h(px(36.0))
+                                                .flex()
+                                                .items_center()
+                                                .child(
+                                                    NativeSlider::new("ios-demo-native-slider")
+                                                        .range(0.0, 100.0)
+                                                        .value(slider_value.into()),
+                                                ),
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                showcase_card("Progress", "Component progress above, native UIProgressView below")
+                                    .child(
+                                        showcase_row("mozui-components").child(
+                                            Progress::new("ios-demo-progress")
+                                                .with_size(mozui_components::Size::Small)
+                                                .value(slider_value),
+                                        ),
+                                    )
+                                    .child(
+                                        showcase_row("mozui-native").child(
+                                            div()
+                                                .h(px(12.0))
+                                                .flex()
+                                                .items_center()
+                                                .child(
+                                                    NativeProgress::new("ios-demo-native-progress")
+                                                        .range(0.0, 100.0)
+                                                        .value(slider_value.into()),
+                                                ),
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                showcase_card("Input", "Component input with current iOS native gap")
+                                    .child(
+                                        showcase_row("mozui-components").child(
+                                            Input::new(&self.input_state)
+                                                .with_size(mozui_components::Size::Small),
+                                        ),
+                                    )
+                                    .child(native_unavailable(
+                                        "mozui-native",
+                                        "NativeTextField is still macOS-only in mozui-native. The iOS text bridge currently powers the components input instead.",
+                                    )),
+                            )
+                            .child(
+                                showcase_card("Status", "Current iOS-native coverage in mozui-native")
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(hsla(0.0, 0.0, 1.0, 0.62))
+                                            .child(
+                                                "iOS-native showcase coverage now includes UIButton, UISlider, UIProgressView, and UISwitch.",
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(hsla(0.0, 0.0, 1.0, 0.48))
+                                            .child(
+                                                "Next native ports should be text field, picker/select, stepper, and any custom radio behavior we want to define.",
+                                            ),
+                                    ),
+                            ),
                     ),
             )
     }
@@ -235,7 +444,10 @@ impl MozuiIosDemo {
             };
 
             let window_handle = cx
-                .open_window(options, |_window, cx| cx.new(DemoRoot::new))
+                .open_window(options, |window, cx| {
+                    let demo_root = cx.new(|cx| DemoRoot::new(window, cx));
+                    cx.new(|cx| Root::new(demo_root, window, cx))
+                })
                 .expect("failed to open iOS demo window");
             let any_handle: AnyWindowHandle = window_handle.into();
             *app_shared.primary_window.borrow_mut() = Some(any_handle);
@@ -334,6 +546,37 @@ impl MozuiIosDemo {
             },
         );
     }
+
+    fn handle_scroll(&self, position: Point<Pixels>, delta: Point<Pixels>, phase: TouchPhase) {
+        let Some(handle) = *self.shared.primary_window.borrow() else {
+            return;
+        };
+
+        let _ = self
+            .platform
+            .dispatch_scroll(handle, position, delta, phase);
+    }
+
+    fn insert_text(&self, text: &str) -> bool {
+        let Some(handle) = *self.shared.primary_window.borrow() else {
+            return false;
+        };
+        self.platform.insert_text(handle, text)
+    }
+
+    fn delete_backward(&self) -> bool {
+        let Some(handle) = *self.shared.primary_window.borrow() else {
+            return false;
+        };
+        self.platform.delete_backward(handle)
+    }
+
+    fn accepts_text_input(&self) -> bool {
+        let Some(handle) = *self.shared.primary_window.borrow() else {
+            return false;
+        };
+        self.platform.accepts_text_input(handle)
+    }
 }
 
 fn decode_appearance(raw: i32) -> WindowAppearance {
@@ -426,6 +669,61 @@ pub unsafe extern "C" fn mozui_ios_demo_request_frame(demo: *mut MozuiIosDemo) {
         return;
     };
     demo.request_frame();
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mozui_ios_demo_handle_scroll(
+    demo: *mut MozuiIosDemo,
+    x: f32,
+    y: f32,
+    dx: f32,
+    dy: f32,
+    phase: i32,
+) {
+    let Some(demo) = (unsafe { demo_from_ptr(demo) }) else {
+        return;
+    };
+
+    let phase = match phase {
+        0 => TouchPhase::Started,
+        2 => TouchPhase::Ended,
+        _ => TouchPhase::Moved,
+    };
+
+    demo.handle_scroll(Point::new(px(x), px(y)), Point::new(px(dx), px(dy)), phase);
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mozui_ios_demo_insert_text(
+    demo: *mut MozuiIosDemo,
+    text: *const c_char,
+) -> bool {
+    let Some(demo) = (unsafe { demo_from_ptr(demo) }) else {
+        return false;
+    };
+    let Some(text) = NonNull::new(text.cast_mut()) else {
+        return false;
+    };
+    let Ok(text) = unsafe { CStr::from_ptr(text.as_ptr()) }.to_str() else {
+        return false;
+    };
+    demo.insert_text(text)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mozui_ios_demo_delete_backward(demo: *mut MozuiIosDemo) -> bool {
+    let Some(demo) = (unsafe { demo_from_ptr(demo) }) else {
+        return false;
+    };
+    demo.delete_backward()
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mozui_ios_demo_accepts_text_input(demo: *mut MozuiIosDemo) -> bool {
+    let Some(demo) = (unsafe { demo_from_ptr(demo) }) else {
+        return false;
+    };
+    demo.accepts_text_input()
 }
 
 #[unsafe(no_mangle)]

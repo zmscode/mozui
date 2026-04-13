@@ -2,11 +2,22 @@ use mozui::{
     App, Bounds, ContentMask, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
     InspectorElementId, IntoElement, LayoutId, Pixels, Size, Style, Window,
 };
+#[cfg(target_os = "ios")]
+use objc2::MainThreadOnly;
+#[cfg(target_os = "macos")]
 use objc2::msg_send;
+#[cfg(target_os = "macos")]
 use objc2_app_kit::NSProgressIndicator;
+#[cfg(target_os = "macos")]
 use objc2_foundation::NSRect;
+#[cfg(target_os = "ios")]
+use objc2_ui_kit::{UIProgressView, UIProgressViewStyle};
 
-use crate::native_view::{NativeViewState, parent_ns_view};
+use crate::native_view::NativeViewState;
+#[cfg(target_os = "macos")]
+use crate::native_view::parent_ns_view;
+#[cfg(target_os = "ios")]
+use crate::native_view::parent_ui_view;
 
 /// Progress indicator style.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -110,15 +121,29 @@ impl Element for NativeProgress {
         let value = self.value;
         let min = self.min;
         let max = self.max;
+        #[cfg(target_os = "macos")]
         let style = self.style;
 
         window.with_element_state(
             global_id,
             |state: Option<NativeProgressPersistentState>, window| {
+                #[cfg(target_os = "ios")]
+                let parent = parent_ui_view(window);
+                #[cfg(target_os = "macos")]
                 let parent = parent_ns_view(window);
 
                 let mut state = state.unwrap_or_else(|| {
+                    #[cfg(target_os = "ios")]
+                    let indicator = {
+                        let mtm = unsafe { objc2::MainThreadMarker::new_unchecked() };
+                        UIProgressView::initWithProgressViewStyle(
+                            UIProgressView::alloc(mtm),
+                            UIProgressViewStyle::Default,
+                        )
+                    };
+                    #[cfg(target_os = "macos")]
                     let mtm = unsafe { objc2::MainThreadMarker::new_unchecked() };
+                    #[cfg(target_os = "macos")]
                     let indicator = unsafe {
                         let indicator =
                             NSProgressIndicator::initWithFrame(mtm.alloc(), NSRect::ZERO);
@@ -153,9 +178,48 @@ impl Element for NativeProgress {
                     NativeProgressPersistentState { view_state }
                 });
 
-                state.view_state.attach_and_position(parent, bounds);
-                let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-                (Some(hitbox), state)
+                #[cfg(target_os = "ios")]
+                {
+                    let progress_view: &UIProgressView =
+                        unsafe { &*(state.view_state.view() as *const _ as *const UIProgressView) };
+                    let normalized = match value {
+                        Some(v) if max > min => ((v - min) / (max - min)).clamp(0.0, 1.0) as f32,
+                        _ => 0.0,
+                    };
+                    progress_view.setProgress_animated(normalized, false);
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let indicator: &NSProgressIndicator = unsafe {
+                        &*(state.view_state.view() as *const _ as *const NSProgressIndicator)
+                    };
+                    match value {
+                        Some(v) => {
+                            indicator.setIndeterminate(false);
+                            indicator.setDoubleValue(v);
+                        }
+                        None => {
+                            indicator.setIndeterminate(true);
+                            unsafe {
+                                indicator.startAnimation(None);
+                            }
+                        }
+                    }
+                }
+
+                #[cfg(target_os = "ios")]
+                let hitbox = if let Some(parent) = parent {
+                    state.view_state.attach_and_position(parent, bounds);
+                    Some(window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                } else {
+                    None
+                };
+                #[cfg(target_os = "macos")]
+                let hitbox = {
+                    state.view_state.attach_and_position(parent, bounds);
+                    Some(window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                };
+                (hitbox, state)
             },
         )
     }

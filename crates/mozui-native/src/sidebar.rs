@@ -1,12 +1,20 @@
 use cocoa::base::{id, nil};
 use cocoa::foundation::NSString as CocoaNSString;
-use mozui::Window;
+use mozui::{NativeSidebarHost, Window, px};
 use objc::declare::ClassDecl;
 use objc::runtime::{BOOL, Class, Object, Sel};
 use objc::{class, msg_send, sel, sel_impl};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::os::raw::c_void;
 use std::sync::Once;
+
+const SIDEBAR_IDENTIFIER: &str = "mozui-native.sidebar";
+
+thread_local! {
+    static SIDEBAR_VISIBILITY: RefCell<HashMap<usize, bool>> = RefCell::new(HashMap::new());
+}
 
 /// Configuration for a native sidebar installed on a mozui window.
 pub struct SidebarConfig {
@@ -53,61 +61,45 @@ impl Default for SidebarConfig {
 /// The source list style gives native sidebar appearance: proper row heights,
 /// selection highlighting, section headers, and Liquid Glass on macOS 26+.
 pub fn install_sidebar(window: &Window, config: SidebarConfig) {
-    let mozui_view = get_raw_ns_view(window);
-
-    unsafe {
-        let ns_window: id = msg_send![mozui_view, window];
-
-        // Create the sidebar view controller with an NSOutlineView
-        let sidebar_vc: id = msg_send![class!(NSViewController), alloc];
-        let sidebar_vc: id = msg_send![sidebar_vc, init];
-
-        let sidebar_view = create_outline_sidebar(&config.sections);
-        let _: () = msg_send![sidebar_vc, setView: sidebar_view];
-
-        // Create the content view controller wrapping the mozui Metal view
-        let content_vc: id = msg_send![class!(NSViewController), alloc];
-        let content_vc: id = msg_send![content_vc, init];
-        let content_view: id = msg_send![mozui_view, superview];
-        let _: () = msg_send![content_vc, setView: content_view];
-
-        // Create NSSplitViewItems
-        let sidebar_item: id =
-            msg_send![class!(NSSplitViewItem), sidebarWithViewController: sidebar_vc];
-        let content_item: id =
-            msg_send![class!(NSSplitViewItem), contentListWithViewController: content_vc];
-
-        let _: () = msg_send![sidebar_item, setMinimumThickness: config.min_width];
-        let _: () = msg_send![sidebar_item, setMaximumThickness: config.max_width];
-        let _: () = msg_send![sidebar_item, setPreferredThicknessFraction: 0.2_f64];
-
-        // Create NSSplitViewController
-        let split_vc: id = msg_send![class!(NSSplitViewController), alloc];
-        let split_vc: id = msg_send![split_vc, init];
-        let _: () = msg_send![split_vc, addSplitViewItem: sidebar_item];
-        let _: () = msg_send![split_vc, addSplitViewItem: content_item];
-
-        let _: () = msg_send![ns_window, setContentViewController: split_vc];
-
-        // Set initial sidebar position
-        let split_view: id = msg_send![split_vc, splitView];
-        let _: () = msg_send![
-            split_view,
-            setPosition: config.width
-            ofDividerAtIndex: 0_isize
-        ];
+    if !window.install_native_sidebar_host(
+        NativeSidebarHost::new(SIDEBAR_IDENTIFIER, px(config.width as f32))
+            .min_width(px(config.min_width as f32))
+            .max_width(px(config.max_width as f32))
+            .visible(true),
+    ) {
+        return;
     }
+
+    let sidebar_view = create_outline_sidebar(&config.sections);
+    if !window.set_native_host_content(SIDEBAR_IDENTIFIER, sidebar_view.cast()) {
+        return;
+    }
+
+    SIDEBAR_VISIBILITY.with(|state| {
+        state.borrow_mut().insert(window_key(window), true);
+    });
 }
 
 /// Toggle the sidebar visibility with animation.
 pub fn toggle_sidebar(window: &Window) {
-    let ns_view = get_raw_ns_view(window);
+    let key = window_key(window);
+    let next_visible =
+        SIDEBAR_VISIBILITY.with(|state| !state.borrow().get(&key).copied().unwrap_or(true));
+    if window.set_native_host_visibility(SIDEBAR_IDENTIFIER, next_visible) {
+        SIDEBAR_VISIBILITY.with(|state| {
+            state.borrow_mut().insert(key, next_visible);
+        });
+    }
+}
+
+fn window_key(window: &Window) -> usize {
     unsafe {
-        let ns_window: id = msg_send![ns_view, window];
-        let split_vc: id = msg_send![ns_window, contentViewController];
-        if split_vc != nil {
-            let _: () = msg_send![split_vc, toggleSidebar: nil];
+        let host_view = get_raw_ns_view(window);
+        if host_view == nil {
+            return 0;
         }
+        let ns_window: id = msg_send![host_view, window];
+        ns_window as usize
     }
 }
 

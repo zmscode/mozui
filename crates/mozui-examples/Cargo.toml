@@ -1,0 +1,18 @@
+[package]
+name = "mozui-examples"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mozui.workspace = true
+mozui-components.workspace = true
+mozui-webview = { path = "../mozui-webview" }
+wry = { version = "0.53.3", package = "lb-wry" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa.workspace = true
+objc.workspace = true

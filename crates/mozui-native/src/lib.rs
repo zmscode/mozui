@@ -20,7 +20,7 @@ mod toolbar;
 mod view;
 
 // Element-based components (NSView subviews positioned by layout engine)
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod button;
 #[cfg(target_os = "macos")]
 mod color_picker;
@@ -28,9 +28,9 @@ mod color_picker;
 mod glass_effect;
 #[cfg(target_os = "macos")]
 mod picker;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod progress;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod slider;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod switch;
@@ -84,7 +84,7 @@ pub use toolbar::*;
 #[cfg(target_os = "macos")]
 pub use view::*;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub use button::*;
 #[cfg(target_os = "macos")]
 pub use color_picker::*;
@@ -92,9 +92,9 @@ pub use color_picker::*;
 pub use glass_effect::*;
 #[cfg(target_os = "macos")]
 pub use picker::*;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub use progress::*;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub use slider::*;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub use switch::*;

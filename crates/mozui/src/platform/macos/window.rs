@@ -421,18 +421,21 @@ unsafe fn build_window_class(name: &'static str, superclass: &Class) -> *const C
     }
 }
 
-struct MacWindowState {
+pub(crate) struct MacWindowState {
     handle: AnyWindowHandle,
     foreground_executor: ForegroundExecutor,
     background_executor: BackgroundExecutor,
     native_window: id,
-    native_view: NonNull<Object>,
+    pub(crate) native_view: NonNull<Object>,
     blurred_view: Option<id>,
     background_appearance: WindowBackgroundAppearance,
     display_link: Option<DisplayLink>,
+    renderer_context: renderer::Context,
     renderer: renderer::Renderer,
     request_frame_callback: Option<Box<dyn FnMut(RequestFrameOptions)>>,
     event_callback: Option<Box<dyn FnMut(PlatformInput) -> crate::DispatchEventResult>>,
+    pub(crate) surface_event_callback:
+        Option<Box<dyn FnMut(*mut c_void, PlatformInput) -> crate::DispatchEventResult>>,
     activate_callback: Option<Box<dyn FnMut(bool)>>,
     resize_callback: Option<Box<dyn FnMut(Size<Pixels>, f32)>>,
     moved_callback: Option<Box<dyn FnMut()>>,
@@ -746,6 +749,7 @@ impl MacWindow {
                 blurred_view: None,
                 background_appearance: WindowBackgroundAppearance::Opaque,
                 display_link: None,
+                renderer_context: renderer_context.clone(),
                 renderer: renderer::new_renderer(
                     renderer_context,
                     native_window as *mut _,
@@ -755,6 +759,7 @@ impl MacWindow {
                 ),
                 request_frame_callback: None,
                 event_callback: None,
+                surface_event_callback: None,
                 activate_callback: None,
                 resize_callback: None,
                 moved_callback: None,
@@ -1427,6 +1432,43 @@ impl PlatformWindow for MacWindow {
         false
     }
 
+    fn raw_native_view_ptr(&self) -> *mut c_void {
+        self.0.lock().native_view.as_ptr().cast()
+    }
+
+    fn raw_native_window_ptr(&self) -> *mut c_void {
+        self.0.lock().native_window.cast()
+    }
+
+    fn native_controls(
+        &self,
+    ) -> Option<&dyn crate::platform::native_controls::PlatformNativeControls> {
+        Some(&super::MAC_NATIVE_CONTROLS)
+    }
+
+    fn native_window(&self) -> Option<&dyn crate::platform::native_window::PlatformNativeWindow> {
+        Some(self)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn create_surface(&self) -> Option<Box<dyn crate::PlatformSurface>> {
+        let renderer_context = self.0.lock().renderer_context.clone();
+        Some(Box::new(super::MozuiSurface::new(renderer_context, true)))
+    }
+
+    #[cfg(target_os = "macos")]
+    fn on_surface_input(
+        &self,
+        callback: Box<dyn FnMut(*mut c_void, PlatformInput) -> crate::DispatchEventResult>,
+    ) {
+        self.0.as_ref().lock().surface_event_callback = Some(callback);
+    }
+
+    #[cfg(target_os = "macos")]
+    fn window_state_ptr(&self) -> *const c_void {
+        Arc::into_raw(self.0.clone()) as *const c_void
+    }
+
     fn set_edited(&mut self, edited: bool) {
         unsafe {
             let window = self.0.lock().native_window;
@@ -1839,7 +1881,7 @@ extern "C" fn handle_key_event(this: &Object, native_event: id, key_equivalent: 
     let mut lock = window_state.as_ref().lock();
 
     let window_height = lock.content_size().height;
-    let event = unsafe { platform_input_from_native(native_event, Some(window_height)) };
+    let event = unsafe { platform_input_from_native(native_event, Some(window_height), None) };
 
     let Some(event) = event else {
         return NO;
@@ -1980,7 +2022,7 @@ extern "C" fn handle_view_event(this: &Object, _: Sel, native_event: id) {
     let weak_window_state = Arc::downgrade(&window_state);
     let mut lock = window_state.as_ref().lock();
     let window_height = lock.content_size().height;
-    let event = unsafe { platform_input_from_native(native_event, Some(window_height)) };
+    let event = unsafe { platform_input_from_native(native_event, Some(window_height), None) };
 
     if let Some(mut event) = event {
         match &mut event {

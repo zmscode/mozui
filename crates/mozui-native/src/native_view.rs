@@ -98,10 +98,7 @@ mod platform {
         let y: f64 = bounds.origin.y.into();
         let width: f64 = bounds.size.width.into();
         let height: f64 = bounds.size.height.into();
-        CGRect::new(
-            CGPoint::new(x, y),
-            CGSize::new(width, height),
-        )
+        CGRect::new(CGPoint::new(x, y), CGSize::new(width, height))
     }
 
     pub struct NativeViewState {

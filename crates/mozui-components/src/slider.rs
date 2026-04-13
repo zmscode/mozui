@@ -382,6 +382,7 @@ pub struct Slider {
     axis: Axis,
     style: StyleRefinement,
     disabled: bool,
+    native: bool,
 }
 
 impl Slider {
@@ -392,6 +393,7 @@ impl Slider {
             state: state.clone(),
             style: StyleRefinement::default(),
             disabled: false,
+            native: false,
         }
     }
 
@@ -411,6 +413,19 @@ impl Slider {
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
+    }
+
+    /// Render the slider using the platform-native slider backend when possible.
+    pub fn native(mut self) -> Self {
+        self.native = true;
+        self
+    }
+
+    fn can_render_natively(&self, state: &SliderState) -> bool {
+        self.native
+            && self.axis.is_horizontal()
+            && state.value().is_single()
+            && state.scale.is_linear()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -499,6 +514,23 @@ impl RenderOnce for Slider {
         let axis = self.axis;
         let entity_id = self.state.entity_id();
         let state = self.state.read(cx);
+        if self.can_render_natively(&state) {
+            return mozui::native_slider(("slider", self.state.entity_id()))
+                .range(state.min as f64, state.max as f64)
+                .value(state.value().end() as f64)
+                .disabled(self.disabled)
+                .on_change({
+                    let slider = self.state.clone();
+                    move |event, window, cx| {
+                        slider.update(cx, |state, cx| {
+                            state.set_value(event.value as f32, window, cx);
+                            cx.emit(SliderEvent::Change(state.value()));
+                        });
+                    }
+                })
+                .refine_style(&self.style)
+                .into_any_element();
+        }
         let is_range = state.value().is_range();
         let percentage = state.percentage.clone();
         let bar_start = relative(percentage.start);
@@ -663,5 +695,6 @@ impl RenderOnce for Slider {
                             }),
                     ),
             )
+            .into_any_element()
     }
 }

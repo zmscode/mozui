@@ -24,9 +24,9 @@ use crate::{
 const CONTEXT: &'static str = "TextView";
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys(vec![
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         KeyBinding::new("cmd-c", input::Copy, Some(CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         KeyBinding::new("ctrl-c", input::Copy, Some(CONTEXT)),
     ]);
 }

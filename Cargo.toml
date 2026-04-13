@@ -13,6 +13,7 @@ members = [
     "crates/mozui-webview",
     "crates/mozui-builder",
     "crates/mozui-native",
+    "crates/mozui-examples",
 ]
 
 [workspace.package]
@@ -44,7 +45,6 @@ reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "c15662
     "socks",
     "stream",
 ], package = "zed-reqwest", version = "0.12.15-zed" }
-scap = { git = "https://github.com/zed-industries/scap", rev = "4afea48c3b002197176fb19cd0f9b180dd36eaac", default-features = false, package = "zed-scap", version = "0.0.8-zed" }
 wgpu = { git = "https://github.com/zed-industries/wgpu.git", branch = "v29" }
 
 ashpd = { version = "0.13", default-features = false, features = [

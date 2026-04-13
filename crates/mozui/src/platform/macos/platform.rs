@@ -47,6 +47,7 @@ use std::{
     cell::Cell,
     ffi::{CStr, OsStr, c_void},
     os::{raw::c_char, unix::ffi::OsStrExt},
+    panic::{self, AssertUnwindSafe},
     path::{Path, PathBuf},
     ptr,
     rc::Rc,
@@ -587,19 +588,6 @@ impl Platform for MacPlatform {
         MacDisplay::all()
             .map(|screen| Rc::new(screen) as Rc<_>)
             .collect()
-    }
-
-    #[cfg(feature = "screen-capture")]
-    fn is_screen_capture_supported(&self) -> bool {
-        let min_version = cocoa::foundation::NSOperatingSystem(12, 3, 0);
-        crate::is_macos_version_at_least(min_version)
-    }
-
-    #[cfg(feature = "screen-capture")]
-    fn screen_capture_sources(
-        &self,
-    ) -> oneshot::Receiver<Result<Vec<Rc<dyn crate::ScreenCaptureSource>>>> {
-        super::screen_capture::get_sources()
     }
 
     fn active_window(&self) -> Option<AnyWindowHandle> {
@@ -1206,7 +1194,7 @@ extern "C" fn will_finish_launching(this: &mut Object, _: Sel, _: id) {
 }
 
 extern "C" fn did_finish_launching(this: &mut Object, _: Sel, _: id) {
-    unsafe {
+    let result = panic::catch_unwind(AssertUnwindSafe(|| unsafe {
         let app: id = msg_send![APP_CLASS, sharedApplication];
         app.setActivationPolicy_(NSApplicationActivationPolicyRegular);
 
@@ -1232,6 +1220,18 @@ extern "C" fn did_finish_launching(this: &mut Object, _: Sel, _: id) {
         if let Some(callback) = callback {
             callback();
         }
+    }));
+
+    if let Err(panic) = result {
+        let message = if let Some(message) = panic.downcast_ref::<&'static str>() {
+            *message
+        } else if let Some(message) = panic.downcast_ref::<String>() {
+            message.as_str()
+        } else {
+            "unknown panic payload"
+        };
+
+        eprintln!("mozui macOS launch callback panicked: {message}");
     }
 }
 

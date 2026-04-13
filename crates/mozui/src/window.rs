@@ -525,7 +525,20 @@ impl<M: Focusable + EventEmitter<DismissEvent> + Render> ManagedView for M {}
 /// Emitted by implementers of [`ManagedView`] to indicate the view should be dismissed, such as when a view is presented as a modal.
 pub struct DismissEvent;
 
-type FrameCallback = Box<dyn FnOnce(&mut Window, &mut App)>;
+pub(crate) type FrameCallback = Box<dyn FnOnce(&mut Window, &mut App)>;
+
+#[derive(Clone)]
+pub(crate) struct NativeCallbackDispatcher {
+    next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>>,
+    invalidator: WindowInvalidator,
+}
+
+impl NativeCallbackDispatcher {
+    pub(crate) fn dispatch(&self, callback: FrameCallback) {
+        RefCell::borrow_mut(&self.next_frame_callbacks).push(callback);
+        self.invalidator.set_dirty(true);
+    }
+}
 
 pub(crate) type AnyMouseListener =
     Box<dyn FnMut(&dyn Any, DispatchPhase, &mut Window, &mut App) + 'static>;
@@ -906,6 +919,64 @@ enum InputModality {
     Keyboard,
 }
 
+#[cfg(target_os = "macos")]
+static NEXT_SURFACE_ID: AtomicUsize = AtomicUsize::new(1);
+
+#[cfg(target_os = "macos")]
+type SurfaceId = usize;
+
+#[cfg(target_os = "macos")]
+/// Handle to a secondary mozui rendering surface hosted inside native window chrome.
+pub struct MozuiSurfaceHandle {
+    id: SurfaceId,
+    native_view_ptr: *mut std::ffi::c_void,
+}
+
+#[cfg(target_os = "macos")]
+impl MozuiSurfaceHandle {
+    /// Returns the unique hosted-surface identifier within the parent window.
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
+    /// Returns the raw native view pointer for the hosted mozui surface.
+    pub fn native_view_ptr(&self) -> *mut std::ffi::c_void {
+        self.native_view_ptr
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct SurfaceState {
+    surface: Box<dyn crate::PlatformSurface>,
+    root_view: AnyView,
+    rendered_frame: Frame,
+    next_frame: Frame,
+    layout_engine: Option<TaffyLayoutEngine>,
+    mouse_position: Point<Pixels>,
+    mouse_hit_test: HitTest,
+    captured_hitbox: Option<HitboxId>,
+}
+
+#[cfg(target_os = "macos")]
+impl SurfaceState {
+    fn new(
+        surface: Box<dyn crate::PlatformSurface>,
+        root_view: AnyView,
+        cx: &App,
+    ) -> Self {
+        Self {
+            surface,
+            root_view,
+            rendered_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
+            next_frame: Frame::new(DispatchTree::new(cx.keymap.clone(), cx.actions.clone())),
+            layout_engine: Some(TaffyLayoutEngine::new()),
+            mouse_position: Point::default(),
+            mouse_hit_test: HitTest::default(),
+            captured_hitbox: None,
+        }
+    }
+}
+
 /// Holds the state for a specific window.
 pub struct Window {
     pub(crate) handle: AnyWindowHandle,
@@ -971,6 +1042,10 @@ pub struct Window {
     /// The hitbox that has captured the pointer, if any.
     /// While captured, mouse events route to this hitbox regardless of hit testing.
     captured_hitbox: Option<HitboxId>,
+    #[cfg(target_os = "macos")]
+    native_view_override_stack: Vec<*mut std::ffi::c_void>,
+    #[cfg(target_os = "macos")]
+    surfaces: FxHashMap<SurfaceId, SurfaceState>,
     #[cfg(any(feature = "inspector", debug_assertions))]
     inspector: Option<Entity<Inspector>>,
 }
@@ -1351,6 +1426,18 @@ impl Window {
                     .unwrap_or(DispatchEventResult::default())
             })
         });
+        #[cfg(target_os = "macos")]
+        platform_window.on_surface_input({
+            let mut cx = cx.to_async();
+            Box::new(move |native_view_ptr, event| {
+                handle
+                    .update(&mut cx, |_, window, cx| {
+                        window.dispatch_surface_event(native_view_ptr, event, cx)
+                    })
+                    .log_err()
+                    .unwrap_or(DispatchEventResult::default())
+            })
+        });
         platform_window.on_hit_test_window_control({
             let mut cx = cx.to_async();
             Box::new(move || {
@@ -1481,6 +1568,10 @@ impl Window {
             client_inset: None,
             image_cache_stack: Vec::new(),
             captured_hitbox: None,
+            #[cfg(target_os = "macos")]
+            native_view_override_stack: Vec::new(),
+            #[cfg(target_os = "macos")]
+            surfaces: FxHashMap::default(),
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector: None,
         })
@@ -1898,6 +1989,48 @@ impl Window {
         RefCell::borrow_mut(&self.next_frame_callbacks).push(Box::new(callback));
     }
 
+    pub(crate) fn native_callback_dispatcher(&self) -> NativeCallbackDispatcher {
+        NativeCallbackDispatcher {
+            next_frame_callbacks: self.next_frame_callbacks.clone(),
+            invalidator: self.invalidator.clone(),
+        }
+    }
+
+    pub(crate) fn raw_native_view_ptr(&self) -> *mut std::ffi::c_void {
+        #[cfg(target_os = "macos")]
+        if let Some(native_view) = self.native_view_override_stack.last().copied() {
+            return native_view;
+        }
+        self.platform_window.raw_native_view_ptr()
+    }
+
+    #[cfg(target_os = "macos")]
+    fn push_native_view_override(&mut self, native_view: *mut std::ffi::c_void) {
+        self.native_view_override_stack.push(native_view);
+    }
+
+    #[cfg(target_os = "macos")]
+    fn pop_native_view_override(&mut self) {
+        self.native_view_override_stack.pop();
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn raw_native_window_ptr(&self) -> *mut std::ffi::c_void {
+        self.platform_window.raw_native_window_ptr()
+    }
+
+    pub(crate) fn native_controls(
+        &self,
+    ) -> Option<&dyn crate::platform::native_controls::PlatformNativeControls> {
+        self.platform_window.native_controls()
+    }
+
+    pub(crate) fn native_window(
+        &self,
+    ) -> Option<&dyn crate::platform::native_window::PlatformNativeWindow> {
+        self.platform_window.native_window()
+    }
+
     /// Schedule a frame to be drawn on the next animation frame.
     ///
     /// This is useful for elements that need to animate continuously, such as a video player or an animated GIF.
@@ -2273,6 +2406,8 @@ impl Window {
         }
         if !cx.mode.skip_drawing() {
             self.draw_roots(cx);
+            #[cfg(target_os = "macos")]
+            self.draw_surfaces(cx);
         }
         self.dirty_views.clear();
         self.next_frame.window_active = self.active.get();
@@ -2354,10 +2489,125 @@ impl Window {
     }
 
     #[profiling::function]
-    fn present(&self) {
+    fn present(&mut self) {
         self.platform_window.draw(&self.rendered_frame.scene);
+        #[cfg(target_os = "macos")]
+        for surface in self.surfaces.values_mut() {
+            let content_size = surface.surface.content_size();
+            let drawable_size = size(
+                DevicePixels((content_size.width.0 * self.scale_factor).round() as i32),
+                DevicePixels((content_size.height.0 * self.scale_factor).round() as i32),
+            );
+            surface.surface.set_contents_scale(self.scale_factor as f64);
+            surface.surface.update_drawable_size(drawable_size);
+            surface.surface.draw(&surface.rendered_frame.scene);
+        }
         self.needs_present.set(false);
         profiling::finish_frame!();
+    }
+
+    #[cfg(target_os = "macos")]
+    fn with_surface_state<R>(
+        &mut self,
+        surface_state: &mut SurfaceState,
+        f: impl FnOnce(&mut Window) -> R,
+    ) -> R {
+        let saved_viewport_size = self.viewport_size;
+        let saved_mouse_position = self.mouse_position;
+        let saved_captured_hitbox = self.captured_hitbox;
+        let saved_mouse_hit_test = mem::take(&mut self.mouse_hit_test);
+        let saved_sprite_atlas = self.sprite_atlas.clone();
+
+        mem::swap(&mut self.rendered_frame, &mut surface_state.rendered_frame);
+        mem::swap(&mut self.next_frame, &mut surface_state.next_frame);
+        mem::swap(&mut self.layout_engine, &mut surface_state.layout_engine);
+
+        self.viewport_size = surface_state.surface.content_size();
+        self.mouse_position = surface_state.mouse_position;
+        self.mouse_hit_test = mem::take(&mut surface_state.mouse_hit_test);
+        self.captured_hitbox = surface_state.captured_hitbox;
+        self.sprite_atlas = surface_state.surface.sprite_atlas();
+        self.push_native_view_override(surface_state.surface.native_view_ptr());
+
+        let result = f(self);
+
+        self.pop_native_view_override();
+        surface_state.mouse_position = self.mouse_position;
+        surface_state.mouse_hit_test = mem::take(&mut self.mouse_hit_test);
+        surface_state.captured_hitbox = self.captured_hitbox;
+
+        mem::swap(&mut self.rendered_frame, &mut surface_state.rendered_frame);
+        mem::swap(&mut self.next_frame, &mut surface_state.next_frame);
+        mem::swap(&mut self.layout_engine, &mut surface_state.layout_engine);
+
+        self.viewport_size = saved_viewport_size;
+        self.mouse_position = saved_mouse_position;
+        self.mouse_hit_test = saved_mouse_hit_test;
+        self.captured_hitbox = saved_captured_hitbox;
+        self.sprite_atlas = saved_sprite_atlas;
+
+        result
+    }
+
+    #[cfg(target_os = "macos")]
+    fn draw_surface_root(&mut self, root_view: AnyView, cx: &mut App) {
+        self.invalidator.set_phase(DrawPhase::Prepaint);
+
+        let mut root_element = root_view.into_any();
+        root_element.prepaint_as_root(Point::default(), self.viewport_size.into(), self, cx);
+        self.prepaint_deferred_draws(cx);
+        self.mouse_hit_test = self.next_frame.hit_test(self.mouse_position);
+
+        self.invalidator.set_phase(DrawPhase::Paint);
+        root_element.paint(self, cx);
+        self.paint_deferred_draws(cx);
+
+        self.next_frame.window_active = self.active.get();
+        self.layout_engine
+            .as_mut()
+            .expect("hosted mozui surfaces must have a layout engine")
+            .clear();
+        self.next_frame.finish(&mut self.rendered_frame);
+        mem::swap(&mut self.rendered_frame, &mut self.next_frame);
+        self.next_frame.clear();
+    }
+
+    #[cfg(target_os = "macos")]
+    fn draw_surfaces(&mut self, cx: &mut App) {
+        let surface_ids = self.surfaces.keys().copied().collect::<Vec<_>>();
+        for surface_id in surface_ids {
+            let Some(mut surface_state) = self.surfaces.remove(&surface_id) else {
+                continue;
+            };
+            let root_view = surface_state.root_view.clone();
+            self.with_surface_state(&mut surface_state, |window| {
+                window.draw_surface_root(root_view, cx);
+            });
+            self.surfaces.insert(surface_id, surface_state);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn dispatch_surface_event(
+        &mut self,
+        native_view_ptr: *mut std::ffi::c_void,
+        event: PlatformInput,
+        cx: &mut App,
+    ) -> DispatchEventResult {
+        let Some(surface_id) = self.surfaces.iter().find_map(|(surface_id, surface_state)| {
+            (surface_state.surface.native_view_ptr() == native_view_ptr).then_some(*surface_id)
+        }) else {
+            return DispatchEventResult::default();
+        };
+
+        let Some(mut surface_state) = self.surfaces.remove(&surface_id) else {
+            return DispatchEventResult::default();
+        };
+        let result = self.with_surface_state(&mut surface_state, |window| {
+            window.dispatch_event(event, cx)
+        });
+        self.surfaces.insert(surface_id, surface_state);
+        result
     }
 
     fn draw_roots(&mut self, cx: &mut App) {
@@ -3373,12 +3623,12 @@ impl Window {
 
         let raster_bounds = self.text_system().raster_bounds(&params)?;
         if !raster_bounds.is_zero() {
-            let Some(tile) = self
-                .sprite_atlas
-                .get_or_insert_with(&params.clone().into(), &mut || {
-                    let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
-                    Ok(Some((size, Cow::Owned(bytes))))
-                })?
+            let Some(tile) =
+                self.sprite_atlas
+                    .get_or_insert_with(&params.clone().into(), &mut || {
+                        let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
+                        Ok(Some((size, Cow::Owned(bytes))))
+                    })?
             else {
                 return Ok(());
             };
@@ -3434,12 +3684,12 @@ impl Window {
         let glyph_origin = origin.scale(scale_factor);
 
         if !raster_bounds.is_zero() {
-            let Some(tile) = self
-                .sprite_atlas
-                .get_or_insert_with(&params.clone().into(), &mut || {
-                    let (size, bytes) = self.text_system().rasterize_glyph(params)?;
-                    Ok(Some((size, Cow::Owned(bytes))))
-                })?
+            let Some(tile) =
+                self.sprite_atlas
+                    .get_or_insert_with(&params.clone().into(), &mut || {
+                        let (size, bytes) = self.text_system().rasterize_glyph(params)?;
+                        Ok(Some((size, Cow::Owned(bytes))))
+                    })?
             else {
                 return Ok(());
             };
@@ -3480,12 +3730,12 @@ impl Window {
         let glyph_origin = origin.scale(scale_factor);
 
         if !raster_bounds.is_zero() {
-            let Some(tile) = self
-                .sprite_atlas
-                .get_or_insert_with(&params.clone().into(), &mut || {
-                    let (size, bytes) = self.text_system().rasterize_glyph(params)?;
-                    Ok(Some((size, Cow::Owned(bytes))))
-                })?
+            let Some(tile) =
+                self.sprite_atlas
+                    .get_or_insert_with(&params.clone().into(), &mut || {
+                        let (size, bytes) = self.text_system().rasterize_glyph(params)?;
+                        Ok(Some((size, Cow::Owned(bytes))))
+                    })?
             else {
                 return Ok(());
             };
@@ -3562,12 +3812,12 @@ impl Window {
 
         let raster_bounds = self.text_system().raster_bounds(&params)?;
         if !raster_bounds.is_zero() {
-            let Some(tile) = self
-                .sprite_atlas
-                .get_or_insert_with(&params.clone().into(), &mut || {
-                    let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
-                    Ok(Some((size, Cow::Owned(bytes))))
-                })?
+            let Some(tile) =
+                self.sprite_atlas
+                    .get_or_insert_with(&params.clone().into(), &mut || {
+                        let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
+                        Ok(Some((size, Cow::Owned(bytes))))
+                    })?
             else {
                 return Ok(());
             };
@@ -5045,6 +5295,170 @@ impl Window {
     pub fn set_tabbing_identifier(&self, tabbing_identifier: Option<String>) {
         self.platform_window
             .set_tabbing_identifier(tabbing_identifier)
+    }
+
+    /// Install or replace the native toolbar model for this window.
+    pub fn set_native_toolbar(&self, toolbar: crate::NativeToolbar) {
+        let Some(native_window) = self.native_window() else {
+            return;
+        };
+        native_window.set_native_toolbar(toolbar.into_platform(self.native_callback_dispatcher()));
+    }
+
+    /// Focus a native toolbar search field by identifier.
+    pub fn focus_native_search_item(&self, identifier: &str) -> bool {
+        self.native_window()
+            .is_some_and(|native_window| native_window.focus_native_search_item(identifier))
+    }
+
+    /// Show a native popup or suggestion menu.
+    pub fn show_native_menu(&self, menu: crate::NativeMenu) -> bool {
+        self.native_window().is_some_and(|native_window| {
+            native_window.show_native_menu(menu.into_platform(self.native_callback_dispatcher()))
+        })
+    }
+
+    /// Show a native popover.
+    pub fn show_native_popover(
+        &self,
+        popover: crate::NativePopover,
+    ) -> Option<crate::NativePopoverHandle> {
+        self.native_window().and_then(|native_window| {
+            native_window
+                .show_native_popover(popover.into_platform(self.native_callback_dispatcher()))
+        })
+    }
+
+    /// Close a native popover shown earlier.
+    pub fn close_native_popover(&self, handle: crate::NativePopoverHandle) -> bool {
+        self.native_window()
+            .is_some_and(|native_window| native_window.close_native_popover(handle))
+    }
+
+    /// Return the raw native popover pointer for a shown popover handle.
+    pub fn raw_native_popover_ptr(
+        &self,
+        handle: crate::NativePopoverHandle,
+    ) -> Option<*mut std::ffi::c_void> {
+        self.native_window()
+            .and_then(|native_window| native_window.raw_native_popover_ptr(handle))
+    }
+
+    /// Show a native sheet.
+    pub fn show_native_sheet(&self, sheet: crate::NativeSheet) -> Option<crate::NativeSheetHandle> {
+        self.native_window().and_then(|native_window| {
+            native_window.show_native_sheet(sheet.into_platform(self.native_callback_dispatcher()))
+        })
+    }
+
+    /// Close a native sheet shown earlier.
+    pub fn close_native_sheet(&self, handle: crate::NativeSheetHandle) -> bool {
+        self.native_window()
+            .is_some_and(|native_window| native_window.close_native_sheet(handle))
+    }
+
+    /// Install or update a hosted native sidebar container.
+    pub fn install_native_sidebar_host(&self, host: crate::NativeSidebarHost) -> bool {
+        self.native_window()
+            .is_some_and(|native_window| native_window.install_native_sidebar_host(host))
+    }
+
+    /// Install or update a hosted native inspector container.
+    pub fn install_native_inspector_host(&self, host: crate::NativeInspectorHost) -> bool {
+        self.native_window()
+            .is_some_and(|native_window| native_window.install_native_inspector_host(host))
+    }
+
+    /// Update the visibility of a hosted native container.
+    pub fn set_native_host_visibility(&self, identifier: &str, visible: bool) -> bool {
+        self.native_window().is_some_and(|native_window| {
+            native_window.set_native_host_visibility(identifier, visible)
+        })
+    }
+
+    /// Return the raw native host view pointer for a hosted container.
+    ///
+    /// This is a low-level escape hatch intended for platform integration code.
+    pub fn raw_native_host_view_ptr(&self, identifier: &str) -> Option<*mut std::ffi::c_void> {
+        self.native_window()
+            .and_then(|native_window| native_window.raw_native_host_view_ptr(identifier))
+    }
+
+    /// Register a secondary mozui rendering surface that can be attached to a native host slot.
+    #[cfg(target_os = "macos")]
+    pub fn register_surface<V>(&mut self, view: Entity<V>, cx: &App) -> MozuiSurfaceHandle
+    where
+        V: 'static + Render,
+    {
+        let mut surface = self
+            .platform_window
+            .create_surface()
+            .expect("the current platform window does not support hosted mozui surfaces");
+        surface.set_window_state(self.platform_window.window_state_ptr());
+
+        let native_view_ptr = surface.native_view_ptr();
+        let id = NEXT_SURFACE_ID.fetch_add(1, SeqCst);
+        self.surfaces
+            .insert(id, SurfaceState::new(surface, AnyView::from(view), cx));
+        self.refresh();
+
+        MozuiSurfaceHandle {
+            id,
+            native_view_ptr,
+        }
+    }
+
+    /// Update the root view rendered into a previously registered hosted surface.
+    #[cfg(target_os = "macos")]
+    pub fn update_surface_root_view<V>(&mut self, surface_id: usize, view: Entity<V>) -> bool
+    where
+        V: 'static + Render,
+    {
+        let Some(surface_state) = self.surfaces.get_mut(&surface_id) else {
+            return false;
+        };
+        surface_state.root_view = AnyView::from(view);
+        self.refresh();
+        true
+    }
+
+    /// Remove a previously registered hosted surface from this window.
+    #[cfg(target_os = "macos")]
+    pub fn unregister_surface(&mut self, surface_id: usize) -> bool {
+        let removed = self.surfaces.remove(&surface_id).is_some();
+        if removed {
+            self.refresh();
+        }
+        removed
+    }
+
+    /// Replace the hosted native content view for a container identifier.
+    pub fn set_native_host_content(
+        &self,
+        identifier: &str,
+        content_view: *mut std::ffi::c_void,
+    ) -> bool {
+        self.native_window().is_some_and(|native_window| {
+            native_window.set_native_host_content(identifier, content_view)
+        })
+    }
+
+    /// Attach a mozui-managed hosted surface view to a specific native host slot.
+    pub fn attach_native_hosted_surface(
+        &self,
+        identifier: &str,
+        surface_view: *mut std::ffi::c_void,
+        target: crate::NativeHostedSurfaceTarget,
+    ) -> bool {
+        self.native_window().is_some_and(|native_window| {
+            native_window.attach_native_hosted_surface(identifier, surface_view, target)
+        })
+    }
+
+    /// Clear the hosted native content view for a container identifier.
+    pub fn clear_native_host_content(&self, identifier: &str) -> bool {
+        self.native_window()
+            .is_some_and(|native_window| native_window.clear_native_host_content(identifier))
     }
 
     /// Request the OS to play an alert sound. On some platforms this is associated

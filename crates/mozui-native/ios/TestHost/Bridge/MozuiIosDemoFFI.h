@@ -41,6 +41,17 @@ void mozui_ios_demo_detach_view(MozuiIosDemoRef demo);
 void mozui_ios_demo_update_metrics(MozuiIosDemoRef demo, struct MozuiIosHostMetrics metrics);
 void mozui_ios_demo_handle_touch(MozuiIosDemoRef demo, float x, float y, int32_t phase);
 void mozui_ios_demo_request_frame(MozuiIosDemoRef demo);
+void mozui_ios_demo_handle_scroll(
+    MozuiIosDemoRef demo,
+    float x,
+    float y,
+    float dx,
+    float dy,
+    int32_t phase
+);
+bool mozui_ios_demo_insert_text(MozuiIosDemoRef demo, const char *text);
+bool mozui_ios_demo_delete_backward(MozuiIosDemoRef demo);
+bool mozui_ios_demo_accepts_text_input(MozuiIosDemoRef demo);
 void mozui_ios_demo_enter_foreground(MozuiIosDemoRef demo);
 void mozui_ios_demo_enter_background(MozuiIosDemoRef demo);
 const char *mozui_ios_demo_last_error(MozuiIosDemoRef demo);

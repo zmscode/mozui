@@ -1,6 +1,9 @@
 use cocoa::base::{id, nil};
 use cocoa::foundation::NSString as CocoaNSString;
 use mozui::Window;
+use std::rc::Rc;
+
+use crate::toolbar::ToolbarItemId;
 use objc::declare::ClassDecl;
 use objc::runtime::{Class, Object, Sel};
 use objc::{class, msg_send, sel, sel_impl};
@@ -8,14 +11,16 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::os::raw::c_void;
 use std::sync::Once;
 
+const DEFAULT_SEARCH_ITEM_ID: &str = "mozui-search";
+
 /// Configuration for a native search field installed in the toolbar.
 pub struct SearchFieldConfig {
     /// Placeholder text shown when empty.
     pub placeholder: String,
     /// Callback invoked when the search text changes.
-    pub on_change: Option<Box<dyn Fn(String) + 'static>>,
+    pub on_change: Option<Rc<dyn Fn(String) + 'static>>,
     /// Callback invoked when the user presses Enter.
-    pub on_submit: Option<Box<dyn Fn(String) + 'static>>,
+    pub on_submit: Option<Rc<dyn Fn(String) + 'static>>,
 }
 
 impl Default for SearchFieldConfig {
@@ -28,40 +33,35 @@ impl Default for SearchFieldConfig {
     }
 }
 
-/// Installs an `NSSearchField` as a toolbar item.
-///
-/// Returns the toolbar item identifier to include in toolbar item lists.
-/// The search field uses `NSSearchToolbarItem` (macOS 11+) for proper
-/// toolbar integration with expand/collapse behavior.
-pub fn install_search_toolbar_item(window: &Window, config: SearchFieldConfig) -> String {
-    let ns_view = get_raw_ns_view(window);
-    let item_id = "mozui-search";
+/// Build a toolbar search item backed by `mozui` core native-toolbar APIs.
+pub fn search_toolbar_item(config: SearchFieldConfig) -> ToolbarItemId {
+    search_toolbar_item_with_id(DEFAULT_SEARCH_ITEM_ID, config)
+}
 
-    unsafe {
-        let ns_window: id = msg_send![ns_view, window];
-        let toolbar: id = msg_send![ns_window, toolbar];
-
-        if toolbar != nil {
-            // Create NSSearchToolbarItem (macOS 11+)
-            let ns_id = CocoaNSString::alloc(nil).init_str(item_id);
-            let search_item: id = msg_send![class!(NSSearchToolbarItem), alloc];
-            let search_item: id = msg_send![search_item, initWithItemIdentifier: ns_id];
-
-            // Get the search field from the toolbar item
-            let search_field: id = msg_send![search_item, searchField];
-            let ns_placeholder = CocoaNSString::alloc(nil).init_str(&config.placeholder);
-            let placeholder_cell: id = msg_send![search_field, cell];
-            let _: () = msg_send![placeholder_cell, setPlaceholderString: ns_placeholder];
-
-            // Set up delegate for callbacks
-            if config.on_change.is_some() || config.on_submit.is_some() {
-                let delegate = create_search_delegate(config.on_change, config.on_submit);
-                let _: () = msg_send![search_field, setDelegate: delegate];
-            }
-        }
+/// Build a toolbar search item with a caller-specified identifier.
+pub fn search_toolbar_item_with_id(
+    id: impl Into<String>,
+    config: SearchFieldConfig,
+) -> ToolbarItemId {
+    ToolbarItemId::SearchField {
+        id: id.into(),
+        placeholder: config.placeholder,
+        on_change: config.on_change,
+        on_submit: config.on_submit,
     }
+}
 
-    item_id.into()
+/// Focus a native toolbar search item by identifier.
+pub fn focus_search_toolbar_item(window: &Window, identifier: &str) -> bool {
+    window.focus_native_search_item(identifier)
+}
+
+/// Legacy helper kept for compatibility with older mozui-native call sites.
+///
+/// New code should use [`search_toolbar_item`] and include the returned
+/// [`ToolbarItemId`] in [`crate::install_toolbar`].
+pub fn install_search_toolbar_item(_window: &Window, _config: SearchFieldConfig) -> String {
+    DEFAULT_SEARCH_ITEM_ID.into()
 }
 
 /// Creates a standalone `NSSearchField` and adds it to the window's content view.
@@ -98,8 +98,8 @@ const ON_CHANGE_IVAR: &str = "_onChange";
 const ON_SUBMIT_IVAR: &str = "_onSubmit";
 
 fn create_search_delegate(
-    on_change: Option<Box<dyn Fn(String) + 'static>>,
-    on_submit: Option<Box<dyn Fn(String) + 'static>>,
+    on_change: Option<Rc<dyn Fn(String) + 'static>>,
+    on_submit: Option<Rc<dyn Fn(String) + 'static>>,
 ) -> id {
     unsafe {
         REGISTER_SEARCH_DELEGATE.call_once(|| {

@@ -9,10 +9,17 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::sel;
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
+#[cfg(target_os = "macos")]
 use objc2_app_kit::{NSControl, NSSlider};
 use objc2_foundation::{NSObject, NSObjectProtocol};
+#[cfg(target_os = "ios")]
+use objc2_ui_kit::{UIControl, UIControlEvents, UISlider};
 
-use crate::native_view::{NativeViewState, parent_ns_view};
+use crate::native_view::NativeViewState;
+#[cfg(target_os = "macos")]
+use crate::native_view::parent_ns_view;
+#[cfg(target_os = "ios")]
+use crate::native_view::parent_ui_view;
 
 type SliderCallback = Rc<RefCell<Option<Box<dyn Fn(f64)>>>>;
 
@@ -29,6 +36,11 @@ define_class!(
     impl SliderTarget {
         #[unsafe(method(sliderChanged:))]
         fn __slider_changed(&self, sender: &AnyObject) {
+            #[cfg(target_os = "ios")]
+            let value: f32 = unsafe { msg_send![sender, value] };
+            #[cfg(target_os = "ios")]
+            let value: f64 = value as f64;
+            #[cfg(target_os = "macos")]
             let value: f64 = unsafe { msg_send![sender, doubleValue] };
             let cb = self.ivars().callback.borrow();
             if let Some(ref f) = *cb {
@@ -144,11 +156,23 @@ impl Element for NativeSlider {
         window.with_element_state(
             global_id,
             |state: Option<NativeSliderPersistentState>, window| {
+                #[cfg(target_os = "ios")]
+                let parent = parent_ui_view(window);
+                #[cfg(target_os = "macos")]
                 let parent = parent_ns_view(window);
 
                 let mut state = state.unwrap_or_else(|| {
                     let mtm = unsafe { MainThreadMarker::new_unchecked() };
 
+                    #[cfg(target_os = "ios")]
+                    let slider = {
+                        let slider = UISlider::new(mtm);
+                        slider.setMinimumValue(min as f32);
+                        slider.setMaximumValue(max as f32);
+                        slider.setValue(value as f32);
+                        slider
+                    };
+                    #[cfg(target_os = "macos")]
                     let slider = {
                         let slider =
                             NSSlider::initWithFrame(mtm.alloc(), objc2_foundation::NSRect::ZERO);
@@ -161,6 +185,17 @@ impl Element for NativeSlider {
                     let callback: SliderCallback = Rc::new(RefCell::new(on_change));
                     let target = SliderTarget::new(callback, mtm);
 
+                    #[cfg(target_os = "ios")]
+                    unsafe {
+                        let target_obj: &AnyObject = &target;
+                        UIControl::addTarget_action_forControlEvents(
+                            &slider,
+                            Some(target_obj),
+                            sel!(sliderChanged:),
+                            UIControlEvents::ValueChanged,
+                        );
+                    }
+                    #[cfg(target_os = "macos")]
                     unsafe {
                         let target_obj: &AnyObject = &target;
                         NSControl::setTarget(&slider, Some(target_obj));
@@ -177,9 +212,36 @@ impl Element for NativeSlider {
                     }
                 });
 
-                state.view_state.attach_and_position(parent, bounds);
-                let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-                (Some(hitbox), state)
+                #[cfg(target_os = "ios")]
+                {
+                    let platform_slider: &UISlider =
+                        unsafe { &*(state.view_state.view() as *const _ as *const UISlider) };
+                    platform_slider.setMinimumValue(min as f32);
+                    platform_slider.setMaximumValue(max as f32);
+                    platform_slider.setValue(value as f32);
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let platform_slider: &NSSlider =
+                        unsafe { &*(state.view_state.view() as *const _ as *const NSSlider) };
+                    platform_slider.setMinValue(min);
+                    platform_slider.setMaxValue(max);
+                    platform_slider.setDoubleValue(value);
+                }
+
+                #[cfg(target_os = "ios")]
+                let hitbox = if let Some(parent) = parent {
+                    state.view_state.attach_and_position(parent, bounds);
+                    Some(window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                } else {
+                    None
+                };
+                #[cfg(target_os = "macos")]
+                let hitbox = {
+                    state.view_state.attach_and_position(parent, bounds);
+                    Some(window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                };
+                (hitbox, state)
             },
         )
     }

@@ -1,6 +1,10 @@
 mod app_menu;
 mod keyboard;
 mod keystroke;
+/// Cross-platform contracts for hosting native platform controls inside mozui windows.
+pub mod native_controls;
+/// Cross-platform contracts for native window chrome and hosted containers.
+pub mod native_window;
 
 use std::rc::Rc;
 
@@ -119,21 +123,6 @@ mod test;
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
 mod visual_test;
 
-#[cfg(all(
-    feature = "screen-capture",
-    any(target_os = "windows", target_os = "linux", target_os = "freebsd",)
-))]
-pub mod scap_screen_capture;
-
-#[cfg(all(
-    any(target_os = "windows", target_os = "linux"),
-    feature = "screen-capture"
-))]
-pub(crate) type PlatformScreenCaptureFrame = scap::frame::Frame;
-#[cfg(not(feature = "screen-capture"))]
-pub(crate) type PlatformScreenCaptureFrame = ();
-#[cfg(all(target_os = "macos", feature = "screen-capture"))]
-pub(crate) type PlatformScreenCaptureFrame = core_video::image_buffer::CVImageBuffer;
 
 use crate::scheduler::Instant;
 pub use crate::scheduler::RunnableMeta;
@@ -160,6 +149,7 @@ use seahash::SeaHasher;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::ffi::c_void;
 use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::ops;
@@ -176,12 +166,14 @@ use uuid::Uuid;
 pub use app_menu::*;
 pub use keyboard::*;
 pub use keystroke::*;
+pub use native_controls::*;
+pub use native_window::*;
 
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) use test::*;
 
 #[cfg(any(test, feature = "test-support"))]
-pub use test::{TestDispatcher, TestScreenCaptureSource, TestScreenCaptureStream};
+pub use test::TestDispatcher;
 
 #[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
 pub use visual_test::VisualTestPlatform;
@@ -237,22 +229,6 @@ pub trait Platform: 'static {
     fn active_window(&self) -> Option<AnyWindowHandle>;
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>> {
         None
-    }
-
-    fn is_screen_capture_supported(&self) -> bool {
-        false
-    }
-
-    fn screen_capture_sources(
-        &self,
-    ) -> oneshot::Receiver<anyhow::Result<Vec<Rc<dyn ScreenCaptureSource>>>> {
-        let (sources_tx, sources_rx) = oneshot::channel();
-        sources_tx
-            .send(Err(anyhow::anyhow!(
-                "mozui was compiled without the screen-capture feature"
-            )))
-            .ok();
-        sources_rx
     }
 
     fn open_window(
@@ -385,42 +361,6 @@ pub enum ThermalState {
     /// System is critically constrained, minimize all resource usage
     Critical,
 }
-
-/// Metadata for a given [ScreenCaptureSource]
-#[derive(Clone)]
-pub struct SourceMetadata {
-    /// Opaque identifier of this screen.
-    pub id: u64,
-    /// Human-readable label for this source.
-    pub label: Option<SharedString>,
-    /// Whether this source is the main display.
-    pub is_main: Option<bool>,
-    /// Video resolution of this source.
-    pub resolution: Size<DevicePixels>,
-}
-
-/// A source of on-screen video content that can be captured.
-pub trait ScreenCaptureSource {
-    /// Returns metadata for this source.
-    fn metadata(&self) -> Result<SourceMetadata>;
-
-    /// Start capture video from this source, invoking the given callback
-    /// with each frame.
-    fn stream(
-        &self,
-        foreground_executor: &ForegroundExecutor,
-        frame_callback: Box<dyn Fn(ScreenCaptureFrame) + Send>,
-    ) -> oneshot::Receiver<Result<Box<dyn ScreenCaptureStream>>>;
-}
-
-/// A video stream captured from a screen.
-pub trait ScreenCaptureStream {
-    /// Returns metadata for this source.
-    fn metadata(&self) -> Result<SourceMetadata>;
-}
-
-/// A frame of video captured from a screen.
-pub struct ScreenCaptureFrame(pub PlatformScreenCaptureFrame);
 
 /// An opaque identifier for a hardware display
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
@@ -726,6 +666,36 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn completed_frame(&self) {}
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas>;
     fn is_subpixel_rendering_supported(&self) -> bool;
+    fn raw_native_view_ptr(&self) -> *mut c_void {
+        std::ptr::null_mut()
+    }
+    fn raw_native_window_ptr(&self) -> *mut c_void {
+        std::ptr::null_mut()
+    }
+    fn native_controls(&self) -> Option<&dyn native_controls::PlatformNativeControls> {
+        None
+    }
+    #[allow(private_interfaces)]
+    fn native_window(&self) -> Option<&dyn native_window::PlatformNativeWindow> {
+        None
+    }
+
+    #[cfg(target_os = "macos")]
+    fn create_surface(&self) -> Option<Box<dyn PlatformSurface>> {
+        None
+    }
+
+    #[cfg(target_os = "macos")]
+    fn on_surface_input(
+        &self,
+        _callback: Box<dyn FnMut(*mut c_void, PlatformInput) -> DispatchEventResult>,
+    ) {
+    }
+
+    #[cfg(target_os = "macos")]
+    fn window_state_ptr(&self) -> *const c_void {
+        std::ptr::null()
+    }
 
     // macOS specific methods
     fn get_title(&self) -> String {
@@ -790,6 +760,32 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn render_to_image(&self, _scene: &Scene) -> Result<RgbaImage> {
         anyhow::bail!("render_to_image not implemented for this platform")
     }
+}
+
+/// Trait for a secondary mozui rendering surface that can be embedded in a
+/// native container view.
+#[cfg(target_os = "macos")]
+pub trait PlatformSurface {
+    /// Returns a raw pointer to the surface's native view for embedding.
+    fn native_view_ptr(&self) -> *mut c_void;
+
+    /// Returns the content size of the surface in logical pixels.
+    fn content_size(&self) -> Size<Pixels>;
+
+    /// Updates the contents scale of the backing layer.
+    fn set_contents_scale(&self, scale: f64);
+
+    /// Updates the drawable size in device pixels.
+    fn update_drawable_size(&mut self, size: Size<DevicePixels>);
+
+    /// Draws a scene into the surface.
+    fn draw(&mut self, scene: &Scene);
+
+    /// Returns the sprite atlas used by this surface's renderer.
+    fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas>;
+
+    /// Attaches the parent window state pointer so events can be forwarded.
+    fn set_window_state(&mut self, raw_state_ptr: *const c_void);
 }
 
 /// A renderer for headless windows that can produce real rendered output.
@@ -1330,6 +1326,10 @@ impl PlatformInputHandler {
         self.cx
             .update(|window, cx| self.handler.accepts_text_input(window, cx))
             .unwrap_or(true)
+    }
+
+    pub fn blur(&mut self) {
+        self.cx.update(|window, _| window.blur()).ok();
     }
 
     #[allow(dead_code)]

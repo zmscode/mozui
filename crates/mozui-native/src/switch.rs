@@ -9,19 +9,19 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::sel;
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
-#[cfg(target_os = "ios")]
-use objc2_ui_kit::{UIControl, UIControlEvents, UISwitch};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{NSControl, NSControlStateValueOff, NSControlStateValueOn, NSSwitch};
 #[cfg(target_os = "macos")]
 use objc2_foundation::NSInteger;
 use objc2_foundation::{NSObject, NSObjectProtocol};
+#[cfg(target_os = "ios")]
+use objc2_ui_kit::{UIControl, UIControlEvents, UISwitch};
 
 use crate::native_view::NativeViewState;
-#[cfg(target_os = "ios")]
-use crate::native_view::parent_ui_view;
 #[cfg(target_os = "macos")]
 use crate::native_view::parent_ns_view;
+#[cfg(target_os = "ios")]
+use crate::native_view::parent_ui_view;
 
 #[cfg(target_os = "ios")]
 type PlatformSwitch = UISwitch;

@@ -4,7 +4,7 @@ use crate::{
 use mozui::{
     Animation, AnimationExt as _, App, ElementId, Hsla, InteractiveElement, IntoElement,
     ParentElement as _, RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement,
-    Styled, Window, div, prelude::FluentBuilder as _, px,
+    Styled, Window, div, native_switch, prelude::FluentBuilder as _, px,
 };
 use std::{rc::Rc, time::Duration};
 
@@ -21,6 +21,7 @@ pub struct Switch {
     size: Size,
     color: Option<Hsla>,
     tooltip: Option<SharedString>,
+    native: bool,
 }
 
 impl Switch {
@@ -38,6 +39,7 @@ impl Switch {
             size: Size::Medium,
             color: None,
             tooltip: None,
+            native: false,
         }
     }
 
@@ -74,6 +76,12 @@ impl Switch {
         self.tooltip = Some(tooltip.into());
         self
     }
+
+    /// Render the control using the platform-native switch backend when possible.
+    pub fn native(mut self) -> Self {
+        self.native = true;
+        self
+    }
 }
 
 impl Styled for Switch {
@@ -98,6 +106,34 @@ impl Disableable for Switch {
 
 impl RenderOnce for Switch {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.native && self.color.is_none() && self.tooltip.is_none() {
+            let switch = native_switch(self.id.clone())
+                .checked(self.checked)
+                .disabled(self.disabled);
+            let switch = if let Some(on_click) = self.on_click.clone() {
+                switch.on_change(move |event, window, cx| on_click(&event.checked, window, cx))
+            } else {
+                switch
+            };
+
+            return div()
+                .refine_style(&self.style)
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_start()
+                        .when(self.label_side.is_left(), |this| this.flex_row_reverse())
+                        .child(switch)
+                        .when_some(self.label, |this, label| {
+                            this.child(div().child(label).map(|this| match self.size {
+                                Size::XSmall | Size::Small => this.text_sm(),
+                                _ => this.text_base(),
+                            }))
+                        }),
+                )
+                .into_any_element();
+        }
+
         let checked = self.checked;
         let on_click = self.on_click.clone();
         let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
@@ -132,94 +168,100 @@ impl RenderOnce for Switch {
             cx.theme().radius
         };
 
-        div().refine_style(&self.style).child(
-            h_flex()
-                .id(self.id.clone())
-                .gap_2()
-                .items_start()
-                .when(self.label_side.is_left(), |this| this.flex_row_reverse())
-                .child(
-                    // Switch Bar
-                    div()
-                        .id(self.id.clone())
-                        .w(bg_width)
-                        .h(bg_height)
-                        .rounded(radius)
-                        .flex()
-                        .items_center()
-                        .border(inset)
-                        .border_color(cx.theme().transparent)
-                        .bg(bg)
-                        .when_some(self.tooltip.clone(), |this, tooltip| {
-                            this.tooltip(move |window, cx| {
-                                Tooltip::new(tooltip.clone()).build(window, cx)
+        div()
+            .refine_style(&self.style)
+            .child(
+                h_flex()
+                    .id(self.id.clone())
+                    .gap_2()
+                    .items_start()
+                    .when(self.label_side.is_left(), |this| this.flex_row_reverse())
+                    .child(
+                        // Switch Bar
+                        div()
+                            .id(self.id.clone())
+                            .w(bg_width)
+                            .h(bg_height)
+                            .rounded(radius)
+                            .flex()
+                            .items_center()
+                            .border(inset)
+                            .border_color(cx.theme().transparent)
+                            .bg(bg)
+                            .when_some(self.tooltip.clone(), |this, tooltip| {
+                                this.tooltip(move |window, cx| {
+                                    Tooltip::new(tooltip.clone()).build(window, cx)
+                                })
                             })
-                        })
-                        .child(
-                            // Switch Toggle
-                            div()
-                                .rounded(radius)
-                                .bg(toggle_bg)
-                                .shadow_md()
-                                .size(bar_width)
-                                .map(|this| {
-                                    let prev_checked = toggle_state.read(cx);
-                                    if !self.disabled && *prev_checked != checked {
-                                        let duration = Duration::from_secs_f64(0.15);
-                                        cx.spawn({
-                                            let toggle_state = toggle_state.clone();
-                                            async move |cx| {
-                                                cx.background_executor().timer(duration).await;
-                                                _ = toggle_state
-                                                    .update(cx, |this, _| *this = checked);
-                                            }
-                                        })
-                                        .detach();
+                            .child(
+                                // Switch Toggle
+                                div()
+                                    .rounded(radius)
+                                    .bg(toggle_bg)
+                                    .shadow_md()
+                                    .size(bar_width)
+                                    .map(|this| {
+                                        let prev_checked = toggle_state.read(cx);
+                                        if !self.disabled && *prev_checked != checked {
+                                            let duration = Duration::from_secs_f64(0.15);
+                                            cx.spawn({
+                                                let toggle_state = toggle_state.clone();
+                                                async move |cx| {
+                                                    cx.background_executor().timer(duration).await;
+                                                    _ = toggle_state
+                                                        .update(cx, |this, _| *this = checked);
+                                                }
+                                            })
+                                            .detach();
 
-                                        this.with_animation(
-                                            ElementId::NamedInteger("move".into(), checked as u64),
-                                            Animation::new(duration),
-                                            move |this, delta| {
-                                                let max_x = bg_width - bar_width - inset * 2;
-                                                let x = if checked {
-                                                    max_x * delta
-                                                } else {
-                                                    max_x - max_x * delta
-                                                };
-                                                this.left(x)
-                                            },
-                                        )
-                                        .into_any_element()
-                                    } else {
-                                        let max_x = bg_width - bar_width - inset * 2;
-                                        let x = if checked { max_x } else { px(0.) };
-                                        this.left(x).into_any_element()
-                                    }
-                                }),
-                        ),
-                )
-                .when_some(self.label, |this, label| {
-                    this.child(div().line_height(bg_height).child(label).map(
-                        |this| match self.size {
-                            Size::XSmall | Size::Small => this.text_sm(),
-                            _ => this.text_base(),
+                                            this.with_animation(
+                                                ElementId::NamedInteger(
+                                                    "move".into(),
+                                                    checked as u64,
+                                                ),
+                                                Animation::new(duration),
+                                                move |this, delta| {
+                                                    let max_x = bg_width - bar_width - inset * 2;
+                                                    let x = if checked {
+                                                        max_x * delta
+                                                    } else {
+                                                        max_x - max_x * delta
+                                                    };
+                                                    this.left(x)
+                                                },
+                                            )
+                                            .into_any_element()
+                                        } else {
+                                            let max_x = bg_width - bar_width - inset * 2;
+                                            let x = if checked { max_x } else { px(0.) };
+                                            this.left(x).into_any_element()
+                                        }
+                                    }),
+                            ),
+                    )
+                    .when_some(self.label, |this, label| {
+                        this.child(div().line_height(bg_height).child(label).map(|this| {
+                            match self.size {
+                                Size::XSmall | Size::Small => this.text_sm(),
+                                _ => this.text_base(),
+                            }
+                        }))
+                    })
+                    .when_some(
+                        on_click
+                            .as_ref()
+                            .map(|c| c.clone())
+                            .filter(|_| !self.disabled),
+                        |this, on_click| {
+                            let toggle_state = toggle_state.clone();
+                            this.on_mouse_down(mozui::MouseButton::Left, move |_, window, cx| {
+                                cx.stop_propagation();
+                                _ = toggle_state.update(cx, |this, _| *this = checked);
+                                on_click(&!checked, window, cx);
+                            })
                         },
-                    ))
-                })
-                .when_some(
-                    on_click
-                        .as_ref()
-                        .map(|c| c.clone())
-                        .filter(|_| !self.disabled),
-                    |this, on_click| {
-                        let toggle_state = toggle_state.clone();
-                        this.on_mouse_down(mozui::MouseButton::Left, move |_, window, cx| {
-                            cx.stop_propagation();
-                            _ = toggle_state.update(cx, |this, _| *this = checked);
-                            on_click(&!checked, window, cx);
-                        })
-                    },
-                ),
-        )
+                    ),
+            )
+            .into_any_element()
     }
 }

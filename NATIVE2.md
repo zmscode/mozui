@@ -326,9 +326,22 @@ Target use cases:
 - toolbar item host views
 - popover/panel hosted content
 
+Current status note:
+
+- compile-clean hosted-container scaffolding exists in `mozui` core for sidebar, inspector, toolbar host views, and popover host views
+- the current bridge is no longer only a raw-pointer escape hatch: `Window` now owns managed host-content replacement and clearing APIs, so sidebar / inspector / popover / sheet compatibility code no longer has to hand-roll subview replacement into host views
+- this is still not the full phase-4 target, because there is still no higher-level hosted-`mozui` surface API that embeds arbitrary `mozui` subtrees into those containers with managed lifecycle, invalidation, cleanup, and layout ownership
+
 Exit criteria:
 
 - custom `mozui` content can be embedded into native platform containers with controlled lifecycle
+- runtime verification demonstrates that hosted containers survive resize, focus changes, visibility toggles, and teardown without leaking or losing event routing
+
+Interim milestone before phase completion:
+
+- native host containers can be installed and addressed through `Window`
+- toolbar/sidebar/inspector/popover shells can expose native host views to integration code
+- runtime behavior is still considered provisional until demos prove composition, sizing, z-ordering, and deallocation behavior
 
 ### Phase 5: Rebuild Sidebar / Inspector / Toolbar Around Core Native APIs
 
@@ -351,6 +364,11 @@ This phase should explicitly replace:
 Exit criteria:
 
 - browser/finder-style demo can be rebuilt without `mozui-native`
+
+Current status note:
+
+- `mozui-native::toolbar`, toolbar-search integration, sidebar hosting, inspector hosting, popover presentation, and sheet presentation now route through core `mozui` window-native APIs
+- the remaining legacy edge in this area is standalone `create_search_field(...)` in `mozui-native::search`, which is now a compatibility leaf helper rather than the architecture used for native chrome
 
 ### Phase 6: Add Semantic Native Rendering To `mozui-components`
 
@@ -376,6 +394,11 @@ API constraints:
 Exit criteria:
 
 - at least the common form controls support native-backed rendering
+
+Current status note:
+
+- implemented semantic `.native()` rendering paths now cover `Button`, single-line `Input`, `Switch`, single-value horizontal `Slider`, and `Progress`
+- `Select` / `ComboBox`, table integration, and higher-order sidebar affordances are still optional follow-up work rather than blockers for the phase-6 exit criterion
 
 ### Phase 7: Retire `mozui-native`
 
@@ -407,6 +430,8 @@ Exit criteria:
   - port to `crates/mozui/src/elements/native_switch.rs`
 - `crates/mozui-native/src/text_field.rs`
   - port to `crates/mozui/src/elements/native_text_field.rs`
+- `crates/mozui-native/src/symbol.rs`
+  - still pending port to `mozui` core if we want full phase-2 parity for image/symbol view hosting
 - `crates/mozui-native/src/search.rs`
   - replace with core window-native search APIs
 - `crates/mozui-native/src/toolbar.rs`
@@ -497,6 +522,14 @@ Do not create a second parallel component library.
 - native elements compile on macOS and iOS
 - no `mozui-components` platform leakage
 
+Current compile status:
+
+- `cargo check -p mozui`
+- `cargo check -p mozui-components`
+- `cargo check -p mozui-native`
+- `cargo check -p mozui --target aarch64-apple-ios-sim`
+- `cargo check -p mozui-ios-demo --target aarch64-apple-ios-sim`
+
 ### Runtime Verification
 
 macOS demos:
@@ -506,6 +539,8 @@ macOS demos:
 - native button / switch / slider / text field interaction
 - sidebar + inspector hosted-content composition
 - popover / panel / sheet behavior
+- toolbar/sidebar/inspector/popover host views continue to behave correctly across window resize, show/hide, and repeated open/close cycles
+- hosted-container callbacks and teardown paths do not leak retained AppKit delegates, host views, or popover state
 
 iOS demos:
 
@@ -535,6 +570,7 @@ Mitigation:
 
 - use hosted-surface architecture explicitly
 - document which combinations are supported
+- replace raw host-view escape hatches with managed hosted-surface ownership before declaring phase 4 complete
 
 ### 2. Event Re-Entrancy
 
@@ -546,6 +582,7 @@ Mitigation:
 
 - schedule into next-frame callbacks only
 - do not mutate `mozui` state directly from ObjC target/delegate callbacks
+- treat compile success as insufficient; require runtime validation for toolbar/search/popover/sidebar flows before trusting the architecture
 
 ### 3. API Sprawl In `Window`
 

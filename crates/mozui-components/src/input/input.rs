@@ -46,6 +46,7 @@ pub struct Input {
     focus_bordered: bool,
     tab_index: isize,
     selected: bool,
+    native: bool,
 }
 
 impl Sizable for Input {
@@ -84,6 +85,7 @@ impl Input {
             focus_bordered: true,
             tab_index: 0,
             selected: false,
+            native: false,
         }
     }
 
@@ -149,6 +151,27 @@ impl Input {
     pub fn tab_index(mut self, index: isize) -> Self {
         self.tab_index = index;
         self
+    }
+
+    /// Render the input using the platform-native text field backend when possible.
+    pub fn native(mut self) -> Self {
+        self.native = true;
+        self
+    }
+
+    fn can_render_natively(&self, state: &InputState) -> bool {
+        self.native
+            && state.mode.is_single_line()
+            && self.prefix.is_none()
+            && self.suffix.is_none()
+            && self.height.is_none()
+            && !self.cleanable
+            && !self.mask_toggle
+            && !state.loading
+            && self.appearance
+            && self.bordered
+            && self.focus_bordered
+            && !self.selected
     }
 
     fn render_toggle_mask_button(state: &Entity<InputState>, cx: &App) -> impl IntoElement {
@@ -262,6 +285,37 @@ impl RenderOnce for Input {
         });
 
         let state = self.state.read(cx);
+        if self.can_render_natively(&state) {
+            return mozui::native_text_field(("input", self.state.entity_id()))
+                .placeholder(state.placeholder.clone())
+                .value(state.value())
+                .disabled(state.disabled)
+                .secure(state.masked)
+                .on_change({
+                    let input = self.state.clone();
+                    move |event, window, cx| {
+                        input.update(cx, |state, cx| {
+                            if state.value() == event.text {
+                                return;
+                            }
+                            state.set_value(event.text.clone(), window, cx);
+                        });
+                    }
+                })
+                .on_submit({
+                    let input = self.state.clone();
+                    move |event, window, cx| {
+                        input.update(cx, |state, cx| {
+                            if state.value() != event.text {
+                                state.set_value(event.text.clone(), window, cx);
+                            }
+                            state.enter(&super::Enter { secondary: false }, window, cx);
+                        });
+                    }
+                })
+                .refine_style(&self.style)
+                .into_any_element();
+        }
         let focused = state.focus_handle.is_focused(window) && !state.disabled;
         let gap_x = match self.size {
             Size::Small => px(4.),
@@ -426,5 +480,6 @@ impl RenderOnce for Input {
                         .children(suffix),
                 )
             })
+            .into_any_element()
     }
 }

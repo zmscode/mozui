@@ -854,6 +854,36 @@ impl<T> Bounds<T>
 where
     T: Sub<T, Output = T> + Half + Clone + Debug + Default + PartialEq,
 {
+    /// Constructs a `Bounds` from an anchor point and size. The specified
+    /// anchor will be placed at the specified origin.
+    pub fn from_anchor_and_size(anchor: Anchor, origin: Point<T>, size: Size<T>) -> Bounds<T> {
+        let origin = match anchor {
+            Anchor::TopLeft => origin,
+            Anchor::TopCenter => Point {
+                x: origin.x - size.width.clone().half(),
+                y: origin.y,
+            },
+            Anchor::TopRight => Point {
+                x: origin.x - size.width.clone(),
+                y: origin.y,
+            },
+            Anchor::BottomLeft => Point {
+                x: origin.x,
+                y: origin.y - size.height.clone(),
+            },
+            Anchor::BottomCenter => Point {
+                x: origin.x - size.width.clone().half(),
+                y: origin.y - size.height.clone(),
+            },
+            Anchor::BottomRight => Point {
+                x: origin.x - size.width.clone(),
+                y: origin.y - size.height.clone(),
+            },
+        };
+
+        Bounds { origin, size }
+    }
+
     /// Creates a new bounds centered at the given point.
     pub fn centered_at(center: Point<T>, size: Size<T>) -> Self {
         let origin = Point {
@@ -2149,6 +2179,155 @@ impl Corner {
                 Corner::BottomLeft => Corner::BottomRight,
                 Corner::BottomRight => Corner::BottomLeft,
             },
+        }
+    }
+}
+
+/// Identifies an anchor point along the top or bottom edge of a 2d box.
+///
+/// Unlike [`Corner`], this type supports centered anchors. It is useful for
+/// overlays and other positioned surfaces that need to align to the center of a
+/// trigger.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum Anchor {
+    /// The top-left anchor.
+    #[default]
+    #[serde(rename = "top-left")]
+    TopLeft,
+    /// The centered anchor along the top edge.
+    #[serde(rename = "top-center")]
+    TopCenter,
+    /// The top-right anchor.
+    #[serde(rename = "top-right")]
+    TopRight,
+    /// The bottom-left anchor.
+    #[serde(rename = "bottom-left")]
+    BottomLeft,
+    /// The centered anchor along the bottom edge.
+    #[serde(rename = "bottom-center")]
+    BottomCenter,
+    /// The bottom-right anchor.
+    #[serde(rename = "bottom-right")]
+    BottomRight,
+}
+
+impl Anchor {
+    /// Returns `true` when the anchor is on the top edge.
+    #[must_use]
+    pub fn is_top(self) -> bool {
+        matches!(self, Self::TopLeft | Self::TopCenter | Self::TopRight)
+    }
+
+    /// Returns `true` when the anchor is on the bottom edge.
+    #[must_use]
+    pub fn is_bottom(self) -> bool {
+        matches!(
+            self,
+            Self::BottomLeft | Self::BottomCenter | Self::BottomRight
+        )
+    }
+
+    /// Returns `true` when the anchor is on the left edge.
+    #[must_use]
+    pub fn is_left(self) -> bool {
+        matches!(self, Self::TopLeft | Self::BottomLeft)
+    }
+
+    /// Returns `true` when the anchor is on the right edge.
+    #[must_use]
+    pub fn is_right(self) -> bool {
+        matches!(self, Self::TopRight | Self::BottomRight)
+    }
+
+    /// Returns `true` when the anchor is centered horizontally.
+    #[must_use]
+    pub fn is_center(self) -> bool {
+        matches!(self, Self::TopCenter | Self::BottomCenter)
+    }
+
+    /// Returns the anchor with its vertical side swapped.
+    #[must_use]
+    pub fn swap_vertical(self) -> Self {
+        match self {
+            Self::TopLeft => Self::BottomLeft,
+            Self::TopCenter => Self::BottomCenter,
+            Self::TopRight => Self::BottomRight,
+            Self::BottomLeft => Self::TopLeft,
+            Self::BottomCenter => Self::TopCenter,
+            Self::BottomRight => Self::TopRight,
+        }
+    }
+
+    /// Returns the anchor with its horizontal side swapped.
+    #[must_use]
+    pub fn swap_horizontal(self) -> Self {
+        match self {
+            Self::TopLeft => Self::TopRight,
+            Self::TopCenter => Self::TopCenter,
+            Self::TopRight => Self::TopLeft,
+            Self::BottomLeft => Self::BottomRight,
+            Self::BottomCenter => Self::BottomCenter,
+            Self::BottomRight => Self::BottomLeft,
+        }
+    }
+
+    /// Returns the anchor across from this anchor along the specified axis.
+    #[must_use]
+    pub fn other_side_corner_along(self, axis: Axis) -> Self {
+        match axis {
+            Axis::Vertical => match self {
+                Self::TopLeft => Self::BottomLeft,
+                Self::TopCenter => Self::BottomCenter,
+                Self::TopRight => Self::BottomRight,
+                Self::BottomLeft => Self::TopLeft,
+                Self::BottomCenter => Self::TopCenter,
+                Self::BottomRight => Self::TopRight,
+            },
+            Axis::Horizontal => match self {
+                Self::TopLeft => Self::TopRight,
+                Self::TopCenter => Self::TopCenter,
+                Self::TopRight => Self::TopLeft,
+                Self::BottomLeft => Self::BottomRight,
+                Self::BottomCenter => Self::BottomCenter,
+                Self::BottomRight => Self::BottomLeft,
+            },
+        }
+    }
+}
+
+impl Display for Anchor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Anchor::TopLeft => write!(f, "TopLeft"),
+            Anchor::TopCenter => write!(f, "TopCenter"),
+            Anchor::TopRight => write!(f, "TopRight"),
+            Anchor::BottomLeft => write!(f, "BottomLeft"),
+            Anchor::BottomCenter => write!(f, "BottomCenter"),
+            Anchor::BottomRight => write!(f, "BottomRight"),
+        }
+    }
+}
+
+impl From<Corner> for Anchor {
+    fn from(corner: Corner) -> Self {
+        match corner {
+            Corner::TopLeft => Anchor::TopLeft,
+            Corner::TopRight => Anchor::TopRight,
+            Corner::BottomLeft => Anchor::BottomLeft,
+            Corner::BottomRight => Anchor::BottomRight,
+        }
+    }
+}
+
+impl From<Anchor> for Corner {
+    fn from(anchor: Anchor) -> Self {
+        match anchor {
+            Anchor::TopLeft => Corner::TopLeft,
+            Anchor::TopRight => Corner::TopRight,
+            Anchor::BottomLeft => Corner::BottomLeft,
+            Anchor::BottomRight => Corner::BottomRight,
+            Anchor::TopCenter => Corner::TopLeft,
+            Anchor::BottomCenter => Corner::BottomLeft,
         }
     }
 }

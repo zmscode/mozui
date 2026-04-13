@@ -1,13 +1,14 @@
 use super::{
     IosDispatcher, IosDisplay, IosDisplayMetrics, IosKeyboardLayout, IosTouchPhase, IosWindow,
-    IosWindowStateRef, IosWindowStateWeak, dispatch_active_status_change, dispatch_display_metrics,
-    dispatch_request_frame, dispatch_touch_input, make_text_system,
+    IosWindowStateRef, IosWindowStateWeak, dispatch_active_status_change, dispatch_delete_backward,
+    dispatch_display_metrics, dispatch_insert_text, dispatch_request_frame, dispatch_scroll_input,
+    dispatch_touch_input, make_text_system, query_accepts_text_input,
 };
 use crate::{
     Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DispatchEventResult,
     DummyKeyboardMapper, ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions,
     Pixels, Platform, PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper,
-    PlatformTextSystem, PlatformWindow, Point, RequestFrameOptions, Task, ThermalState,
+    PlatformTextSystem, PlatformWindow, Point, RequestFrameOptions, Task, ThermalState, TouchPhase,
     WindowAppearance, WindowParams,
 };
 use anyhow::{Result, anyhow};
@@ -366,6 +367,38 @@ impl IosPlatform {
         if let Some(window) = self.inner.find_window_state(handle) {
             dispatch_request_frame(&window, options);
         }
+    }
+
+    pub fn dispatch_scroll(
+        &self,
+        handle: AnyWindowHandle,
+        position: Point<Pixels>,
+        delta: Point<Pixels>,
+        phase: TouchPhase,
+    ) -> Option<DispatchEventResult> {
+        let window = self.inner.find_window_state(handle)?;
+        dispatch_scroll_input(&window, position, delta, phase)
+    }
+
+    pub fn insert_text(&self, handle: AnyWindowHandle, text: &str) -> bool {
+        let Some(window) = self.inner.find_window_state(handle) else {
+            return false;
+        };
+        dispatch_insert_text(&window, text)
+    }
+
+    pub fn delete_backward(&self, handle: AnyWindowHandle) -> bool {
+        let Some(window) = self.inner.find_window_state(handle) else {
+            return false;
+        };
+        dispatch_delete_backward(&window)
+    }
+
+    pub fn accepts_text_input(&self, handle: AnyWindowHandle) -> bool {
+        let Some(window) = self.inner.find_window_state(handle) else {
+            return false;
+        };
+        query_accepts_text_input(&window)
     }
 }
 

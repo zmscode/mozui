@@ -4,8 +4,9 @@ use crate::{
     AnyWindowHandle, AtlasKey, AtlasTile, Bounds, Capslock, DevicePixels, DispatchEventResult,
     GpuSpecs, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
     PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
-    PromptButton, PromptLevel, RequestFrameOptions, Scene, Size, WindowAppearance,
-    WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowParams,
+    PromptButton, PromptLevel, RequestFrameOptions, Scene, ScrollDelta, ScrollWheelEvent, Size,
+    TouchPhase, WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControlArea,
+    WindowParams, px,
 };
 use parking_lot::Mutex;
 use raw_window_handle::{
@@ -383,6 +384,18 @@ pub(crate) fn dispatch_touch_input(
     phase: IosTouchPhase,
     position: Point<Pixels>,
 ) -> Option<DispatchEventResult> {
+    if matches!(phase, IosTouchPhase::Began) {
+        let should_blur = with_input_handler(window, |input_handler| {
+            input_handler.query_accepts_text_input()
+                && input_handler.character_index_for_point(position).is_none()
+        })
+        .unwrap_or(false);
+
+        if should_blur {
+            let _ = with_input_handler(window, |input_handler| input_handler.blur());
+        }
+    }
+
     let (modifiers, click_count) = {
         let mut state = window.lock();
         state.mouse_position = position;
@@ -423,6 +436,113 @@ pub(crate) fn dispatch_touch_input(
     };
 
     dispatch_platform_input(window, input)
+}
+
+pub(crate) fn dispatch_scroll_input(
+    window: &IosWindowStateRef,
+    position: Point<Pixels>,
+    delta: Point<Pixels>,
+    phase: TouchPhase,
+) -> Option<DispatchEventResult> {
+    if delta.x == px(0.0) && delta.y == px(0.0) {
+        return None;
+    }
+
+    dispatch_platform_input(
+        window,
+        PlatformInput::ScrollWheel(ScrollWheelEvent {
+            position,
+            delta: ScrollDelta::Pixels(delta),
+            modifiers: Modifiers::default(),
+            touch_phase: phase,
+        }),
+    )
+}
+
+fn with_input_handler<R>(
+    window: &IosWindowStateRef,
+    f: impl FnOnce(&mut PlatformInputHandler) -> R,
+) -> Option<R> {
+    let mut input_handler = {
+        let mut state = window.lock();
+        state.input_handler.take()?
+    };
+
+    let result = f(&mut input_handler);
+    window.lock().input_handler = Some(input_handler);
+    Some(result)
+}
+
+pub(crate) fn dispatch_insert_text(window: &IosWindowStateRef, text: &str) -> bool {
+    let handled = with_input_handler(window, |input_handler| {
+        if !input_handler.query_accepts_text_input() {
+            return false;
+        }
+
+        input_handler.replace_text_in_range(None, text);
+        true
+    })
+    .unwrap_or(false);
+
+    if handled {
+        dispatch_request_frame(
+            window,
+            RequestFrameOptions {
+                require_presentation: true,
+                force_render: false,
+            },
+        );
+    }
+
+    handled
+}
+
+pub(crate) fn dispatch_delete_backward(window: &IosWindowStateRef) -> bool {
+    let handled = with_input_handler(window, |input_handler| {
+        if !input_handler.query_accepts_text_input() {
+            return false;
+        }
+
+        if let Some(marked_range) = input_handler.marked_text_range() {
+            input_handler.replace_text_in_range(Some(marked_range), "");
+            return true;
+        }
+
+        let Some(selection) = input_handler.selected_text_range(true) else {
+            return false;
+        };
+
+        let range = if selection.range.start != selection.range.end {
+            selection.range
+        } else if selection.range.start > 0 {
+            (selection.range.start - 1)..selection.range.start
+        } else {
+            return false;
+        };
+
+        input_handler.replace_text_in_range(Some(range), "");
+        true
+    })
+    .unwrap_or(false);
+
+    if handled {
+        dispatch_request_frame(
+            window,
+            RequestFrameOptions {
+                require_presentation: true,
+                force_render: false,
+            },
+        );
+    }
+
+    handled
+}
+
+pub(crate) fn query_accepts_text_input(window: &IosWindowStateRef) -> bool {
+    with_input_handler(window, |input_handler| {
+        input_handler.query_accepts_text_input()
+    })
+    .unwrap_or(false)
 }
 
 impl IosWindow {

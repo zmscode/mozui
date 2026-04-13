@@ -5,14 +5,23 @@ use mozui::{
     App, Bounds, ContentMask, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
     InspectorElementId, IntoElement, LayoutId, Pixels, Size, Style, Window,
 };
+#[cfg(target_os = "macos")]
+use objc2::ClassType;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::sel;
-use objc2::{AnyThread, ClassType, DefinedClass, MainThreadMarker, define_class, msg_send};
+use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
+#[cfg(target_os = "macos")]
 use objc2_app_kit::{NSBezelStyle, NSButton, NSControl};
 use objc2_foundation::{NSObject, NSObjectProtocol, NSString};
+#[cfg(target_os = "ios")]
+use objc2_ui_kit::{UIButton, UIButtonType, UIControl, UIControlEvents, UIControlState};
 
-use crate::native_view::{NativeViewState, parent_ns_view};
+use crate::native_view::NativeViewState;
+#[cfg(target_os = "macos")]
+use crate::native_view::parent_ns_view;
+#[cfg(target_os = "ios")]
+use crate::native_view::parent_ui_view;
 
 type ActionCallback = Rc<RefCell<Option<Box<dyn Fn()>>>>;
 
@@ -57,6 +66,7 @@ pub enum NativeButtonStyle {
 }
 
 impl NativeButtonStyle {
+    #[cfg(target_os = "macos")]
     fn to_ns(self) -> NSBezelStyle {
         match self {
             Self::Push => NSBezelStyle::Push,
@@ -181,17 +191,27 @@ impl Element for NativeButton {
         window.with_element_state(
             global_id,
             |state: Option<NativeButtonPersistentState>, window| {
+                #[cfg(target_os = "ios")]
+                let parent = parent_ui_view(window);
+                #[cfg(target_os = "macos")]
                 let parent = parent_ns_view(window);
 
                 let mut state = state.unwrap_or_else(|| {
                     let mtm = unsafe { MainThreadMarker::new_unchecked() };
                     let ns_title = NSString::from_str(&title);
+                    #[cfg(target_os = "macos")]
                     let button = unsafe {
                         NSButton::buttonWithTitle_target_action(&ns_title, None, None, mtm)
                     };
+                    #[cfg(target_os = "ios")]
+                    let button = UIButton::buttonWithType(UIButtonType::System, mtm);
+                    #[cfg(target_os = "ios")]
+                    button.setTitle_forState(Some(&ns_title), UIControlState::Normal);
+                    #[cfg(target_os = "macos")]
                     button.setBezelStyle(button_style.to_ns());
                     button.setEnabled(enabled);
 
+                    #[cfg(target_os = "macos")]
                     if let Some(ref sym) = symbol {
                         let ns_sym = NSString::from_str(sym);
                         unsafe {
@@ -208,14 +228,28 @@ impl Element for NativeButton {
                         }
                     }
 
+                    #[cfg(target_os = "macos")]
                     if let Some(ref key) = key_equivalent {
                         let ns_key = NSString::from_str(key);
                         button.setKeyEquivalent(&ns_key);
                     }
+                    #[cfg(target_os = "ios")]
+                    let _ = (button_style, symbol, key_equivalent);
 
                     let callback: ActionCallback = Rc::new(RefCell::new(on_click));
                     let action_target = ActionTarget::new(callback, mtm);
 
+                    #[cfg(target_os = "ios")]
+                    unsafe {
+                        let target_obj: &AnyObject = &action_target;
+                        UIControl::addTarget_action_forControlEvents(
+                            &button,
+                            Some(target_obj),
+                            sel!(performAction:),
+                            UIControlEvents::TouchUpInside,
+                        );
+                    }
+                    #[cfg(target_os = "macos")]
                     unsafe {
                         let target_obj: &AnyObject = &action_target;
                         NSControl::setTarget(&button, Some(target_obj));
@@ -232,9 +266,36 @@ impl Element for NativeButton {
                     }
                 });
 
-                state.view_state.attach_and_position(parent, bounds);
-                let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-                (Some(hitbox), state)
+                #[cfg(target_os = "ios")]
+                {
+                    let platform_button: &UIButton =
+                        unsafe { &*(state.view_state.view() as *const _ as *const UIButton) };
+                    let ns_title = NSString::from_str(&title);
+                    platform_button.setTitle_forState(Some(&ns_title), UIControlState::Normal);
+                    platform_button.setEnabled(enabled);
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let platform_button: &NSButton =
+                        unsafe { &*(state.view_state.view() as *const _ as *const NSButton) };
+                    let ns_title = NSString::from_str(&title);
+                    platform_button.setTitle(&ns_title);
+                    platform_button.setEnabled(enabled);
+                }
+
+                #[cfg(target_os = "ios")]
+                let hitbox = if let Some(parent) = parent {
+                    state.view_state.attach_and_position(parent, bounds);
+                    Some(window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                } else {
+                    None
+                };
+                #[cfg(target_os = "macos")]
+                let hitbox = {
+                    state.view_state.attach_and_position(parent, bounds);
+                    Some(window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                };
+                (hitbox, state)
             },
         )
     }

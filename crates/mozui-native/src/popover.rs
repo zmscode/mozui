@@ -1,7 +1,14 @@
 use cocoa::base::{id, nil};
-use mozui::Window;
-use objc::{class, msg_send, sel, sel_impl};
+use cocoa::foundation::NSRect;
+use mozui::{
+    Bounds, NativeAnchor, NativePopover, NativePopoverBehavior as CorePopoverBehavior,
+    NativePopoverEdge as CorePopoverEdge, Window, point, px, size,
+};
+use objc::{msg_send, sel, sel_impl};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static NEXT_POPOVER_IDENTIFIER: AtomicUsize = AtomicUsize::new(1);
 
 /// Edge to which the popover arrow points.
 pub enum PopoverEdge {
@@ -13,10 +20,10 @@ pub enum PopoverEdge {
 
 /// Popover behavior when clicking outside.
 pub enum PopoverBehavior {
-    /// Closes when clicking outside.
-    Transient,
     /// Stays open; must be closed programmatically.
     ApplicationDefined,
+    /// Closes when clicking outside.
+    Transient,
     /// Closes when interacting with another window.
     Semitransient,
 }
@@ -49,59 +56,66 @@ impl Default for PopoverConfig {
 /// Pass `nil` to create an empty popover with the configured size.
 pub fn show_popover(window: &Window, content_view: id, config: PopoverConfig) -> id {
     let ns_view = get_raw_ns_view(window);
-
-    unsafe {
-        let popover: id = msg_send![class!(NSPopover), alloc];
-        let popover: id = msg_send![popover, init];
-
-        let behavior: isize = match config.behavior {
-            PopoverBehavior::ApplicationDefined => 0,
-            PopoverBehavior::Transient => 1,
-            PopoverBehavior::Semitransient => 2,
-        };
-        let _: () = msg_send![popover, setBehavior: behavior];
-
-        let size = cocoa::foundation::NSSize::new(config.width, config.height);
-        let _: () = msg_send![popover, setContentSize: size];
-
-        // Create a view controller for the content
-        let vc: id = msg_send![class!(NSViewController), alloc];
-        let vc: id = msg_send![vc, init];
-
-        if content_view != nil {
-            let _: () = msg_send![vc, setView: content_view];
-        } else {
-            let empty: id = msg_send![class!(NSView), alloc];
-            let frame =
-                cocoa::foundation::NSRect::new(cocoa::foundation::NSPoint::new(0.0, 0.0), size);
-            let empty: id = msg_send![empty, initWithFrame: frame];
-            let _: () = msg_send![vc, setView: empty];
-        }
-
-        let _: () = msg_send![popover, setContentViewController: vc];
-
-        let edge: isize = match config.edge {
-            PopoverEdge::Top => 1,    // NSRectEdgeMinY
-            PopoverEdge::Left => 0,   // NSRectEdgeMinX
-            PopoverEdge::Bottom => 3, // NSRectEdgeMaxY
-            PopoverEdge::Right => 2,  // NSRectEdgeMaxX
-        };
-
-        let bounds: cocoa::foundation::NSRect = msg_send![ns_view, bounds];
-        let _: () = msg_send![popover,
-            showRelativeToRect: bounds
-            ofView: ns_view
-            preferredEdge: edge
-        ];
-
-        popover
+    if ns_view == nil {
+        return nil;
     }
+
+    let bounds: NSRect = unsafe { msg_send![ns_view, bounds] };
+    let identifier = format!(
+        "mozui-native.popover.{}",
+        NEXT_POPOVER_IDENTIFIER.fetch_add(1, Ordering::Relaxed)
+    );
+
+    let Some(handle) = window.show_native_popover(
+        NativePopover::new(
+            NativeAnchor::ContentBounds(Bounds::new(
+                point(px(bounds.origin.x as f32), px(bounds.origin.y as f32)),
+                size(px(bounds.size.width as f32), px(bounds.size.height as f32)),
+            )),
+            size(px(config.width as f32), px(config.height as f32)),
+        )
+        .edge(config.edge.into())
+        .behavior(config.behavior.into())
+        .host_identifier(identifier.clone()),
+    ) else {
+        return nil;
+    };
+
+    if content_view != nil {
+        let _ = window.set_native_host_content(&identifier, content_view.cast());
+    }
+
+    window
+        .raw_native_popover_ptr(handle)
+        .map(|popover| popover as id)
+        .unwrap_or(nil)
 }
 
 /// Close a popover.
 pub fn close_popover(popover: id) {
     unsafe {
         let _: () = msg_send![popover, close];
+    }
+}
+
+impl From<PopoverEdge> for CorePopoverEdge {
+    fn from(value: PopoverEdge) -> Self {
+        match value {
+            PopoverEdge::Top => CorePopoverEdge::Top,
+            PopoverEdge::Left => CorePopoverEdge::Left,
+            PopoverEdge::Bottom => CorePopoverEdge::Bottom,
+            PopoverEdge::Right => CorePopoverEdge::Right,
+        }
+    }
+}
+
+impl From<PopoverBehavior> for CorePopoverBehavior {
+    fn from(value: PopoverBehavior) -> Self {
+        match value {
+            PopoverBehavior::ApplicationDefined => CorePopoverBehavior::ApplicationDefined,
+            PopoverBehavior::Transient => CorePopoverBehavior::Transient,
+            PopoverBehavior::Semitransient => CorePopoverBehavior::Semitransient,
+        }
     }
 }
 

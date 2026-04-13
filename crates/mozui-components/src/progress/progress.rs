@@ -2,8 +2,8 @@ use crate::{ActiveTheme, Sizable, Size, StyledExt};
 use instant::Duration;
 use mozui::{
     Animation, AnimationExt as _, App, ElementId, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement, RenderOnce, StyleRefinement, Styled, Window, div, ease_in_out,
-    prelude::FluentBuilder, px, relative,
+    ParentElement, ProgressStyle, RenderOnce, StyleRefinement, Styled, Window, div, ease_in_out,
+    native_progress, prelude::FluentBuilder, px, relative,
 };
 
 use super::ProgressState;
@@ -17,6 +17,7 @@ pub struct Progress {
     value: f32,
     size: Size,
     loading: bool,
+    native: bool,
 }
 
 impl Progress {
@@ -29,6 +30,7 @@ impl Progress {
             style: StyleRefinement::default(),
             size: Size::default(),
             loading: false,
+            native: false,
         }
     }
 
@@ -54,6 +56,12 @@ impl Progress {
         self.value = value.clamp(0., 100.);
         self
     }
+
+    /// Render the indicator using the platform-native progress backend when possible.
+    pub fn native(mut self) -> Self {
+        self.native = true;
+        self
+    }
 }
 
 impl Styled for Progress {
@@ -71,6 +79,31 @@ impl Sizable for Progress {
 
 impl RenderOnce for Progress {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.native && self.color.is_none() {
+            let indicator = native_progress(self.id.clone())
+                .range(0.0, 100.0)
+                .progress_style(if self.loading {
+                    ProgressStyle::Spinning
+                } else {
+                    ProgressStyle::Bar
+                })
+                .refine_style(&self.style)
+                .w_full();
+            let indicator = match self.size {
+                Size::XSmall => indicator.h(px(4.)),
+                Size::Small => indicator.h(px(6.)),
+                Size::Medium => indicator.h(px(8.)),
+                Size::Large => indicator.h(px(10.)),
+                Size::Size(size) => indicator.h(size),
+            };
+
+            return if self.loading {
+                indicator.into_any_element()
+            } else {
+                indicator.value(self.value as f64).into_any_element()
+            };
+        }
+
         let color = self.color.unwrap_or(cx.theme().progress_bar);
         let value = self.value;
         let loading = self.loading;
@@ -157,5 +190,6 @@ impl RenderOnce for Progress {
                         }
                     }),
             )
+            .into_any_element()
     }
 }
