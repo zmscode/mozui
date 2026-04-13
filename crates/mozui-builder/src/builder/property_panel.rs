@@ -2,12 +2,10 @@ use std::collections::HashMap;
 
 use mozui::prelude::*;
 use mozui::{AnyElement, App, Entity, SharedString, Subscription, WeakEntity, Window, div, px};
-use mozui_components::input::{Input, InputEvent, InputState};
 use mozui_components::Sizable;
+use mozui_components::input::{Input, InputEvent, InputState};
 
-use crate::document::{
-    ComponentDescriptor, DocumentTree, EdgesValue, LengthValue, NodeId,
-};
+use crate::document::{ComponentDescriptor, DocumentTree, EdgesValue, LengthValue, NodeId};
 
 use super::builder_view::BuilderView;
 
@@ -180,13 +178,7 @@ impl PropertyPanelState {
         );
     }
 
-    fn set_input_value(
-        &self,
-        key: &str,
-        value: &str,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    fn set_input_value(&self, key: &str, value: &str, window: &mut Window, cx: &mut App) {
         if let Some(entity) = self.inputs.get(key) {
             let value = SharedString::from(value.to_string());
             entity.update(cx, |state, cx| {
@@ -234,13 +226,7 @@ pub fn render_property_panel(
     // Component section
     panel = panel.child(render_section(
         "Component",
-        render_component_fields(
-            &node.component,
-            panel_state,
-            builder.clone(),
-            window,
-            cx,
-        ),
+        render_component_fields(&node.component, panel_state, builder.clone(), window, cx),
     ));
 
     // Size section
@@ -302,10 +288,9 @@ fn render_input_row(
                 .child(SharedString::from(label.to_string())),
         )
         .child(
-            div().flex_1().child(
-                Input::new(&input_entity)
-                    .with_size(mozui_components::Size::Small),
-            ),
+            div()
+                .flex_1()
+                .child(Input::new(&input_entity).with_size(mozui_components::Size::Small)),
         )
         .into_any_element()
 }
@@ -651,14 +636,12 @@ pub fn parse_edges_value(s: &str) -> Option<EdgesValue> {
                 right: Some(lr),
             })
         }
-        4 => {
-            Some(EdgesValue {
-                top: Some(parse_length_value(parts[0])?),
-                right: Some(parse_length_value(parts[1])?),
-                bottom: Some(parse_length_value(parts[2])?),
-                left: Some(parse_length_value(parts[3])?),
-            })
-        }
+        4 => Some(EdgesValue {
+            top: Some(parse_length_value(parts[0])?),
+            right: Some(parse_length_value(parts[1])?),
+            bottom: Some(parse_length_value(parts[2])?),
+            left: Some(parse_length_value(parts[3])?),
+        }),
         _ => None,
     }
 }

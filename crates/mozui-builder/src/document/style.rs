@@ -271,20 +271,24 @@ pub enum OverflowMode {
 fn to_length_scaled(v: &LengthValue, zoom: f32) -> Length {
     match v {
         LengthValue::Auto => Length::Auto,
-        LengthValue::Px(n) => {
-            Length::Definite(DefiniteLength::Absolute(AbsoluteLength::Pixels(px(*n * zoom))))
-        }
-        LengthValue::Rem(n) => {
-            Length::Definite(DefiniteLength::Absolute(AbsoluteLength::Rems(rems(*n * zoom))))
-        }
+        LengthValue::Px(n) => Length::Definite(DefiniteLength::Absolute(AbsoluteLength::Pixels(
+            px(*n * zoom),
+        ))),
+        LengthValue::Rem(n) => Length::Definite(DefiniteLength::Absolute(AbsoluteLength::Rems(
+            rems(*n * zoom),
+        ))),
         LengthValue::Percent(n) => Length::Definite(DefiniteLength::Fraction(*n / 100.0)),
     }
 }
 
 fn to_definite_length_scaled(v: &LengthValue, zoom: f32) -> Option<DefiniteLength> {
     match v {
-        LengthValue::Px(n) => Some(DefiniteLength::Absolute(AbsoluteLength::Pixels(px(*n * zoom)))),
-        LengthValue::Rem(n) => Some(DefiniteLength::Absolute(AbsoluteLength::Rems(rems(*n * zoom)))),
+        LengthValue::Px(n) => Some(DefiniteLength::Absolute(AbsoluteLength::Pixels(px(
+            *n * zoom
+        )))),
+        LengthValue::Rem(n) => Some(DefiniteLength::Absolute(AbsoluteLength::Rems(rems(
+            *n * zoom,
+        )))),
         LengthValue::Percent(n) => Some(DefiniteLength::Fraction(*n / 100.0)),
         LengthValue::Auto => None,
     }
@@ -368,10 +372,18 @@ impl StyleDescriptor {
         }
 
         if let Some(gap) = &self.gap {
-            if let Some(w) = gap.width.as_ref().and_then(|v| to_definite_length_scaled(v, zoom)) {
+            if let Some(w) = gap
+                .width
+                .as_ref()
+                .and_then(|v| to_definite_length_scaled(v, zoom))
+            {
                 s.gap.width = Some(w);
             }
-            if let Some(h) = gap.height.as_ref().and_then(|v| to_definite_length_scaled(v, zoom)) {
+            if let Some(h) = gap
+                .height
+                .as_ref()
+                .and_then(|v| to_definite_length_scaled(v, zoom))
+            {
                 s.gap.height = Some(h);
             }
         }
@@ -462,7 +474,9 @@ impl StyleDescriptor {
             s.text.color = Some(color.to_hsla());
         }
         if let Some(lh) = self.line_height {
-            s.text.line_height = Some(DefiniteLength::Absolute(AbsoluteLength::Pixels(px(lh * zoom))));
+            s.text.line_height = Some(DefiniteLength::Absolute(AbsoluteLength::Pixels(px(
+                lh * zoom
+            ))));
         }
 
         s
@@ -504,7 +518,11 @@ fn to_overflow(o: &OverflowMode) -> Overflow {
     }
 }
 
-fn apply_edges_length_scaled(edges: &EdgesValue, target: &mut mozui::EdgesRefinement<Length>, zoom: f32) {
+fn apply_edges_length_scaled(
+    edges: &EdgesValue,
+    target: &mut mozui::EdgesRefinement<Length>,
+    zoom: f32,
+) {
     if let Some(v) = &edges.top {
         target.top = Some(to_length_scaled(v, zoom));
     }
@@ -519,7 +537,11 @@ fn apply_edges_length_scaled(edges: &EdgesValue, target: &mut mozui::EdgesRefine
     }
 }
 
-fn apply_edges_definite_scaled(edges: &EdgesValue, target: &mut mozui::EdgesRefinement<DefiniteLength>, zoom: f32) {
+fn apply_edges_definite_scaled(
+    edges: &EdgesValue,
+    target: &mut mozui::EdgesRefinement<DefiniteLength>,
+    zoom: f32,
+) {
     if let Some(v) = &edges.top {
         if let Some(dl) = to_definite_length_scaled(v, zoom) {
             target.top = Some(dl);
@@ -542,7 +564,11 @@ fn apply_edges_definite_scaled(edges: &EdgesValue, target: &mut mozui::EdgesRefi
     }
 }
 
-fn apply_edges_absolute_scaled(edges: &EdgesValue, target: &mut mozui::EdgesRefinement<AbsoluteLength>, zoom: f32) {
+fn apply_edges_absolute_scaled(
+    edges: &EdgesValue,
+    target: &mut mozui::EdgesRefinement<AbsoluteLength>,
+    zoom: f32,
+) {
     if let Some(v) = &edges.top {
         if let Some(al) = to_absolute_length_scaled(v, zoom) {
             target.top = Some(al);

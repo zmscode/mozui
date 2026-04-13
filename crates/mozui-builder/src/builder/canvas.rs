@@ -12,11 +12,9 @@ use super::canvas_state::CanvasState;
 use super::drag::{DragPreview, NodeDragData, PaletteDragData};
 
 type SelectHandler = Rc<dyn Fn(NodeId) -> Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>;
-type PaletteDropHandler =
-    Rc<dyn Fn(NodeId) -> Rc<dyn Fn(&PaletteDragData, &mut Window, &mut App)>>;
+type PaletteDropHandler = Rc<dyn Fn(NodeId) -> Rc<dyn Fn(&PaletteDragData, &mut Window, &mut App)>>;
 type NodeDropHandler = Rc<dyn Fn(NodeId) -> Rc<dyn Fn(&NodeDragData, &mut Window, &mut App)>>;
-type ContextMenuHandler =
-    Rc<dyn Fn(NodeId) -> Rc<dyn Fn(&MouseDownEvent, &mut Window, &mut App)>>;
+type ContextMenuHandler = Rc<dyn Fn(NodeId) -> Rc<dyn Fn(&MouseDownEvent, &mut Window, &mut App)>>;
 
 const DOT_SPACING: f32 = 20.0;
 const DOT_SIZE: f32 = 1.5;
@@ -141,9 +139,7 @@ pub fn render_canvas(
                 // Pan
                 let delta = match event.delta {
                     mozui::ScrollDelta::Pixels(p) => p,
-                    mozui::ScrollDelta::Lines(l) => {
-                        point(px(l.x * 20.0), px(l.y * 20.0))
-                    }
+                    mozui::ScrollDelta::Lines(l) => point(px(l.x * 20.0), px(l.y * 20.0)),
                 };
                 pan_scroll(PanEvent::Delta(delta), window, cx);
                 cx.stop_propagation();
@@ -196,11 +192,7 @@ pub fn render_canvas(
     viewport.into_any_element()
 }
 
-fn paint_dot_grid(
-    bounds: Bounds<Pixels>,
-    offset: Point<Pixels>,
-    window: &mut Window,
-) {
+fn paint_dot_grid(bounds: Bounds<Pixels>, offset: Point<Pixels>, window: &mut Window) {
     // Keep dot spacing constant on screen (don't scale with zoom)
     let spacing = px(DOT_SPACING);
     let dot_radius = px(DOT_SIZE * 0.5);
@@ -310,9 +302,7 @@ fn render_canvas_node(
             .unwrap_or_else(|| node.component.display_name().to_string());
         wrapper = wrapper.on_drag(
             NodeDragData { node_id },
-            move |_data, _offset, _window, cx| {
-                cx.new(|_cx| DragPreview::new(display_name.clone()))
-            },
+            move |_data, _offset, _window, cx| cx.new(|_cx| DragPreview::new(display_name.clone())),
         );
     }
 
@@ -345,8 +335,7 @@ fn render_canvas_node(
             .border_2()
             .border_color(mozui::hsla(0.58, 0.8, 0.55, 0.8));
     } else {
-        wrapper =
-            wrapper.hover(|s| s.border_1().border_color(mozui::hsla(0.58, 0.6, 0.55, 0.3)));
+        wrapper = wrapper.hover(|s| s.border_1().border_color(mozui::hsla(0.58, 0.6, 0.55, 0.3)));
     }
 
     wrapper.into_any_element()
