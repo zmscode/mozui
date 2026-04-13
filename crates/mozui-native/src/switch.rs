@@ -9,10 +9,24 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::sel;
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
+#[cfg(target_os = "ios")]
+use objc2_ui_kit::{UIControl, UIControlEvents, UISwitch};
+#[cfg(target_os = "macos")]
 use objc2_app_kit::{NSControl, NSControlStateValueOff, NSControlStateValueOn, NSSwitch};
-use objc2_foundation::{NSInteger, NSObject, NSObjectProtocol};
+#[cfg(target_os = "macos")]
+use objc2_foundation::NSInteger;
+use objc2_foundation::{NSObject, NSObjectProtocol};
 
-use crate::native_view::{NativeViewState, parent_ns_view};
+use crate::native_view::NativeViewState;
+#[cfg(target_os = "ios")]
+use crate::native_view::parent_ui_view;
+#[cfg(target_os = "macos")]
+use crate::native_view::parent_ns_view;
+
+#[cfg(target_os = "ios")]
+type PlatformSwitch = UISwitch;
+#[cfg(target_os = "macos")]
+type PlatformSwitch = NSSwitch;
 
 type ToggleCallback = Rc<RefCell<Option<Box<dyn Fn(bool)>>>>;
 
@@ -29,7 +43,11 @@ define_class!(
     impl SwitchTarget {
         #[unsafe(method(switchToggled:))]
         fn __switch_toggled(&self, sender: &AnyObject) {
+            #[cfg(target_os = "ios")]
+            let is_on: bool = unsafe { msg_send![sender, isOn] };
+            #[cfg(target_os = "macos")]
             let state: NSInteger = unsafe { msg_send![sender, state] };
+            #[cfg(target_os = "macos")]
             let is_on = state == NSControlStateValueOn;
             let cb = self.ivars().callback.borrow();
             if let Some(ref f) = *cb {
@@ -87,6 +105,10 @@ struct NativeSwitchPersistentState {
     _target: Retained<SwitchTarget>,
 }
 
+fn platform_switch(view_state: &NativeViewState) -> &PlatformSwitch {
+    unsafe { &*(view_state.view() as *const _ as *const PlatformSwitch) }
+}
+
 impl IntoElement for NativeSwitch {
     type Element = Self;
 
@@ -140,23 +162,39 @@ impl Element for NativeSwitch {
         window.with_element_state(
             global_id,
             |state: Option<NativeSwitchPersistentState>, window| {
+                #[cfg(target_os = "ios")]
+                let parent = parent_ui_view(window);
+                #[cfg(target_os = "macos")]
                 let parent = parent_ns_view(window);
 
                 let mut state = state.unwrap_or_else(|| {
                     let mtm = unsafe { MainThreadMarker::new_unchecked() };
-                    let switch = NSSwitch::new(mtm);
+                    let switch = PlatformSwitch::new(mtm);
 
-                    let initial_state = if is_on {
+                    #[cfg(target_os = "ios")]
+                    switch.setOn(is_on);
+                    #[cfg(target_os = "macos")]
+                    switch.setState(if is_on {
                         NSControlStateValueOn
                     } else {
                         NSControlStateValueOff
-                    };
-                    switch.setState(initial_state);
+                    });
                     switch.setEnabled(enabled);
 
                     let callback: ToggleCallback = Rc::new(RefCell::new(on_toggle));
                     let target = SwitchTarget::new(callback, mtm);
 
+                    #[cfg(target_os = "ios")]
+                    unsafe {
+                        let target_obj: &AnyObject = &target;
+                        UIControl::addTarget_action_forControlEvents(
+                            &switch,
+                            Some(target_obj),
+                            sel!(switchToggled:),
+                            UIControlEvents::ValueChanged,
+                        );
+                    }
+                    #[cfg(target_os = "macos")]
                     unsafe {
                         let target_obj: &AnyObject = &target;
                         NSControl::setTarget(&switch, Some(target_obj));
@@ -173,9 +211,28 @@ impl Element for NativeSwitch {
                     }
                 });
 
-                state.view_state.attach_and_position(parent, bounds);
-                let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-                (Some(hitbox), state)
+                #[cfg(target_os = "ios")]
+                platform_switch(&state.view_state).setOn_animated(is_on, false);
+                #[cfg(target_os = "macos")]
+                platform_switch(&state.view_state).setState(if is_on {
+                    NSControlStateValueOn
+                } else {
+                    NSControlStateValueOff
+                });
+                platform_switch(&state.view_state).setEnabled(enabled);
+                #[cfg(target_os = "ios")]
+                let hitbox = if let Some(parent) = parent {
+                    state.view_state.attach_and_position(parent, bounds);
+                    Some(window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                } else {
+                    None
+                };
+                #[cfg(target_os = "macos")]
+                let hitbox = {
+                    state.view_state.attach_and_position(parent, bounds);
+                    Some(window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                };
+                (hitbox, state)
             },
         )
     }

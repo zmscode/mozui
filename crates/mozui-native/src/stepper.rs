@@ -158,10 +158,8 @@ impl Element for NativeStepper {
                     let mtm = unsafe { MainThreadMarker::new_unchecked() };
 
                     let stepper = {
-                        let stepper = NSStepper::initWithFrame(
-                            mtm.alloc(),
-                            objc2_foundation::NSRect::ZERO,
-                        );
+                        let stepper =
+                            NSStepper::initWithFrame(mtm.alloc(), objc2_foundation::NSRect::ZERO);
                         stepper.setMinValue(min);
                         stepper.setMaxValue(max);
                         stepper.setDoubleValue(value);

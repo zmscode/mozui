@@ -4,6 +4,7 @@ default-members = ["crates/mozui-components"]
 members = [
     # mozui core
     "crates/mozui",
+    "crates/mozui-ios-demo",
     "crates/mozui-macros",
 
     # mozui UI component library

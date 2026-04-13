@@ -54,3 +54,15 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSDatePicker",
     "NSDatePickerCell",
 ] }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { workspace = true }
+objc2-core-foundation = "0.3.2"
+objc2-ui-kit = { version = "0.3.2", default-features = false, features = [
+    "UIControl",
+    "UIResponder",
+    "UISwitch",
+    "UIView",
+    "objc2-core-foundation",
+] }

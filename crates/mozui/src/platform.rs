@@ -11,6 +11,11 @@ pub fn current_platform(headless: bool) -> Rc<dyn crate::Platform> {
         Rc::new(macos::MacPlatform::new(headless))
     }
 
+    #[cfg(target_os = "ios")]
+    {
+        Rc::new(ios::IosPlatform::new(headless))
+    }
+
     #[cfg(target_os = "windows")]
     {
         Rc::new(
@@ -77,10 +82,15 @@ pub fn current_headless_renderer() -> Option<Box<dyn crate::PlatformHeadlessRend
 #[allow(missing_docs)]
 pub mod macos;
 
+#[cfg(target_os = "ios")]
+#[allow(missing_docs)]
+pub mod ios;
+
 #[cfg(any(
     target_os = "linux",
     target_os = "freebsd",
     target_os = "windows",
+    target_os = "ios",
     target_family = "wasm",
 ))]
 #[allow(missing_docs)]

@@ -65,12 +65,7 @@ impl CosmicTextSystem {
         }))
     }
 
-    pub fn new_without_system_fonts(system_font_fallback: &str) -> Self {
-        let font_system = FontSystem::new_with_locale_and_db(
-            "en-US".to_string(),
-            cosmic_text::fontdb::Database::new(),
-        );
-
+    pub fn new_with_font_system(system_font_fallback: &str, font_system: FontSystem) -> Self {
         Self(RwLock::new(CosmicTextSystemState {
             font_system,
             scratch: ShapeBuffer::default(),
@@ -79,6 +74,15 @@ impl CosmicTextSystem {
             font_ids_by_family_cache: HashMap::default(),
             system_font_fallback: system_font_fallback.to_string(),
         }))
+    }
+
+    pub fn new_without_system_fonts(system_font_fallback: &str) -> Self {
+        let font_system = FontSystem::new_with_locale_and_db(
+            "en-US".to_string(),
+            cosmic_text::fontdb::Database::new(),
+        );
+
+        Self::new_with_font_system(system_font_fallback, font_system)
     }
 }
 

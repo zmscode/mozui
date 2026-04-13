@@ -3373,13 +3373,15 @@ impl Window {
 
         let raster_bounds = self.text_system().raster_bounds(&params)?;
         if !raster_bounds.is_zero() {
-            let tile = self
+            let Some(tile) = self
                 .sprite_atlas
                 .get_or_insert_with(&params.clone().into(), &mut || {
                     let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
                     Ok(Some((size, Cow::Owned(bytes))))
                 })?
-                .expect("Callback above only errors or returns Some");
+            else {
+                return Ok(());
+            };
             let bounds = Bounds {
                 origin: glyph_origin.map(|px| px.floor()) + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
@@ -3432,13 +3434,15 @@ impl Window {
         let glyph_origin = origin.scale(scale_factor);
 
         if !raster_bounds.is_zero() {
-            let tile = self
+            let Some(tile) = self
                 .sprite_atlas
                 .get_or_insert_with(&params.clone().into(), &mut || {
                     let (size, bytes) = self.text_system().rasterize_glyph(params)?;
                     Ok(Some((size, Cow::Owned(bytes))))
                 })?
-                .expect("Callback above only errors or returns Some");
+            else {
+                return Ok(());
+            };
             let bounds = Bounds {
                 origin: glyph_origin.map(|px| px.floor()) + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
@@ -3476,13 +3480,15 @@ impl Window {
         let glyph_origin = origin.scale(scale_factor);
 
         if !raster_bounds.is_zero() {
-            let tile = self
+            let Some(tile) = self
                 .sprite_atlas
                 .get_or_insert_with(&params.clone().into(), &mut || {
                     let (size, bytes) = self.text_system().rasterize_glyph(params)?;
                     Ok(Some((size, Cow::Owned(bytes))))
                 })?
-                .expect("Callback above only errors or returns Some");
+            else {
+                return Ok(());
+            };
 
             let bounds = Bounds {
                 origin: glyph_origin.map(|px| px.floor()) + raster_bounds.origin.map(Into::into),
@@ -3556,13 +3562,15 @@ impl Window {
 
         let raster_bounds = self.text_system().raster_bounds(&params)?;
         if !raster_bounds.is_zero() {
-            let tile = self
+            let Some(tile) = self
                 .sprite_atlas
                 .get_or_insert_with(&params.clone().into(), &mut || {
                     let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
                     Ok(Some((size, Cow::Owned(bytes))))
                 })?
-                .expect("Callback above only errors or returns Some");
+            else {
+                return Ok(());
+            };
 
             let bounds = Bounds {
                 origin: glyph_origin.map(|px| px.floor()) + raster_bounds.origin.map(Into::into),
@@ -3671,7 +3679,7 @@ impl Window {
             frame_index,
         };
 
-        let tile = self
+        let Some(tile) = self
             .sprite_atlas
             .get_or_insert_with(&params.into(), &mut || {
                 Ok(Some((
@@ -3682,7 +3690,9 @@ impl Window {
                     ),
                 )))
             })?
-            .expect("Callback above only returns Some");
+        else {
+            return Ok(());
+        };
         let content_mask = self.content_mask().scale(scale_factor);
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
