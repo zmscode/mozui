@@ -1,0 +1,21 @@
+[package]
+name = "silk-runtime"
+description = "Silk runtime — Electron DX on mozui-webview. Write TS/JS, opt-in Rust."
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[features]
+ipc-tracing = ["mozui-webview/ipc-tracing"]
+
+[lib]
+doctest = false
+
+[dependencies]
+mozui.workspace = true
+mozui-webview = { path = "../mozui-webview" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+anyhow.workspace = true
+log.workspace = true

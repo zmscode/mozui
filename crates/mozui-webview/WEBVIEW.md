@@ -946,45 +946,56 @@ The bridge JS is embedded at compile time via `include_str!("bridge/bridge.min.j
 
 ## Implementation Phases
 
-### Phase 1 — IPC Foundation
-- `IpcEnvelope`, `IpcError`, `CommandRegistry`
-- `WebViewBuilder` with `.command()`, `.url()`, `.html()`
-- Origin validation, payload size limit
-- Bridge JS injected via `initialization_script`
-- Queue-drain in `render()`
-- `emit_to_js` for Rust → JS push
-- Typed event emitters
+### Phase 1 — IPC Foundation ✅
+- `IpcEnvelope`, `IpcError`, `CommandRegistry` — `src/ipc.rs`
+- `WebViewBuilder` with `.command()`, `.url()`, `.html()` — `src/builder.rs`
+- Origin validation, payload size limit — wired in `builder.rs` IPC handler
+- Bridge JS minified via `build.rs` (comment stripping), embedded via `include_str!` from `OUT_DIR`
+- Queue-drain in `render()` — `src/lib.rs`
+- `emit_to_js` for Rust → JS push — `src/lib.rs`
+- Typed event emitters (`IpcMessage`, `NavigationEvent`, `NavigationBlockedEvent`, `JsEmitEvent`) — `src/lib.rs`
+- `Capabilities`, `CommandAllowlist`, `OriginAllowlist` — `src/security.rs`
+- `evaluate_script` gated behind `script_execution` capability — `src/lib.rs`
+- `sanitize_for_evaluate` for U+2028/U+2029 — `src/lib.rs`
 
-### Phase 2 — Security Layer
-- `Capabilities` struct on builder
-- CSP injection (default policy + override)
-- Navigation allowlist with glob matching
-- `NavigationBlockedEvent`
-- `evaluate_script` gated behind capability
+### Phase 2 — Security Layer ✅
+- `Capabilities` struct on builder — done in Phase 1 (`src/security.rs`)
+- CSP injection (default policy + `.csp()` override) — `src/builder.rs`, platform-aware `CSP_SELF_SRC`
+- Navigation allowlist with glob matching — `src/builder.rs` (`url_matches_pattern`, `.allow_navigation()`)
+- `NavigationBlockedEvent` emitted via nav queue drain in render
+- `evaluate_script` gated behind capability — done in Phase 1
+- `javascript:` and `data:` schemes blocked unconditionally in navigation handler
+- `JsEmitEvent` emitted from `handle_js_emit` with `js_emit_allowlist` gating — `src/lib.rs`
 
-### Phase 3 — Asset Server
-- `AssetServer` with path-traversal prevention
-- `mozui://` custom protocol registration
-- MIME detection
-- CSP headers on HTML responses
-- Dev proxy pattern documented
+### Phase 3 — Asset Server ✅
+- `AssetServer` with path-traversal prevention (canonicalize + jail check) — `src/assets.rs`
+- `mozui://` custom protocol registration via wry — `src/builder.rs`
+- MIME detection for 25+ file types + custom overrides — `src/assets.rs`
+- CSP headers injected on HTML responses — `src/assets.rs`
+- `.assets()` and `.assets_with()` builder methods — `src/builder.rs`
+- `.ts` source files blocked (except `.d.ts`) — `src/assets.rs`
 
-### Phase 4 — TypeScript Types
-- `specta::Type` derives on built-in arg/return types
-- `ts-gen` feature flag
-- Type export test/binary
-- Generated `.d.ts` with typed `invoke()` overloads
-- Bridge JS types (`.d.ts` for `window.mozui`)
+### Phase 4 — TypeScript Types ✅ (partial)
+- `ts-gen` feature flag with `specta` 2.0.0-rc.20 + `specta-typescript` 0.0.7 — `Cargo.toml`
+- Bridge `.d.ts` with typed `window.mozui` declarations — `src/bridge.d.ts`
+- `specta::Type` derives on arg/return types — available via feature, user adds per-type
+- Type export test/binary and generated overloads — deferred (user-driven per app)
 
-### Phase 5 — Async Commands
-- `AsyncCommandConfig` with `max_concurrent`, `timeout`, `per_command_limit`
-- `async_command()` builder method with `Entity<WebView>` + `AsyncApp` handler signature
-- `pending_async: HashMap<String, Task<()>>` on `WebView`
-- Rate limiting: immediate `RATE_LIMITED` response when at capacity
-- `IpcEnvelope::Cancel { id }` variant and drain-loop handling
-- Task dropped from `pending_async` on cancel or WebView drop
+### Phase 5 — Async Commands ✅
+- `AsyncCommandConfig` with `max_concurrent`, `timeout`, `per_command_limit` — `src/ipc.rs`
+- `async_command()` builder method — `src/builder.rs`
+- `AsyncCommandRegistry` with typed handler registration — `src/ipc.rs`
+- `pending_async: HashMap<String, Task<()>>` on `WebView` — `src/lib.rs`
+- Rate limiting: immediate `RATE_LIMITED` response at global + per-command capacity
+- Async handlers return `Pin<Box<Future>>`, infrastructure spawns via `cx.spawn()` and delivers response
+- Tasks dropped on WebView drop (cancels in-flight work)
+- Cancellation protocol: JS bridge sends `cancel` envelope on timeout, Rust `handle_cancel` drops task from `pending_async`
 
-### Phase 6 — `@mozui/bridge` npm Package
+### Phase 6 — `@mozui/bridge` npm Package ✅
+- `packages/mozui-bridge/` with `package.json`, `tsconfig.json`
+- `src/index.ts` — `invoke()`, `listen()`, `emit()`, `isBridge()` with SSR-safe guards
+- `src/types.ts` — `MozuiBridge`, `MozuiError`, `UnlistenFn` interfaces + global `Window` augmentation
+- `src/mock.ts` — `installMockBridge()` for testing renderer components without Rust
 
 **Why a package beyond the injected bridge:**
 

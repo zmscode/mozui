@@ -1,0 +1,14 @@
+{
+	"name": "Silk Todo",
+	"version": "0.1.0",
+	"main": "dist/main.js",
+	"app": "app/",
+	"window": {
+		"width": 460,
+		"height": 680,
+		"minWidth": 360,
+		"minHeight": 480,
+		"title": "Silk Todo",
+		"resizable": true
+	}
+}

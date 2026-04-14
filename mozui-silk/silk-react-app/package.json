@@ -1,0 +1,25 @@
+{
+	"name": "silk-react-todo",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "bun run build:main && vite",
+		"build": "bun run build:main && vite build",
+		"build:main": "bun build src/main.ts --outdir=dist --target=browser",
+		"silk": "bun run build && cargo run -p mozui-silk",
+		"silk:dev": "bun run build:main && concurrently \"vite\" \"cargo run -p mozui-silk\""
+	},
+	"dependencies": {
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "^4.0.0",
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0",
+		"tailwindcss": "^4.0.0",
+		"typescript": "^5.7.0",
+		"vite": "^6.0.0",
+		"@vitejs/plugin-react": "^4.3.0"
+	}
+}

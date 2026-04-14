@@ -11,6 +11,8 @@ workspace = true
 mozui.workspace = true
 mozui-components.workspace = true
 mozui-webview = { path = "../mozui-webview" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 wry = { version = "0.53.3", package = "lb-wry" }
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -1,0 +1,29 @@
+{
+	"name": "@mozui/bridge",
+	"version": "0.5.0",
+	"description": "TypeScript bridge for mozui-webview IPC",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./mock": {
+			"import": "./dist/mock.js",
+			"types": "./dist/mock.d.ts"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"typecheck": "tsc --noEmit"
+	},
+	"license": "Apache-2.0",
+	"devDependencies": {
+		"typescript": "^5.5.0"
+	}
+}

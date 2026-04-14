@@ -414,12 +414,7 @@ impl SpreadsheetExample {
         }
     }
 
-    fn on_unhide_sheet_action(
-        &mut self,
-        _: &UnhideSheet,
-        _w: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_unhide_sheet_action(&mut self, _: &UnhideSheet, _w: &mut Window, cx: &mut Context<Self>) {
         // Unhide the first hidden sheet (simplified — full UI would show picker).
         let hidden = self.data.read(cx).hidden_sheets();
         if let Some((idx, _)) = hidden.first() {
@@ -438,7 +433,12 @@ impl SpreadsheetExample {
         }
     }
 
-    fn on_clear_formatting(&mut self, _: &ClearFormatting, _w: &mut Window, cx: &mut Context<Self>) {
+    fn on_clear_formatting(
+        &mut self,
+        _: &ClearFormatting,
+        _w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some((row, col)) = self.selected_data_cell() {
             // Check for multi-cell range selection from IronCalc.
             let range = self.data.read(cx).selected_range();
@@ -860,16 +860,10 @@ impl Render for SpreadsheetExample {
                             move |menu, _, _| {
                                 menu.menu(format!("Rename \"{}\"", name), Box::new(RenameSheet))
                                     .when(sheet_count > 1, |menu| {
-                                        menu.menu(
-                                            format!("Hide \"{}\"", name),
-                                            Box::new(HideSheet),
-                                        )
+                                        menu.menu(format!("Hide \"{}\"", name), Box::new(HideSheet))
                                     })
                                     .when(has_hidden, |menu| {
-                                        menu.menu(
-                                            "Unhide sheet".to_string(),
-                                            Box::new(UnhideSheet),
-                                        )
+                                        menu.menu("Unhide sheet".to_string(), Box::new(UnhideSheet))
                                     })
                                     .when(sheet_count > 1, |menu| {
                                         menu.separator().menu(

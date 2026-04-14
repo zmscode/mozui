@@ -12,6 +12,8 @@ members = [
     "crates/mozui-webview",
     "crates/mozui-builder",
     "crates/mozui-examples",
+    "crates/silk-runtime",
+    "mozui-silk",
 ]
 
 [workspace.package]

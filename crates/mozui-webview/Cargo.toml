@@ -8,6 +8,8 @@ version = "0.5.0"
 
 [features]
 inspector = ["wry/devtools"]
+ts-gen = ["dep:specta", "dep:specta-typescript"]
+ipc-tracing = []
 
 [lib]
 doctest = false
@@ -15,4 +17,10 @@ doctest = false
 [dependencies]
 anyhow.workspace = true
 mozui.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+http.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 wry = { version = "0.53.3", package = "lb-wry" }
+specta = { version = "=2.0.0-rc.20", optional = true, features = ["derive"] }
+specta-typescript = { version = "0.0.7", optional = true }

@@ -1,0 +1,15 @@
+// Silk main process — app lifecycle and window management only.
+// Business logic lives in the renderer (React).
+
+Silk.onReady(() => {
+	Silk.createWindow("main", {
+		url: "./index.html",
+		title: "Silk Todo",
+		width: 460,
+		height: 680,
+		minWidth: 360,
+		minHeight: 480,
+		titlebarStyle: "hiddenInset",
+		trafficLightPosition: { x: 8, y: 8 },
+	});
+});
