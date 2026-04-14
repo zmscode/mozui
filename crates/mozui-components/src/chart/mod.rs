@@ -1,14 +1,34 @@
 mod area_chart;
 mod bar_chart;
 mod candlestick_chart;
+mod sankey_chart;
+mod heatmap_chart;
+mod histogram_chart;
 mod line_chart;
 mod pie_chart;
+mod radar_chart;
+mod ridge_line_chart;
+mod scatter_chart;
+mod stacked_area_chart;
+mod stacked_bar_chart;
+mod treemap_chart;
+mod waterfall_chart;
 
 pub use area_chart::AreaChart;
 pub use bar_chart::BarChart;
 pub use candlestick_chart::CandlestickChart;
+pub use heatmap_chart::HeatmapChart;
+pub use histogram_chart::{HistogramBins, HistogramChart};
 pub use line_chart::LineChart;
 pub use pie_chart::PieChart;
+pub use radar_chart::{RadarChart, RadarSeries};
+pub use sankey_chart::{SankeyChart, SankeyLink, SankeyNode};
+pub use ridge_line_chart::RidgeLineChart;
+pub use scatter_chart::ScatterChart;
+pub use stacked_area_chart::StackedAreaChart;
+pub use stacked_bar_chart::StackedBarChart;
+pub use treemap_chart::TreemapChart;
+pub use waterfall_chart::{WaterfallChart, WaterfallKind};
 
 use mozui::{Hsla, SharedString, TextAlign};
 
