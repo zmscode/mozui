@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use mozui::{App, Bounds, Hsla, Pixels, Window};
+use mozui::{App, Bounds, FontWeight, Hsla, Pixels, SharedString, TextAlign, Window, point, px};
 use mozui_components_macros::IntoPlot;
 use num_traits::Zero;
 
@@ -8,6 +8,7 @@ use crate::{
     ActiveTheme,
     plot::{
         Plot,
+        label::{PlotLabel, TEXT_SIZE, Text},
         shape::{Arc, ArcData, Pie},
     },
 };
@@ -22,6 +23,8 @@ pub struct PieChart<T: 'static> {
     pad_angle: f32,
     value: Option<Rc<dyn Fn(&T) -> f32>>,
     color: Option<Rc<dyn Fn(&T) -> Hsla>>,
+    center_value: Option<SharedString>,
+    center_label: Option<SharedString>,
 }
 
 impl<T> PieChart<T> {
@@ -38,6 +41,8 @@ impl<T> PieChart<T> {
             pad_angle: 0.,
             value: None,
             color: None,
+            center_value: None,
+            center_label: None,
         }
     }
 
@@ -106,6 +111,18 @@ impl<T> PieChart<T> {
         self.color = Some(Rc::new(move |t| color(t).into()));
         self
     }
+
+    /// Large text shown at the center of a donut hole (requires `inner_radius > 0`).
+    pub fn center_value(mut self, value: impl Into<SharedString>) -> Self {
+        self.center_value = Some(value.into());
+        self
+    }
+
+    /// Small label shown below `center_value` in the donut hole.
+    pub fn center_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.center_label = Some(label.into());
+        self
+    }
 }
 
 impl<T> Plot for PieChart<T> {
@@ -143,6 +160,50 @@ impl<T> Plot for PieChart<T> {
                 &bounds,
                 window,
             );
+        }
+
+        // Center text — only draw when there is a visible hole
+        if self.inner_radius > 0. && (self.center_value.is_some() || self.center_label.is_some()) {
+            let cx_px = bounds.size.width.as_f32() / 2.;
+            let cy_px = bounds.size.height.as_f32() / 2.;
+            let value_size = 14_f32;
+            let gap = 3_f32;
+
+            let mut texts = Vec::new();
+
+            if let Some(ref val) = self.center_value {
+                // Value is positioned above center, label below
+                let y = if self.center_label.is_some() {
+                    cy_px - value_size - gap / 2.
+                } else {
+                    cy_px - value_size / 2.
+                };
+                texts.push(
+                    Text::new(val.clone(), point(px(cx_px), px(y)), cx.theme().foreground)
+                        .font_size(px(value_size))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .align(TextAlign::Center),
+                );
+            }
+
+            if let Some(ref lbl) = self.center_label {
+                let y = if self.center_value.is_some() {
+                    cy_px + gap / 2.
+                } else {
+                    cy_px - TEXT_SIZE / 2.
+                };
+                texts.push(
+                    Text::new(
+                        lbl.clone(),
+                        point(px(cx_px), px(y)),
+                        cx.theme().muted_foreground,
+                    )
+                    .font_size(px(TEXT_SIZE))
+                    .align(TextAlign::Center),
+                );
+            }
+
+            PlotLabel::new(texts).paint(&bounds, window, cx);
         }
     }
 }

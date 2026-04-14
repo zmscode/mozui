@@ -2,13 +2,13 @@
 
 use mozui::prelude::*;
 use mozui::{
-    current_platform, div, hsla, px, App as MozuiApp, Application, Div, Entity, Pixels, Render,
-    SharedString, Size, TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowOptions,
+    App as MozuiApp, Application, Div, Entity, Pixels, Render, SharedString, Size, TitlebarOptions,
+    Window, WindowBackgroundAppearance, WindowBounds, WindowOptions, current_platform, div, hsla,
+    px,
 };
 use mozui_components::{
-    theme::{Theme, ThemeMode},
     Root, StyledExt as _,
+    theme::{Theme, ThemeMode},
 };
 
 pub fn run_rooted_example<V: 'static + Render>(
@@ -186,7 +186,13 @@ pub fn stat_tile(label: impl Into<SharedString>, value: impl Into<SharedString>)
         )
 }
 
-pub fn labeled_control(label: &'static str, note: &'static str, control: impl IntoElement) -> Div {
+pub fn labeled_control(
+    label: impl Into<SharedString>,
+    note: impl Into<SharedString>,
+    control: impl IntoElement,
+) -> Div {
+    let label = label.into();
+    let note = note.into();
     div()
         .w_full()
         .rounded(px(18.0))

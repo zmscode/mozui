@@ -12,6 +12,8 @@ actions!(
     ui,
     [
         Cancel,
+        Undo,
+        Redo,
         SelectUp,
         SelectDown,
         SelectLeft,
@@ -21,6 +23,11 @@ actions!(
         SelectPrevColumn,
         SelectNextColumn,
         SelectPageUp,
-        SelectPageDown
+        SelectPageDown,
+        ExtendSelectionUp,
+        ExtendSelectionDown,
+        ExtendSelectionLeft,
+        ExtendSelectionRight,
+        ConfirmAndMoveDown,
     ]
 );

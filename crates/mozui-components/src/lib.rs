@@ -20,7 +20,7 @@ mod virtual_list;
 mod window_border;
 mod window_ext;
 
-pub(crate) mod actions;
+pub mod actions;
 
 pub mod accordion;
 pub mod alert;
@@ -68,6 +68,7 @@ pub mod spinner;
 pub mod stepper;
 pub mod switch;
 pub mod tab;
+pub mod spreadsheet;
 pub mod table;
 pub mod tag;
 pub mod text;
@@ -120,6 +121,7 @@ pub fn init(cx: &mut App) {
     popover::init(cx);
     menu::init(cx);
     table::init(cx);
+    spreadsheet::init(cx);
     text::init(cx);
     tree::init(cx);
 }

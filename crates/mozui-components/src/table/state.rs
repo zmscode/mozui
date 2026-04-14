@@ -3,8 +3,9 @@ use std::{ops::Range, rc::Rc, time::Duration};
 use crate::{
     ActiveTheme, ElementExt, Icon, IconName, StyleSized as _, StyledExt, VirtualListScrollHandle,
     actions::{
-        Cancel, SelectDown, SelectFirst, SelectLast, SelectNextColumn, SelectPageDown,
-        SelectPageUp, SelectPrevColumn, SelectUp,
+        Cancel, ConfirmAndMoveDown, ExtendSelectionDown, ExtendSelectionLeft,
+        ExtendSelectionRight, ExtendSelectionUp, SelectDown, SelectFirst, SelectLast,
+        SelectNextColumn, SelectPageDown, SelectPageUp, SelectPrevColumn, SelectUp,
     },
     h_flex,
     menu::{ContextMenuExt, PopupMenu},
@@ -90,6 +91,10 @@ pub enum TableEvent {
     /// Use this event to show context menus specific to the cell content.
     /// The right-clicked cell is highlighted with a subtle border until another cell is clicked.
     RightClickedCell(usize, usize),
+    /// A cell range has been selected (via Shift+click or programmatically).
+    ///
+    /// Fields: `(start_row, start_col, end_row, end_col)` — the anchor is always at `(start_row, start_col)`.
+    SelectRange(usize, usize, usize, usize),
     /// The selection has been cleared.
     ///
     /// This event is emitted when the selection is cleared.
@@ -222,9 +227,14 @@ pub struct TableState<D: TableDelegate> {
     right_clicked_cell: Option<(usize, usize)>,
     selected_col: Option<usize>,
     selected_cell: Option<(usize, usize)>,
+    /// The selected cell range as `(start_row, start_col, end_row, end_col)`.
+    /// The anchor cell (`selected_cell`) is always at `(start_row, start_col)`.
+    selected_range: Option<(usize, usize, usize, usize)>,
 
     /// The column index that is being resized.
     resizing_col: Option<usize>,
+    /// When mouse-dragging to select a range, the anchor cell (row, col).
+    drag_selecting_from: Option<(usize, usize)>,
 
     /// The visible range of the rows and columns.
     visible_range: TableVisibleRange,
@@ -253,7 +263,9 @@ where
             right_clicked_cell: None,
             selected_col: None,
             selected_cell: None,
+            selected_range: None,
             resizing_col: None,
+            drag_selecting_from: None,
             bounds: Bounds::default(),
             fixed_head_cols_bounds: Bounds::default(),
             visible_range: TableVisibleRange::default(),
@@ -438,6 +450,49 @@ where
         self.selected_cell
     }
 
+    /// Returns the selected cell range as `(start_row, start_col, end_row, end_col)`.
+    ///
+    /// The anchor cell is always at `(start_row, start_col)`. The range is inclusive.
+    pub fn selected_range(&self) -> Option<(usize, usize, usize, usize)> {
+        self.selected_range
+    }
+
+    /// Sets a cell range selection.
+    ///
+    /// The anchor (`selected_cell`) is set to `(start_row, start_col)`.
+    /// Emits [`TableEvent::SelectRange`].
+    pub fn set_selected_range(
+        &mut self,
+        start_row: usize,
+        start_col: usize,
+        end_row: usize,
+        end_col: usize,
+        cx: &mut Context<Self>,
+    ) {
+        self.selection_mode = SelectionMode::Cell;
+        let (r0, r1) = (start_row.min(end_row), start_row.max(end_row));
+        let (c0, c1) = (start_col.min(end_col), start_col.max(end_col));
+        self.selected_cell = Some((start_row, start_col));
+        self.selected_range = Some((r0, c0, r1, c1));
+
+        // Scroll to the far corner
+        self.vertical_scroll_handle
+            .scroll_to_item(end_row, ScrollStrategy::Center);
+        self.scroll_to_col(end_col, cx);
+
+        cx.emit(TableEvent::SelectRange(r0, c0, r1, c1));
+        cx.notify();
+    }
+
+    /// Returns whether the given cell is inside the current range selection.
+    pub fn is_in_selected_range(&self, row_ix: usize, col_ix: usize) -> bool {
+        if let Some((r0, c0, r1, c1)) = self.selected_range {
+            row_ix >= r0 && row_ix <= r1 && col_ix >= c0 && col_ix <= c1
+        } else {
+            false
+        }
+    }
+
     /// Sets the selected cell to the given row and column indices.
     ///
     /// This method:
@@ -456,6 +511,7 @@ where
     pub fn set_selected_cell(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
         self.selection_mode = SelectionMode::Cell;
         self.selected_cell = Some((row_ix, col_ix));
+        self.selected_range = None;
 
         // Scroll to the cell
         self.vertical_scroll_handle
@@ -472,6 +528,7 @@ where
         self.selected_row = None;
         self.selected_col = None;
         self.selected_cell = None;
+        self.selected_range = None;
         cx.emit(TableEvent::ClearSelection);
         cx.notify();
     }
@@ -661,6 +718,15 @@ where
             return;
         }
 
+        // When cell selection is active, select the entire column as a range.
+        if self.cell_selectable {
+            let rows_count = self.delegate.rows_count(cx);
+            if rows_count > 0 {
+                self.set_selected_range(0, col_ix, rows_count - 1, col_ix, cx);
+                return;
+            }
+        }
+
         self.set_selected_col(col_ix, cx)
     }
 
@@ -677,10 +743,82 @@ where
         }
 
         cx.stop_propagation();
+
+        // Click on a non-selectable column (e.g. row-number gutter) → select the entire row as range.
+        let col_selectable = self
+            .col_groups
+            .get(col_ix)
+            .map(|g| g.column.selectable)
+            .unwrap_or(true);
+        if !col_selectable {
+            let cols_count = self.delegate.columns_count(cx);
+            if cols_count > 1 {
+                // Range from first selectable column to last column.
+                self.set_selected_range(row_ix, 1, row_ix, cols_count - 1, cx);
+            }
+            return;
+        }
+
+        // Shift+click: extend range from anchor to clicked cell
+        if e.modifiers().shift {
+            if let Some((anchor_row, anchor_col)) = self.selected_cell {
+                self.set_selected_range(anchor_row, anchor_col, row_ix, col_ix, cx);
+                return;
+            }
+        }
+
         self.set_selected_cell(row_ix, col_ix, cx);
 
         if e.click_count() == 2 {
             cx.emit(TableEvent::DoubleClickedCell(row_ix, col_ix));
+        }
+    }
+
+    fn on_cell_mouse_down(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.cell_selectable {
+            return;
+        }
+        let col_selectable = self
+            .col_groups
+            .get(col_ix)
+            .map(|g| g.column.selectable)
+            .unwrap_or(true);
+        if col_selectable {
+            self.drag_selecting_from = Some((row_ix, col_ix));
+            cx.notify();
+        }
+    }
+
+    fn on_cell_mouse_up(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+        if self.drag_selecting_from.is_some() {
+            self.drag_selecting_from = None;
+            cx.notify();
+        }
+    }
+
+    fn on_cell_mouse_move(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        pressed_button: Option<MouseButton>,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Only extend selection when left button is held down.
+        if pressed_button != Some(MouseButton::Left) {
+            self.drag_selecting_from = None;
+            return;
+        }
+        if let Some((anchor_row, anchor_col)) = self.drag_selecting_from {
+            if row_ix != anchor_row || col_ix != anchor_col {
+                self.set_selected_range(anchor_row, anchor_col, row_ix, col_ix, cx);
+            }
         }
     }
 
@@ -963,6 +1101,117 @@ where
         self.set_selected_col(selected_col, cx);
     }
 
+    // ── Shift+Arrow: extend selection range ───────────────────────────────
+
+    /// Returns the "moving edge" of the range — the corner opposite the anchor.
+    /// If no range exists, returns the anchor cell itself.
+    fn range_moving_edge(&self) -> Option<(usize, usize)> {
+        if let Some((r0, c0, r1, c1)) = self.selected_range {
+            if let Some((ar, ac)) = self.selected_cell {
+                // The moving edge is the corner farthest from the anchor.
+                let row = if ar == r0 { r1 } else { r0 };
+                let col = if ac == c0 { c1 } else { c0 };
+                return Some((row, col));
+            }
+        }
+        self.selected_cell
+    }
+
+    fn extend_range_to(&mut self, row: usize, col: usize, cx: &mut Context<Self>) {
+        if let Some((ar, ac)) = self.selected_cell {
+            self.set_selected_range(ar, ac, row, col, cx);
+        }
+    }
+
+    pub(super) fn action_extend_selection_up(
+        &mut self,
+        _: &ExtendSelectionUp,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.selection_mode.is_cell() {
+            return;
+        }
+        if let Some((row, col)) = self.range_moving_edge() {
+            let new_row = row.saturating_sub(1);
+            self.extend_range_to(new_row, col, cx);
+        }
+    }
+
+    pub(super) fn action_extend_selection_down(
+        &mut self,
+        _: &ExtendSelectionDown,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.selection_mode.is_cell() {
+            return;
+        }
+        let rows_count = self.delegate.rows_count(cx);
+        if let Some((row, col)) = self.range_moving_edge() {
+            let new_row = (row + 1).min(rows_count.saturating_sub(1));
+            self.extend_range_to(new_row, col, cx);
+        }
+    }
+
+    pub(super) fn action_extend_selection_left(
+        &mut self,
+        _: &ExtendSelectionLeft,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.selection_mode.is_cell() {
+            return;
+        }
+        if let Some((row, col)) = self.range_moving_edge() {
+            let new_col = col.saturating_sub(1);
+            self.extend_range_to(row, new_col, cx);
+        }
+    }
+
+    pub(super) fn action_extend_selection_right(
+        &mut self,
+        _: &ExtendSelectionRight,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.selection_mode.is_cell() {
+            return;
+        }
+        let cols_count = self.delegate.columns_count(cx);
+        if let Some((row, col)) = self.range_moving_edge() {
+            let new_col = (col + 1).min(cols_count.saturating_sub(1));
+            self.extend_range_to(row, new_col, cx);
+        }
+    }
+
+    // ── Enter key ───────────────────────────────────────────────────────
+
+    pub(super) fn action_confirm_and_move_down(
+        &mut self,
+        _: &ConfirmAndMoveDown,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.selection_mode.is_cell() {
+            cx.propagate();
+            return;
+        }
+
+        // If a cell is selected, emit DoubleClickedCell to trigger editing,
+        // or move down if already confirmed via the event system.
+        if let Some((row_ix, col_ix)) = self.selected_cell {
+            // Move selection down.
+            let rows_count = self.delegate.rows_count(cx);
+            let new_row = if row_ix < rows_count.saturating_sub(1) {
+                row_ix + 1
+            } else {
+                row_ix
+            };
+            self.set_selected_cell(new_row, col_ix, cx);
+        }
+    }
+
     /// Scroll table when mouse position is near the edge of the table bounds.
     fn scroll_table_by_col_resizing(
         &mut self,
@@ -1123,7 +1372,7 @@ where
         _row_ix: Option<usize>,
         col_ix: usize,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Div {
         let Some(col_group) = self.col_groups.get(col_ix) else {
             return div();
@@ -1138,6 +1387,8 @@ where
             .flex_shrink_0()
             .overflow_hidden()
             .whitespace_nowrap()
+            .border_r_1()
+            .border_color(cx.theme().table_row_border)
             .table_cell_size(self.options.size)
             .map(|this| match col_padding {
                 Some(padding) => this
@@ -1607,6 +1858,8 @@ where
                                         && self.selection_mode.is_cell();
                                     let is_cell_right_clicked =
                                         self.right_clicked_cell == Some((row_ix, col_ix));
+                                    let is_in_range = !is_cell_selected
+                                        && self.is_in_selected_range(row_ix, col_ix);
 
                                     items.push(
                                         self.render_col_wrap(Some(row_ix), col_ix, window, cx)
@@ -1627,6 +1880,14 @@ where
                                                                 .border_color(
                                                                     cx.theme().table_active_border,
                                                                 ),
+                                                        )
+                                                    })
+                                                    .when(is_in_range, |this| {
+                                                        this.child(
+                                                            div()
+                                                                .absolute()
+                                                                .inset_0()
+                                                                .bg(cx.theme().table_active.opacity(0.5)),
                                                         )
                                                     })
                                                     .when(
@@ -1664,6 +1925,33 @@ where
                                                                 },
                                                             ),
                                                         )
+                                                        .on_mouse_down(
+                                                            MouseButton::Left,
+                                                            cx.listener(
+                                                                move |table, _, window, cx| {
+                                                                    table.on_cell_mouse_down(
+                                                                        row_ix, col_ix, window, cx,
+                                                                    );
+                                                                },
+                                                            ),
+                                                        )
+                                                        .on_mouse_up(
+                                                            MouseButton::Left,
+                                                            cx.listener(
+                                                                move |table, _, window, cx| {
+                                                                    table.on_cell_mouse_up(
+                                                                        window, cx,
+                                                                    );
+                                                                },
+                                                            ),
+                                                        )
+                                                        .on_mouse_move(cx.listener(
+                                                            move |table, e: &mozui::MouseMoveEvent, window, cx| {
+                                                                table.on_cell_mouse_move(
+                                                                    row_ix, col_ix, e.pressed_button, window, cx,
+                                                                );
+                                                            },
+                                                        ))
                                                     }),
                                             ),
                                     );
@@ -1717,6 +2005,8 @@ where
                                                 && table.selection_mode.is_cell();
                                             let is_cell_right_clicked =
                                                 table.right_clicked_cell == Some((row_ix, col_ix));
+                                            let is_in_range = !is_cell_selected
+                                                && table.is_in_selected_range(row_ix, col_ix);
 
                                             let el = table
                                                 .render_col_wrap(Some(row_ix), col_ix, window, cx)
@@ -1747,6 +2037,14 @@ where
                                                                         cx.theme()
                                                                             .table_active_border,
                                                                     ),
+                                                            )
+                                                        })
+                                                        .when(is_in_range, |this| {
+                                                            this.child(
+                                                                div()
+                                                                    .absolute()
+                                                                    .inset_0()
+                                                                    .bg(cx.theme().table_active.opacity(0.5)),
                                                             )
                                                         })
                                                         .when(
@@ -1787,6 +2085,34 @@ where
                                                                     },
                                                                 ),
                                                             )
+                                                            .on_mouse_down(
+                                                                MouseButton::Left,
+                                                                cx.listener(
+                                                                    move |table, _, window, cx| {
+                                                                        table.on_cell_mouse_down(
+                                                                            row_ix, col_ix, window,
+                                                                            cx,
+                                                                        );
+                                                                    },
+                                                                ),
+                                                            )
+                                                            .on_mouse_up(
+                                                                MouseButton::Left,
+                                                                cx.listener(
+                                                                    move |table, _, window, cx| {
+                                                                        table.on_cell_mouse_up(
+                                                                            window, cx,
+                                                                        );
+                                                                    },
+                                                                ),
+                                                            )
+                                                            .on_mouse_move(cx.listener(
+                                                                move |table, e: &mozui::MouseMoveEvent, window, cx| {
+                                                                    table.on_cell_mouse_move(
+                                                                        row_ix, col_ix, e.pressed_button, window, cx,
+                                                                    );
+                                                                },
+                                                            ))
                                                         }),
                                                 );
 
@@ -2043,7 +2369,20 @@ where
             .context_menu({
                 let view = cx.entity().clone();
                 move |this, window: &mut Window, cx: &mut Context<PopupMenu>| {
-                    if let Some(row_ix) = view.read(cx).right_clicked_row {
+                    let right_clicked_cell;
+                    let right_clicked_row;
+                    {
+                        let state = view.read(cx);
+                        right_clicked_cell = state.right_clicked_cell;
+                        right_clicked_row = state.right_clicked_row;
+                    }
+
+                    if let Some((row_ix, col_ix)) = right_clicked_cell {
+                        view.update(cx, |menu, cx| {
+                            menu.delegate_mut()
+                                .cell_context_menu(row_ix, col_ix, this, window, cx)
+                        })
+                    } else if let Some(row_ix) = right_clicked_row {
                         view.update(cx, |menu, cx| {
                             menu.delegate_mut().context_menu(row_ix, this, window, cx)
                         })

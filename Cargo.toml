@@ -4,7 +4,6 @@ default-members = ["crates/mozui-components"]
 members = [
     # mozui core
     "crates/mozui",
-    "crates/mozui-ios-demo",
     "crates/mozui-macros",
 
     # mozui UI component library
@@ -12,7 +11,6 @@ members = [
     "crates/mozui-components",
     "crates/mozui-webview",
     "crates/mozui-builder",
-    "crates/mozui-native",
     "crates/mozui-examples",
 ]
 
@@ -31,7 +29,6 @@ mozui-macros = { path = "crates/mozui-macros" }
 #
 mozui-components = { path = "crates/mozui-components", version = "0.5.1" }
 mozui-components-macros = { path = "crates/mozui-components-macros", version = "0.5.1" }
-mozui-native = { path = "crates/mozui-native", version = "0.1.0" }
 #
 # External crates
 #
@@ -102,7 +99,29 @@ naga = { version = "29.0", features = ["wgsl-in"] }
 nix = "0.29"
 notify = "7.0.0"
 objc = "0.2"
-objc2-app-kit = { version = "0.3", default-features = false, features = [ "NSGraphics" ] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "NSActionCell",
+    "NSButton",
+    "NSButtonCell",
+    "NSCell",
+    "NSColor",
+    "NSControl",
+    "NSFont",
+    "NSGraphics",
+    "NSImage",
+    "NSImageView",
+    "NSProgressIndicator",
+    "NSResponder",
+    "NSSearchField",
+    "NSSecureTextField",
+    "NSSlider",
+    "NSSliderCell",
+    "NSSwitch",
+    "NSTextField",
+    "NSView",
+    "NSVisualEffectView",
+    "NSWindow",
+] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = [
     "NSArray",
     "NSAttributedString",

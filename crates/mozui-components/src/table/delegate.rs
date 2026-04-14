@@ -108,6 +108,18 @@ pub trait TableDelegate: Sized + 'static {
         menu
     }
 
+    /// Render the context menu for a right-clicked cell.
+    fn cell_context_menu(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        menu: PopupMenu,
+        window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> PopupMenu {
+        menu
+    }
+
     /// Render cell at the given row and column.
     fn render_td(
         &mut self,

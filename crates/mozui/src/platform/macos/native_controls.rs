@@ -1,476 +1,515 @@
-use super::{BoolExt, ns_string};
+//! macOS implementation of PlatformNativeControls using objc2.
+//!
+//! All target delegate classes use `define_class!` with typed ivars and
+//! automatic dealloc. Views and targets are stored as owned raw pointers in
+//! `NativeControlState`; ownership is recovered via `Retained::from_raw` in
+//! cleanup functions.
+
 use crate::platform::native_controls::{
-    ButtonConfig, ButtonStyle, NativeControlState, PlatformNativeControls, ProgressConfig,
-    ProgressStyle, SliderConfig, SwitchConfig, TextFieldConfig, TextFieldStyle,
+    ButtonConfig, ButtonStyle, GlassEffectConfig, GlassEffectStyle, ImageViewConfig,
+    NativeControlState, PlatformNativeControls, ProgressConfig, ProgressStyle, SliderConfig,
+    SwitchConfig, TextFieldConfig, TextFieldStyle, VisualEffectActiveState, VisualEffectBlending,
+    VisualEffectConfig, VisualEffectMaterial,
 };
 use crate::{Bounds, Pixels};
-use cocoa::{
-    base::{id, nil},
-    foundation::{NSInteger, NSPoint, NSRect, NSSize},
+use objc2::rc::Retained;
+use objc2::runtime::{AnyObject, NSObject};
+use objc2::{AllocAnyThread, DefinedClass, MainThreadMarker, define_class, msg_send, sel};
+use objc2_app_kit::{
+    NSButton, NSControl, NSImageSymbolConfiguration, NSImageView, NSProgressIndicator,
+    NSSearchField, NSSecureTextField, NSSlider, NSSwitch, NSTextField, NSView,
+    NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView,
 };
-use objc::{
-    class,
-    declare::ClassDecl,
-    msg_send,
-    runtime::{Class, Object, Sel},
-    sel, sel_impl,
-};
+use objc2_foundation::{NSNotification, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::ptr;
-use std::sync::Once;
 
 pub struct MacNativeControls;
-
 pub static MAC_NATIVE_CONTROLS: MacNativeControls = MacNativeControls;
 
-const CALLBACK_IVAR: &str = "_callback";
+// ---------------------------------------------------------------------------
+// Callback types
+// ---------------------------------------------------------------------------
 
-static REGISTER_VOID_TARGET: Once = Once::new();
-static mut VOID_TARGET_CLASS: *const Class = ptr::null();
+type VoidCb = RefCell<Option<Box<dyn Fn()>>>;
+type BoolCb = RefCell<Option<Box<dyn Fn(bool)>>>;
+type F64Cb = RefCell<Option<Box<dyn Fn(f64)>>>;
 
-static REGISTER_BOOL_TARGET: Once = Once::new();
-static mut BOOL_TARGET_CLASS: *const Class = ptr::null();
+// ---------------------------------------------------------------------------
+// VoidTarget – button / generic no-arg action
+// ---------------------------------------------------------------------------
 
-static REGISTER_F64_TARGET: Once = Once::new();
-static mut F64_TARGET_CLASS: *const Class = ptr::null();
+struct VoidTargetIvars {
+    callback: VoidCb,
+}
 
-static REGISTER_TEXT_TARGET: Once = Once::new();
-static mut TEXT_TARGET_CLASS: *const Class = ptr::null();
+impl Default for VoidTargetIvars {
+    fn default() -> Self {
+        Self {
+            callback: RefCell::new(None),
+        }
+    }
+}
 
-const CHANGE_CALLBACK_IVAR: &str = "_changeCallback";
-const SUBMIT_CALLBACK_IVAR: &str = "_submitCallback";
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[ivars = VoidTargetIvars]
+    #[name = "MozuiNativeVoidTarget"]
+    struct VoidTarget;
 
-fn bool_target_class() -> *const Class {
-    unsafe {
-        REGISTER_BOOL_TARGET.call_once(|| {
-            let superclass = class!(NSObject);
-            let mut decl = ClassDecl::new("MozuiNativeBoolTarget", superclass).unwrap();
-            decl.add_ivar::<*mut c_void>(CALLBACK_IVAR);
-
-            extern "C" fn perform(this: &Object, _: Sel, sender: id) {
-                unsafe {
-                    let ptr: *mut c_void = *this.get_ivar(CALLBACK_IVAR);
-                    if !ptr.is_null() {
-                        let callback = &*(ptr as *const Box<dyn Fn(bool)>);
-                        let state: NSInteger = msg_send![sender, state];
-                        callback(state != 0);
-                    }
-                }
+    impl VoidTarget {
+        #[unsafe(method(performAction:))]
+        fn perform_action(&self, _sender: &AnyObject) {
+            let cb = self.ivars().callback.borrow();
+            if let Some(ref f) = *cb {
+                f();
             }
+        }
+    }
 
-            extern "C" fn dealloc(this: &Object, _: Sel) {
-                unsafe {
-                    let ptr: *mut c_void = *this.get_ivar(CALLBACK_IVAR);
-                    if !ptr.is_null() {
-                        drop(Box::from_raw(ptr as *mut Box<dyn Fn(bool)>));
-                    }
-                    let _: () = msg_send![super(this, class!(NSObject)), dealloc];
-                }
-            }
+    unsafe impl NSObjectProtocol for VoidTarget {}
+);
 
-            decl.add_method(
-                sel!(performAction:),
-                perform as extern "C" fn(&Object, Sel, id),
-            );
-            decl.add_method(sel!(dealloc), dealloc as extern "C" fn(&Object, Sel));
-            BOOL_TARGET_CLASS = decl.register();
+impl VoidTarget {
+    fn new(callback: Box<dyn Fn()>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(VoidTargetIvars {
+            callback: RefCell::new(Some(callback)),
         });
-
-        BOOL_TARGET_CLASS
+        unsafe { msg_send![super(this), init] }
     }
 }
 
-fn f64_target_class() -> *const Class {
-    unsafe {
-        REGISTER_F64_TARGET.call_once(|| {
-            let superclass = class!(NSObject);
-            let mut decl = ClassDecl::new("MozuiNativeF64Target", superclass).unwrap();
-            decl.add_ivar::<*mut c_void>(CALLBACK_IVAR);
+// ---------------------------------------------------------------------------
+// BoolTarget – switch / toggle
+// ---------------------------------------------------------------------------
 
-            extern "C" fn perform(this: &Object, _: Sel, sender: id) {
-                unsafe {
-                    let ptr: *mut c_void = *this.get_ivar(CALLBACK_IVAR);
-                    if !ptr.is_null() {
-                        let callback = &*(ptr as *const Box<dyn Fn(f64)>);
-                        let value: f64 = msg_send![sender, doubleValue];
-                        callback(value);
-                    }
-                }
+struct BoolTargetIvars {
+    callback: BoolCb,
+}
+
+impl Default for BoolTargetIvars {
+    fn default() -> Self {
+        Self {
+            callback: RefCell::new(None),
+        }
+    }
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[ivars = BoolTargetIvars]
+    #[name = "MozuiNativeBoolTarget"]
+    struct BoolTarget;
+
+    impl BoolTarget {
+        #[unsafe(method(performAction:))]
+        fn perform_action(&self, sender: &AnyObject) {
+            let cb = self.ivars().callback.borrow();
+            if let Some(ref f) = *cb {
+                let state: isize = unsafe { msg_send![sender, state] };
+                f(state != 0);
             }
+        }
+    }
 
-            extern "C" fn dealloc(this: &Object, _: Sel) {
-                unsafe {
-                    let ptr: *mut c_void = *this.get_ivar(CALLBACK_IVAR);
-                    if !ptr.is_null() {
-                        drop(Box::from_raw(ptr as *mut Box<dyn Fn(f64)>));
-                    }
-                    let _: () = msg_send![super(this, class!(NSObject)), dealloc];
-                }
-            }
+    unsafe impl NSObjectProtocol for BoolTarget {}
+);
 
-            decl.add_method(
-                sel!(performAction:),
-                perform as extern "C" fn(&Object, Sel, id),
-            );
-            decl.add_method(sel!(dealloc), dealloc as extern "C" fn(&Object, Sel));
-            F64_TARGET_CLASS = decl.register();
+impl BoolTarget {
+    fn new(callback: Box<dyn Fn(bool)>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(BoolTargetIvars {
+            callback: RefCell::new(Some(callback)),
         });
-
-        F64_TARGET_CLASS
+        unsafe { msg_send![super(this), init] }
     }
 }
 
-fn void_target_class() -> *const Class {
-    unsafe {
-        REGISTER_VOID_TARGET.call_once(|| {
-            let superclass = class!(NSObject);
-            let mut decl = ClassDecl::new("MozuiNativeVoidTarget", superclass).unwrap();
-            decl.add_ivar::<*mut c_void>(CALLBACK_IVAR);
+// ---------------------------------------------------------------------------
+// F64Target – slider / stepper
+// ---------------------------------------------------------------------------
 
-            extern "C" fn perform(this: &Object, _: Sel, _sender: id) {
-                unsafe {
-                    let ptr: *mut c_void = *this.get_ivar(CALLBACK_IVAR);
-                    if !ptr.is_null() {
-                        let callback = &*(ptr as *const Box<dyn Fn()>);
-                        callback();
-                    }
-                }
+struct F64TargetIvars {
+    callback: F64Cb,
+}
+
+impl Default for F64TargetIvars {
+    fn default() -> Self {
+        Self {
+            callback: RefCell::new(None),
+        }
+    }
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[ivars = F64TargetIvars]
+    #[name = "MozuiNativeF64Target"]
+    struct F64Target;
+
+    impl F64Target {
+        #[unsafe(method(performAction:))]
+        fn perform_action(&self, sender: &AnyObject) {
+            let cb = self.ivars().callback.borrow();
+            if let Some(ref f) = *cb {
+                let value: f64 = unsafe { msg_send![sender, doubleValue] };
+                f(value);
             }
+        }
+    }
 
-            extern "C" fn dealloc(this: &Object, _: Sel) {
-                unsafe {
-                    let ptr: *mut c_void = *this.get_ivar(CALLBACK_IVAR);
-                    if !ptr.is_null() {
-                        drop(Box::from_raw(ptr as *mut Box<dyn Fn()>));
-                    }
-                    let _: () = msg_send![super(this, class!(NSObject)), dealloc];
-                }
-            }
+    unsafe impl NSObjectProtocol for F64Target {}
+);
 
-            decl.add_method(
-                sel!(performAction:),
-                perform as extern "C" fn(&Object, Sel, id),
-            );
-            decl.add_method(sel!(dealloc), dealloc as extern "C" fn(&Object, Sel));
-            VOID_TARGET_CLASS = decl.register();
+impl F64Target {
+    fn new(callback: Box<dyn Fn(f64)>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(F64TargetIvars {
+            callback: RefCell::new(Some(callback)),
         });
-
-        VOID_TARGET_CLASS
+        unsafe { msg_send![super(this), init] }
     }
 }
 
-fn text_target_class() -> *const Class {
-    unsafe {
-        REGISTER_TEXT_TARGET.call_once(|| {
-            let superclass = class!(NSObject);
-            let mut decl = ClassDecl::new("MozuiNativeTextTarget", superclass).unwrap();
-            decl.add_ivar::<*mut c_void>(CHANGE_CALLBACK_IVAR);
-            decl.add_ivar::<*mut c_void>(SUBMIT_CALLBACK_IVAR);
+// ---------------------------------------------------------------------------
+// TextTarget – text field change + submit delegate
+// ---------------------------------------------------------------------------
 
-            extern "C" fn control_text_did_change(this: &Object, _: Sel, notification: id) {
-                unsafe {
-                    let ptr: *mut c_void = *this.get_ivar(CHANGE_CALLBACK_IVAR);
-                    if ptr.is_null() {
-                        return;
-                    }
-                    let callback = &*(ptr as *const Box<dyn Fn(String)>);
-                    let object: id = msg_send![notification, object];
-                    let value = current_string_value(object);
-                    callback(value);
-                }
+struct TextTargetIvars {
+    on_change: RefCell<Option<Box<dyn Fn(String)>>>,
+    on_submit: RefCell<Option<Box<dyn Fn(String)>>>,
+}
+
+impl Default for TextTargetIvars {
+    fn default() -> Self {
+        Self {
+            on_change: RefCell::new(None),
+            on_submit: RefCell::new(None),
+        }
+    }
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[ivars = TextTargetIvars]
+    #[name = "MozuiNativeTextTarget"]
+    struct TextTarget;
+
+    impl TextTarget {
+        /// NSTextFieldDelegate: called on every keystroke.
+        #[unsafe(method(controlTextDidChange:))]
+        fn control_text_did_change(&self, notification: &NSNotification) {
+            let cb = self.ivars().on_change.borrow();
+            if let Some(ref f) = *cb {
+                let value = unsafe { string_value_from_notification(notification) };
+                f(value);
             }
+        }
 
-            extern "C" fn perform(this: &Object, _: Sel, sender: id) {
-                unsafe {
-                    let ptr: *mut c_void = *this.get_ivar(SUBMIT_CALLBACK_IVAR);
-                    if ptr.is_null() {
-                        return;
-                    }
-                    let callback = &*(ptr as *const Box<dyn Fn(String)>);
-                    let value = current_string_value(sender);
-                    callback(value);
-                }
+        /// Target/action: called on Enter / field commit.
+        #[unsafe(method(performAction:))]
+        fn perform_action(&self, sender: &AnyObject) {
+            let cb = self.ivars().on_submit.borrow();
+            if let Some(ref f) = *cb {
+                let value = unsafe { string_value_of_object(sender) };
+                f(value);
             }
+        }
+    }
 
-            extern "C" fn dealloc(this: &Object, _: Sel) {
-                unsafe {
-                    let change_ptr: *mut c_void = *this.get_ivar(CHANGE_CALLBACK_IVAR);
-                    if !change_ptr.is_null() {
-                        drop(Box::from_raw(change_ptr as *mut Box<dyn Fn(String)>));
-                    }
-                    let submit_ptr: *mut c_void = *this.get_ivar(SUBMIT_CALLBACK_IVAR);
-                    if !submit_ptr.is_null() {
-                        drop(Box::from_raw(submit_ptr as *mut Box<dyn Fn(String)>));
-                    }
-                    let _: () = msg_send![super(this, class!(NSObject)), dealloc];
-                }
-            }
+    unsafe impl NSObjectProtocol for TextTarget {}
+);
 
-            decl.add_method(
-                sel!(controlTextDidChange:),
-                control_text_did_change as extern "C" fn(&Object, Sel, id),
-            );
-            decl.add_method(
-                sel!(performAction:),
-                perform as extern "C" fn(&Object, Sel, id),
-            );
-            decl.add_method(sel!(dealloc), dealloc as extern "C" fn(&Object, Sel));
-            TEXT_TARGET_CLASS = decl.register();
+impl TextTarget {
+    fn new(
+        on_change: Option<Box<dyn Fn(String)>>,
+        on_submit: Option<Box<dyn Fn(String)>>,
+    ) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(TextTargetIvars {
+            on_change: RefCell::new(on_change),
+            on_submit: RefCell::new(on_submit),
         });
-
-        TEXT_TARGET_CLASS
+        unsafe { msg_send![super(this), init] }
     }
 }
 
-unsafe fn create_void_target(callback: Box<dyn Fn()>) -> id {
-    let cls = void_target_class();
-    let target: id = msg_send![cls, alloc];
-    let target: id = msg_send![target, init];
-    let callback_ptr = Box::into_raw(Box::new(callback)) as *mut c_void;
-    unsafe {
-        (*target).set_ivar(CALLBACK_IVAR, callback_ptr);
+// ---------------------------------------------------------------------------
+// String extraction helpers
+// ---------------------------------------------------------------------------
+
+unsafe fn string_value_from_notification(notification: &NSNotification) -> String {
+    let object: *mut AnyObject = msg_send![notification, object];
+    if object.is_null() {
+        return String::new();
     }
-    target
+    unsafe { string_value_of_object(&*object) }
 }
 
-unsafe fn create_bool_target(callback: Box<dyn Fn(bool)>) -> id {
-    let cls = bool_target_class();
-    let target: id = msg_send![cls, alloc];
-    let target: id = msg_send![target, init];
-    let callback_ptr = Box::into_raw(Box::new(callback)) as *mut c_void;
-    unsafe {
-        (*target).set_ivar(CALLBACK_IVAR, callback_ptr);
+unsafe fn string_value_of_object(obj: &AnyObject) -> String {
+    let ns_str_ptr: *mut NSString = msg_send![obj, stringValue];
+    if ns_str_ptr.is_null() {
+        return String::new();
     }
-    target
+    unsafe { (*ns_str_ptr).to_string() }
 }
 
-unsafe fn create_f64_target(callback: Box<dyn Fn(f64)>) -> id {
-    let cls = f64_target_class();
-    let target: id = msg_send![cls, alloc];
-    let target: id = msg_send![target, init];
-    let callback_ptr = Box::into_raw(Box::new(callback)) as *mut c_void;
-    unsafe {
-        (*target).set_ivar(CALLBACK_IVAR, callback_ptr);
-    }
-    target
-}
-
-unsafe fn create_text_target(
-    on_change: Option<Box<dyn Fn(String)>>,
-    on_submit: Option<Box<dyn Fn(String)>>,
-) -> id {
-    let cls = text_target_class();
-    let target: id = msg_send![cls, alloc];
-    let target: id = msg_send![target, init];
-    let change_ptr = on_change
-        .map(|callback| Box::into_raw(Box::new(callback)) as *mut c_void)
-        .unwrap_or(ptr::null_mut());
-    let submit_ptr = on_submit
-        .map(|callback| Box::into_raw(Box::new(callback)) as *mut c_void)
-        .unwrap_or(ptr::null_mut());
-    unsafe {
-        (*target).set_ivar(CHANGE_CALLBACK_IVAR, change_ptr);
-        (*target).set_ivar(SUBMIT_CALLBACK_IVAR, submit_ptr);
-    }
-    target
-}
+// ---------------------------------------------------------------------------
+// Coordinate conversion (AppKit flipped Y)
+// ---------------------------------------------------------------------------
 
 fn bounds_to_ns_rect(bounds: Bounds<Pixels>, parent_height: f64) -> NSRect {
     let x: f64 = bounds.origin.x.into();
     let y: f64 = bounds.origin.y.into();
-    let width: f64 = bounds.size.width.into();
-    let height: f64 = bounds.size.height.into();
-    let flipped_y = parent_height - y - height;
+    let w: f64 = bounds.size.width.into();
+    let h: f64 = bounds.size.height.into();
+    let flipped_y = parent_height - y - h;
     NSRect::new(
         NSPoint::new(x, flipped_y),
-        NSSize::new(width.max(1.0), height.max(1.0)),
+        NSSize::new(w.max(1.0), h.max(1.0)),
     )
 }
 
-unsafe fn attach_and_position(parent: id, view: id, bounds: Bounds<Pixels>) {
-    let parent_frame: NSRect = msg_send![parent, frame];
+// ---------------------------------------------------------------------------
+// View lifecycle helpers
+// ---------------------------------------------------------------------------
+
+unsafe fn attach_and_position(parent: *mut c_void, view: *mut c_void, bounds: Bounds<Pixels>) {
+    if parent.is_null() || view.is_null() {
+        return;
+    }
+    let parent_ref: &NSView = unsafe { &*(parent as *const NSView) };
+    let view_ref: &NSView = unsafe { &*(view as *const NSView) };
+    let parent_frame = parent_ref.frame();
     let frame = bounds_to_ns_rect(bounds, parent_frame.size.height);
-    let superview: id = msg_send![view, superview];
-    if superview.is_null() {
-        let _: () = msg_send![parent, addSubview: view];
+    if unsafe { view_ref.superview() }.is_none() {
+        parent_ref.addSubview(view_ref);
     }
-    let _: () = msg_send![view, setFrame: frame];
+    view_ref.setFrame(frame);
 }
 
-unsafe fn remove_from_parent(view: id) {
-    let superview: id = msg_send![view, superview];
-    if !superview.is_null() {
-        let _: () = msg_send![view, removeFromSuperview];
-    }
-}
-
-unsafe fn release_target(target: *mut c_void) {
-    if !target.is_null() {
-        let _: () = msg_send![target as id, release];
-    }
-}
-
+/// Cleanup: remove from superview and drop both view and target.
 unsafe fn cleanup_view_and_target(view: *mut c_void, target: *mut c_void) {
+    if !target.is_null() {
+        drop(unsafe { Retained::from_raw(target as *mut NSObject) });
+    }
     if !view.is_null() {
-        unsafe {
-            remove_from_parent(view as id);
+        if let Some(v) = unsafe { Retained::from_raw(view as *mut NSView) } {
+            v.removeFromSuperview();
         }
     }
-    unsafe {
-        release_target(target);
-    }
-    if !view.is_null() {
-        let _: () = msg_send![view as id, release];
-    }
 }
 
+/// Cleanup: remove from superview and drop view; no target.
 unsafe fn cleanup_view_only(view: *mut c_void, _target: *mut c_void) {
     if !view.is_null() {
-        unsafe {
-            remove_from_parent(view as id);
+        if let Some(v) = unsafe { Retained::from_raw(view as *mut NSView) } {
+            v.removeFromSuperview();
         }
-        let _: () = msg_send![view as id, release];
     }
 }
 
-unsafe fn set_target_action(view: id, target: id) {
-    let _: () = msg_send![view, setTarget: target];
-    let _: () = msg_send![view, setAction: sel!(performAction:)];
+// ---------------------------------------------------------------------------
+// Wire target/action helpers
+// ---------------------------------------------------------------------------
+
+unsafe fn set_target_action(view: *mut c_void, target: &AnyObject) {
+    let control: &NSControl = unsafe { &*(view as *const NSControl) };
+    unsafe {
+        NSControl::setTarget(control, Some(target));
+        NSControl::setAction(control, Some(sel!(performAction:)));
+    }
 }
 
-unsafe fn clear_target_action(view: id) {
-    let _: () = msg_send![view, setTarget: nil];
-    let _: () = msg_send![view, setAction: nil];
+unsafe fn clear_target_action(view: *mut c_void) {
+    let control: &NSControl = unsafe { &*(view as *const NSControl) };
+    unsafe {
+        NSControl::setTarget(control, None);
+        NSControl::setAction(control, None);
+    }
 }
 
-unsafe fn set_delegate(view: id, delegate: id) {
-    let _: () = msg_send![view, setDelegate: delegate];
+unsafe fn set_delegate(view: *mut c_void, delegate: *mut AnyObject) {
+    let _: () = unsafe { msg_send![view as *mut AnyObject, setDelegate: delegate] };
 }
 
-unsafe fn set_enabled(view: id, enabled: bool) {
-    let _: () = msg_send![view, setEnabled: enabled.to_objc()];
+unsafe fn set_enabled(view: *mut c_void, enabled: bool) {
+    let control: &NSControl = unsafe { &*(view as *const NSControl) };
+    NSControl::setEnabled(control, enabled);
 }
 
-unsafe fn create_button(title: &str) -> id {
-    let button: id = msg_send![class!(NSButton), alloc];
-    let button: id = msg_send![button, initWithFrame: NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(80.0, 24.0))];
-    let title = unsafe { ns_string(title) };
-    let _: () = msg_send![button, setTitle: title];
-    button
+/// Release and clear the old target stored in `state`, returning null.
+unsafe fn release_old_target(state: &mut NativeControlState) {
+    let ptr = state.target();
+    if !ptr.is_null() {
+        drop(unsafe { Retained::from_raw(ptr as *mut NSObject) });
+    }
+    state.set_target(ptr::null_mut());
 }
 
-unsafe fn apply_button_style(view: id, style: ButtonStyle) {
+// ---------------------------------------------------------------------------
+// Control creation helpers
+// ---------------------------------------------------------------------------
+
+unsafe fn create_button(title: &str, mtm: MainThreadMarker) -> *mut c_void {
+    let ns_title = NSString::from_str(title);
+    let button = unsafe { NSButton::buttonWithTitle_target_action(&ns_title, None, None, mtm) };
+    Retained::into_raw(unsafe { Retained::cast_unchecked::<NSView>(button) }) as *mut c_void
+}
+
+unsafe fn apply_button_style(view: *mut c_void, style: ButtonStyle) {
+    let view_obj = view as *mut AnyObject;
     match style {
         ButtonStyle::Borderless => {
-            let _: () = msg_send![view, setBordered: false];
+            let _: () = unsafe { msg_send![view_obj, setBordered: false] };
         }
         ButtonStyle::Inline => {
-            let _: () = msg_send![view, setBordered: true];
-            let _: () = msg_send![view, setBezelStyle: 10isize];
+            let _: () = unsafe { msg_send![view_obj, setBordered: true] };
+            let _: () = unsafe { msg_send![view_obj, setBezelStyle: 10isize] };
         }
-        ButtonStyle::Filled => {
-            let _: () = msg_send![view, setBordered: true];
-            let _: () = msg_send![view, setBezelStyle: 1isize];
-        }
-        ButtonStyle::Rounded => {
-            let _: () = msg_send![view, setBordered: true];
+        ButtonStyle::Filled | ButtonStyle::Rounded => {
+            let _: () = unsafe { msg_send![view_obj, setBordered: true] };
+            let _: () = unsafe { msg_send![view_obj, setBezelStyle: 1isize] };
         }
     }
 }
 
-unsafe fn create_switch() -> id {
-    let view: id = msg_send![class!(NSSwitch), alloc];
-    msg_send![view, initWithFrame: NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(40.0, 22.0))]
+unsafe fn create_switch(mtm: MainThreadMarker) -> *mut c_void {
+    let sw = NSSwitch::new(mtm);
+    Retained::into_raw(unsafe { Retained::cast_unchecked::<NSView>(sw) }) as *mut c_void
 }
 
-unsafe fn create_slider() -> id {
-    let view: id = msg_send![class!(NSSlider), alloc];
-    msg_send![view, initWithFrame: NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(140.0, 24.0))]
+unsafe fn create_slider(mtm: MainThreadMarker) -> *mut c_void {
+    let zero = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(140.0, 24.0));
+    let slider: Retained<NSSlider> =
+        unsafe { msg_send![mtm.alloc::<NSSlider>(), initWithFrame: zero] };
+    Retained::into_raw(unsafe { Retained::cast_unchecked::<NSView>(slider) }) as *mut c_void
 }
 
-unsafe fn create_progress() -> id {
-    let view: id = msg_send![class!(NSProgressIndicator), alloc];
-    msg_send![view, initWithFrame: NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(140.0, 14.0))]
+unsafe fn create_progress(mtm: MainThreadMarker) -> *mut c_void {
+    let zero = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(140.0, 14.0));
+    let prog: Retained<NSProgressIndicator> =
+        unsafe { msg_send![mtm.alloc::<NSProgressIndicator>(), initWithFrame: zero] };
+    Retained::into_raw(unsafe { Retained::cast_unchecked::<NSView>(prog) }) as *mut c_void
 }
 
-unsafe fn create_text_field(config: &TextFieldConfig<'_>) -> id {
-    let view: id = match (config.style, config.secure) {
+unsafe fn create_text_field(config: &TextFieldConfig<'_>, mtm: MainThreadMarker) -> *mut c_void {
+    let zero = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(180.0, 24.0));
+    let view: Retained<NSView> = match (config.style, config.secure) {
         (TextFieldStyle::Search, _) => {
-            let search_field: id = msg_send![class!(NSSearchField), alloc];
-            msg_send![
-                search_field,
-                initWithFrame: NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(180.0, 24.0))
-            ]
+            let sf: Retained<NSSearchField> =
+                unsafe { msg_send![mtm.alloc::<NSSearchField>(), initWithFrame: zero] };
+            unsafe { Retained::cast_unchecked(sf) }
         }
         (_, true) => {
-            let secure_field: id = msg_send![class!(NSSecureTextField), alloc];
-            msg_send![
-                secure_field,
-                initWithFrame: NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(180.0, 24.0))
-            ]
+            let sf: Retained<NSSecureTextField> =
+                unsafe { msg_send![mtm.alloc::<NSSecureTextField>(), initWithFrame: zero] };
+            unsafe { Retained::cast_unchecked(sf) }
         }
         _ => {
-            let text_field: id = msg_send![class!(NSTextField), alloc];
-            msg_send![
-                text_field,
-                initWithFrame: NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(180.0, 24.0))
-            ]
+            let tf: Retained<NSTextField> =
+                unsafe { msg_send![mtm.alloc::<NSTextField>(), initWithFrame: zero] };
+            unsafe { Retained::cast_unchecked(tf) }
         }
     };
-    unsafe {
-        apply_text_field_config(view, config);
-    }
-    view
+    Retained::into_raw(view) as *mut c_void
 }
 
-unsafe fn apply_text_field_config(view: id, config: &TextFieldConfig<'_>) {
-    let placeholder = config.placeholder.map(|value| unsafe { ns_string(value) });
-    let current_value = unsafe { current_string_value(view) };
+unsafe fn apply_text_field_config(view: *mut c_void, config: &TextFieldConfig<'_>) {
+    let obj = view as *mut AnyObject;
 
-    if current_value != config.value {
-        let _: () = msg_send![view, setStringValue: unsafe { ns_string(config.value) }];
-    }
-    let _: () = msg_send![view, setEditable: config.editable.to_objc()];
-    let _: () = msg_send![view, setSelectable: config.selectable.to_objc()];
-    let _: () = msg_send![view, setBezeled: config.bezeled.to_objc()];
-    let _: () = msg_send![view, setDrawsBackground: config.bezeled.to_objc()];
-    unsafe {
-        set_enabled(view, config.enabled);
-    }
-
-    if let Some(placeholder) = placeholder {
-        let _: () = msg_send![view, setPlaceholderString: placeholder];
+    // Only update stringValue if it changed (avoids fighting with user edits).
+    let current_ns_str: *mut NSString = unsafe { msg_send![obj, stringValue] };
+    let current_str = if current_ns_str.is_null() {
+        String::new()
     } else {
-        let _: () = msg_send![view, setPlaceholderString: nil];
+        unsafe { (*current_ns_str).to_string() }
+    };
+    if current_str != config.value {
+        let ns_val = NSString::from_str(config.value);
+        let _: () = unsafe { msg_send![obj, setStringValue: &*ns_val] };
+    }
+
+    let _: () = unsafe { msg_send![obj, setEditable: config.editable] };
+    let _: () = unsafe { msg_send![obj, setSelectable: config.selectable] };
+    let _: () = unsafe { msg_send![obj, setBezeled: config.bezeled] };
+    let _: () = unsafe { msg_send![obj, setDrawsBackground: config.bezeled] };
+    unsafe { set_enabled(view, config.enabled) };
+
+    if let Some(placeholder) = config.placeholder {
+        let ns_ph = NSString::from_str(placeholder);
+        let _: () = unsafe { msg_send![obj, setPlaceholderString: &*ns_ph] };
+    } else {
+        let _: () = unsafe { msg_send![obj, setPlaceholderString: ptr::null::<NSString>()] };
     }
 
     if let Some(size) = config.font_size {
-        let font: id = msg_send![class!(NSFont), systemFontOfSize: size];
-        let _: () = msg_send![view, setFont: font];
+        let font: *mut AnyObject = unsafe {
+            msg_send![
+                objc2::class!(NSFont),
+                systemFontOfSize: size
+            ]
+        };
+        if !font.is_null() {
+            let _: () = unsafe { msg_send![obj, setFont: font] };
+        }
     }
 }
 
-unsafe fn current_string_value(view: id) -> String {
-    let value: id = msg_send![view, stringValue];
-    let utf8: *const i8 = msg_send![value, UTF8String];
-    if utf8.is_null() {
-        String::new()
-    } else {
-        unsafe { std::ffi::CStr::from_ptr(utf8) }
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-unsafe fn text_field_matches_config(view: id, config: &TextFieldConfig<'_>) -> bool {
-    let expected_class = match (config.style, config.secure) {
-        (TextFieldStyle::Search, _) => class!(NSSearchField),
-        (_, true) => class!(NSSecureTextField),
-        _ => class!(NSTextField),
+unsafe fn text_field_class_matches(view: *mut c_void, config: &TextFieldConfig<'_>) -> bool {
+    let obj = view as *mut AnyObject;
+    let expected_class: *const objc2::runtime::AnyClass = match (config.style, config.secure) {
+        (TextFieldStyle::Search, _) => unsafe { msg_send![objc2::class!(NSSearchField), class] },
+        (_, true) => unsafe { msg_send![objc2::class!(NSSecureTextField), class] },
+        _ => unsafe { msg_send![objc2::class!(NSTextField), class] },
     };
-    let is_match: bool = msg_send![view, isKindOfClass: expected_class];
+    let is_match: bool = unsafe { msg_send![obj, isKindOfClass: expected_class] };
     is_match
 }
+
+// ---------------------------------------------------------------------------
+// NSVisualEffectMaterial / blending / state mapping
+// ---------------------------------------------------------------------------
+
+fn material_to_ns(m: VisualEffectMaterial) -> NSVisualEffectMaterial {
+    match m {
+        VisualEffectMaterial::Titlebar => NSVisualEffectMaterial::Titlebar,
+        VisualEffectMaterial::Selection => NSVisualEffectMaterial::Selection,
+        VisualEffectMaterial::Menu => NSVisualEffectMaterial::Menu,
+        VisualEffectMaterial::Popover => NSVisualEffectMaterial::Popover,
+        VisualEffectMaterial::Sidebar => NSVisualEffectMaterial::Sidebar,
+        VisualEffectMaterial::HeaderView => NSVisualEffectMaterial::HeaderView,
+        VisualEffectMaterial::Sheet => NSVisualEffectMaterial::Sheet,
+        VisualEffectMaterial::WindowBackground => NSVisualEffectMaterial::WindowBackground,
+        VisualEffectMaterial::HudWindow => NSVisualEffectMaterial::HUDWindow,
+        VisualEffectMaterial::FullScreenUI => NSVisualEffectMaterial::FullScreenUI,
+        VisualEffectMaterial::ToolTip => NSVisualEffectMaterial::ToolTip,
+        VisualEffectMaterial::ContentBackground => NSVisualEffectMaterial::ContentBackground,
+        VisualEffectMaterial::UnderWindowBackground => {
+            NSVisualEffectMaterial::UnderWindowBackground
+        }
+        VisualEffectMaterial::UnderPageBackground => NSVisualEffectMaterial::UnderPageBackground,
+    }
+}
+
+fn blending_to_ns(b: VisualEffectBlending) -> NSVisualEffectBlendingMode {
+    match b {
+        VisualEffectBlending::BehindWindow => NSVisualEffectBlendingMode::BehindWindow,
+        VisualEffectBlending::WithinWindow => NSVisualEffectBlendingMode::WithinWindow,
+    }
+}
+
+fn active_state_to_ns(s: VisualEffectActiveState) -> NSVisualEffectState {
+    match s {
+        VisualEffectActiveState::FollowsWindowActiveState => {
+            NSVisualEffectState::FollowsWindowActiveState
+        }
+        VisualEffectActiveState::Active => NSVisualEffectState::Active,
+        VisualEffectActiveState::Inactive => NSVisualEffectState::Inactive,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PlatformNativeControls implementation
+// ---------------------------------------------------------------------------
 
 impl PlatformNativeControls for MacNativeControls {
     fn update_button(
@@ -482,34 +521,30 @@ impl PlatformNativeControls for MacNativeControls {
         config: ButtonConfig<'_>,
     ) {
         unsafe {
-            let view = if state.is_initialized() {
-                state.view() as id
-            } else {
-                let view = create_button(config.title);
-                *state = NativeControlState::new(
-                    view as *mut c_void,
-                    ptr::null_mut(),
-                    cleanup_view_and_target,
-                );
-                view
-            };
+            let mtm = MainThreadMarker::new_unchecked();
 
-            let _: () = msg_send![view, setTitle: ns_string(config.title)];
-            apply_button_style(view, config.style);
-            set_enabled(view, config.enabled);
-
-            release_target(state.target());
-            state.set_target(ptr::null_mut());
-            if let Some(callback) = config.on_click {
-                let target = create_void_target(callback);
-                set_target_action(view, target);
-                state.set_target(target as *mut c_void);
+            if !state.is_initialized() {
+                let view = create_button(config.title, mtm);
+                *state = NativeControlState::new(view, ptr::null_mut(), cleanup_view_and_target);
             } else {
-                let _: () = msg_send![view, setTarget: nil];
-                let _: () = msg_send![view, setAction: nil];
+                // Update title.
+                let ns_title = NSString::from_str(config.title);
+                let _: () = msg_send![state.view() as *mut AnyObject, setTitle: &*ns_title];
             }
 
-            attach_and_position(parent as id, view, bounds);
+            apply_button_style(state.view(), config.style);
+            set_enabled(state.view(), config.enabled);
+
+            release_old_target(state);
+            if let Some(callback) = config.on_click {
+                let target = VoidTarget::new(callback);
+                set_target_action(state.view(), &target);
+                state.set_target(Retained::into_raw(target) as *mut c_void);
+            } else {
+                clear_target_action(state.view());
+            }
+
+            attach_and_position(parent, state.view(), bounds);
         }
     }
 
@@ -522,33 +557,28 @@ impl PlatformNativeControls for MacNativeControls {
         config: SwitchConfig,
     ) {
         unsafe {
-            let view = if state.is_initialized() {
-                state.view() as id
-            } else {
-                let view = create_switch();
-                *state = NativeControlState::new(
-                    view as *mut c_void,
-                    ptr::null_mut(),
-                    cleanup_view_and_target,
-                );
-                view
-            };
+            let mtm = MainThreadMarker::new_unchecked();
 
-            let _: () = msg_send![view, setState: if config.checked { 1isize } else { 0isize }];
-            set_enabled(view, config.enabled);
-
-            release_target(state.target());
-            state.set_target(ptr::null_mut());
-            if let Some(callback) = config.on_change {
-                let target = create_bool_target(callback);
-                set_target_action(view, target);
-                state.set_target(target as *mut c_void);
-            } else {
-                let _: () = msg_send![view, setTarget: nil];
-                let _: () = msg_send![view, setAction: nil];
+            if !state.is_initialized() {
+                let view = create_switch(mtm);
+                *state = NativeControlState::new(view, ptr::null_mut(), cleanup_view_and_target);
             }
 
-            attach_and_position(parent as id, view, bounds);
+            let obj = state.view() as *mut AnyObject;
+            let ns_state: isize = if config.checked { 1 } else { 0 };
+            let _: () = msg_send![obj, setState: ns_state];
+            set_enabled(state.view(), config.enabled);
+
+            release_old_target(state);
+            if let Some(callback) = config.on_change {
+                let target = BoolTarget::new(callback);
+                set_target_action(state.view(), &target);
+                state.set_target(Retained::into_raw(target) as *mut c_void);
+            } else {
+                clear_target_action(state.view());
+            }
+
+            attach_and_position(parent, state.view(), bounds);
         }
     }
 
@@ -561,35 +591,29 @@ impl PlatformNativeControls for MacNativeControls {
         config: SliderConfig,
     ) {
         unsafe {
-            let view = if state.is_initialized() {
-                state.view() as id
-            } else {
-                let view = create_slider();
-                *state = NativeControlState::new(
-                    view as *mut c_void,
-                    ptr::null_mut(),
-                    cleanup_view_and_target,
-                );
-                view
-            };
+            let mtm = MainThreadMarker::new_unchecked();
 
-            let _: () = msg_send![view, setMinValue: config.min];
-            let _: () = msg_send![view, setMaxValue: config.max];
-            let _: () = msg_send![view, setDoubleValue: config.value];
-            set_enabled(view, config.enabled);
-
-            release_target(state.target());
-            state.set_target(ptr::null_mut());
-            if let Some(callback) = config.on_change {
-                let target = create_f64_target(callback);
-                set_target_action(view, target);
-                state.set_target(target as *mut c_void);
-            } else {
-                let _: () = msg_send![view, setTarget: nil];
-                let _: () = msg_send![view, setAction: nil];
+            if !state.is_initialized() {
+                let view = create_slider(mtm);
+                *state = NativeControlState::new(view, ptr::null_mut(), cleanup_view_and_target);
             }
 
-            attach_and_position(parent as id, view, bounds);
+            let obj = state.view() as *mut AnyObject;
+            let _: () = msg_send![obj, setMinValue: config.min];
+            let _: () = msg_send![obj, setMaxValue: config.max];
+            let _: () = msg_send![obj, setDoubleValue: config.value];
+            set_enabled(state.view(), config.enabled);
+
+            release_old_target(state);
+            if let Some(callback) = config.on_change {
+                let target = F64Target::new(callback);
+                set_target_action(state.view(), &target);
+                state.set_target(Retained::into_raw(target) as *mut c_void);
+            } else {
+                clear_target_action(state.view());
+            }
+
+            attach_and_position(parent, state.view(), bounds);
         }
     }
 
@@ -602,40 +626,34 @@ impl PlatformNativeControls for MacNativeControls {
         config: ProgressConfig,
     ) {
         unsafe {
-            let view = if state.is_initialized() {
-                state.view() as id
-            } else {
-                let view = create_progress();
-                *state = NativeControlState::new(
-                    view as *mut c_void,
-                    ptr::null_mut(),
-                    cleanup_view_only,
-                );
-                view
-            };
+            let mtm = MainThreadMarker::new_unchecked();
 
-            let _: () = msg_send![
-                view,
-                setStyle: match config.style {
-                    ProgressStyle::Bar => 0isize,
-                    ProgressStyle::Spinning => 1isize,
-                }
-            ];
-            let _: () = msg_send![view, setMinValue: config.min];
-            let _: () = msg_send![view, setMaxValue: config.max];
+            if !state.is_initialized() {
+                let view = create_progress(mtm);
+                *state = NativeControlState::new(view, ptr::null_mut(), cleanup_view_only);
+            }
+
+            let obj = state.view() as *mut AnyObject;
+            let style_val: isize = match config.style {
+                ProgressStyle::Bar => 0,
+                ProgressStyle::Spinning => 1,
+            };
+            let _: () = msg_send![obj, setStyle: style_val];
+            let _: () = msg_send![obj, setMinValue: config.min];
+            let _: () = msg_send![obj, setMaxValue: config.max];
 
             match config.value {
                 Some(value) => {
-                    let _: () = msg_send![view, setIndeterminate: false];
-                    let _: () = msg_send![view, setDoubleValue: value];
+                    let _: () = msg_send![obj, setIndeterminate: false];
+                    let _: () = msg_send![obj, setDoubleValue: value];
                 }
                 None => {
-                    let _: () = msg_send![view, setIndeterminate: true];
-                    let _: () = msg_send![view, startAnimation: nil];
+                    let _: () = msg_send![obj, setIndeterminate: true];
+                    let _: () = msg_send![obj, startAnimation: ptr::null::<AnyObject>()];
                 }
             }
 
-            attach_and_position(parent as id, view, bounds);
+            attach_and_position(parent, state.view(), bounds);
         }
     }
 
@@ -648,39 +666,243 @@ impl PlatformNativeControls for MacNativeControls {
         config: TextFieldConfig<'_>,
     ) {
         unsafe {
-            if state.is_initialized() && !text_field_matches_config(state.view() as id, &config) {
+            let mtm = MainThreadMarker::new_unchecked();
+
+            // Recreate if field type changed (e.g. plain → search).
+            if state.is_initialized() && !text_field_class_matches(state.view(), &config) {
                 cleanup_view_and_target(state.view(), state.target());
                 *state = NativeControlState::default();
             }
 
-            let view = if state.is_initialized() {
-                state.view() as id
-            } else {
-                let view = create_text_field(&config);
-                *state = NativeControlState::new(
-                    view as *mut c_void,
-                    ptr::null_mut(),
-                    cleanup_view_and_target,
-                );
-                view
-            };
-
-            apply_text_field_config(view, &config);
-
-            release_target(state.target());
-            state.set_target(ptr::null_mut());
-
-            if config.on_change.is_some() || config.on_submit.is_some() {
-                let target = create_text_target(config.on_change, config.on_submit);
-                set_delegate(view, target);
-                set_target_action(view, target);
-                state.set_target(target as *mut c_void);
-            } else {
-                set_delegate(view, nil);
-                clear_target_action(view);
+            if !state.is_initialized() {
+                let view = create_text_field(&config, mtm);
+                *state = NativeControlState::new(view, ptr::null_mut(), cleanup_view_and_target);
             }
 
-            attach_and_position(parent as id, view, bounds);
+            apply_text_field_config(state.view(), &config);
+
+            release_old_target(state);
+            if config.on_change.is_some() || config.on_submit.is_some() {
+                let target = TextTarget::new(config.on_change, config.on_submit);
+                let target_ptr = Retained::into_raw(target);
+                set_delegate(state.view(), target_ptr as *mut AnyObject);
+                set_target_action(state.view(), &*(target_ptr as *const AnyObject));
+                state.set_target(target_ptr as *mut c_void);
+            } else {
+                set_delegate(state.view(), ptr::null_mut());
+                clear_target_action(state.view());
+            }
+
+            attach_and_position(parent, state.view(), bounds);
+        }
+    }
+
+    fn update_visual_effect(
+        &self,
+        state: &mut NativeControlState,
+        parent: *mut c_void,
+        bounds: Bounds<Pixels>,
+        _scale: f32,
+        config: VisualEffectConfig,
+    ) {
+        unsafe {
+            let mtm = MainThreadMarker::new_unchecked();
+
+            if !state.is_initialized() {
+                let view = NSVisualEffectView::new(mtm);
+                let view_ptr =
+                    Retained::into_raw(Retained::cast_unchecked::<NSView>(view)) as *mut c_void;
+                *state = NativeControlState::new(view_ptr, ptr::null_mut(), cleanup_view_only);
+            }
+
+            let view: &NSVisualEffectView = &*(state.view() as *const NSVisualEffectView);
+            view.setMaterial(material_to_ns(config.material));
+            view.setBlendingMode(blending_to_ns(config.blending));
+            view.setState(active_state_to_ns(config.active_state));
+            view.setEmphasized(config.is_emphasized);
+
+            attach_and_position(parent, state.view(), bounds);
+        }
+    }
+
+    fn update_glass_effect(
+        &self,
+        state: &mut NativeControlState,
+        parent: *mut c_void,
+        bounds: Bounds<Pixels>,
+        _scale: f32,
+        config: GlassEffectConfig,
+    ) {
+        unsafe {
+            let mtm = MainThreadMarker::new_unchecked();
+
+            if !state.is_initialized() {
+                let view = create_glass_view(&config, mtm);
+                let view_ptr = Retained::into_raw(view) as *mut c_void;
+                *state = NativeControlState::new(view_ptr, ptr::null_mut(), cleanup_view_only);
+            }
+
+            attach_and_position(parent, state.view(), bounds);
+        }
+    }
+
+    fn update_image_view(
+        &self,
+        state: &mut NativeControlState,
+        parent: *mut c_void,
+        bounds: Bounds<Pixels>,
+        _scale: f32,
+        config: ImageViewConfig<'_>,
+    ) {
+        unsafe {
+            let mtm = MainThreadMarker::new_unchecked();
+
+            if !state.is_initialized() {
+                if let Some(view) = create_symbol_image_view(&config, mtm) {
+                    let view_ptr = Retained::into_raw(view) as *mut c_void;
+                    *state = NativeControlState::new(view_ptr, ptr::null_mut(), cleanup_view_only);
+                } else {
+                    return; // Symbol not found — skip.
+                }
+            } else {
+                // Update image in place.
+                update_symbol_image(state.view(), &config);
+            }
+
+            attach_and_position(parent, state.view(), bounds);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Glass effect factory
+// ---------------------------------------------------------------------------
+
+unsafe fn create_glass_view(config: &GlassEffectConfig, mtm: MainThreadMarker) -> Retained<NSView> {
+    use objc2::runtime::AnyClass;
+
+    if let Some(cls) = AnyClass::get(c"NSGlassEffectView") {
+        let view: Retained<NSView> = unsafe { msg_send![cls, new] };
+        let style_val: isize = match config.style {
+            GlassEffectStyle::Regular => 0,
+            GlassEffectStyle::Clear => 1,
+        };
+        let _: () = unsafe { msg_send![&view, setStyle: style_val] };
+        if let Some(radius) = config.corner_radius {
+            let _: () = unsafe { msg_send![&view, setCornerRadius: radius] };
+        }
+        if let Some((r, g, b, a)) = config.tint_color {
+            let color: *mut AnyObject = unsafe {
+                msg_send![
+                    objc2::class!(NSColor),
+                    colorWithRed: r,
+                    green: g,
+                    blue: b,
+                    alpha: a
+                ]
+            };
+            if !color.is_null() {
+                let _: () = unsafe { msg_send![&view, setTintColor: color] };
+            }
+        }
+        view
+    } else {
+        // macOS < 26: fall back to NSVisualEffectView.
+        let vev = NSVisualEffectView::new(mtm);
+        vev.setMaterial(NSVisualEffectMaterial::HUDWindow);
+        vev.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+        vev.setState(NSVisualEffectState::Active);
+        unsafe { Retained::cast_unchecked(vev) }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SF Symbol image view factory
+// ---------------------------------------------------------------------------
+
+unsafe fn create_symbol_image_view(
+    config: &ImageViewConfig<'_>,
+    mtm: MainThreadMarker,
+) -> Option<Retained<NSView>> {
+    let ns_name = NSString::from_str(config.symbol_name);
+
+    let image: Option<Retained<objc2_app_kit::NSImage>> = unsafe {
+        msg_send![
+            objc2::class!(NSImage),
+            imageWithSystemSymbolName: &*ns_name,
+            accessibilityDescription: ptr::null::<NSString>()
+        ]
+    };
+    let image = image?;
+
+    let conf: Retained<NSImageSymbolConfiguration> = unsafe {
+        msg_send![
+            objc2::class!(NSImageSymbolConfiguration),
+            configurationWithPointSize: config.point_size,
+            weight: config.weight.to_ns_weight(),
+            scale: config.scale.to_ns_scale()
+        ]
+    };
+
+    let configured_image: Retained<objc2_app_kit::NSImage> =
+        unsafe { msg_send![&image, imageWithSymbolConfiguration: &*conf] };
+
+    let image_view = NSImageView::imageViewWithImage(&configured_image, mtm);
+
+    if let Some((r, g, b, a)) = config.tint_color {
+        let color: *mut AnyObject = unsafe {
+            msg_send![
+                objc2::class!(NSColor),
+                colorWithRed: r,
+                green: g,
+                blue: b,
+                alpha: a
+            ]
+        };
+        if !color.is_null() {
+            let _: () = unsafe { msg_send![&image_view, setContentTintColor: color] };
+        }
+    }
+
+    Some(unsafe { Retained::cast_unchecked(image_view) })
+}
+
+unsafe fn update_symbol_image(view: *mut c_void, config: &ImageViewConfig<'_>) {
+    let ns_name = NSString::from_str(config.symbol_name);
+
+    let image: Option<Retained<objc2_app_kit::NSImage>> = unsafe {
+        msg_send![
+            objc2::class!(NSImage),
+            imageWithSystemSymbolName: &*ns_name,
+            accessibilityDescription: ptr::null::<NSString>()
+        ]
+    };
+    if let Some(image) = image {
+        let conf: Retained<NSImageSymbolConfiguration> = unsafe {
+            msg_send![
+                objc2::class!(NSImageSymbolConfiguration),
+                configurationWithPointSize: config.point_size,
+                weight: config.weight.to_ns_weight(),
+                scale: config.scale.to_ns_scale()
+            ]
+        };
+        let configured_image: Retained<objc2_app_kit::NSImage> =
+            unsafe { msg_send![&image, imageWithSymbolConfiguration: &*conf] };
+        let _: () = unsafe { msg_send![view as *mut AnyObject, setImage: &*configured_image] };
+    }
+
+    if let Some((r, g, b, a)) = config.tint_color {
+        let color: *mut AnyObject = unsafe {
+            msg_send![
+                objc2::class!(NSColor),
+                colorWithRed: r,
+                green: g,
+                blue: b,
+                alpha: a
+            ]
+        };
+        if !color.is_null() {
+            let _: () = unsafe { msg_send![view as *mut AnyObject, setContentTintColor: color] };
         }
     }
 }

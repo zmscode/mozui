@@ -2,9 +2,10 @@ mod support;
 
 use mozui::prelude::*;
 use mozui::{
-    ClickEvent, Context, NativeTextField, ProgressStyle, SharedString, Window, div, native_button,
-    native_progress, native_search_field, native_slider, native_switch, native_text_field, px,
-    size,
+    ClickEvent, Context, GlassEffectStyle, NativeTextField, ProgressStyle, SharedString,
+    SymbolScale, SymbolWeight, VisualEffectMaterial, Window, div, native_button,
+    native_glass_effect, native_image_view, native_progress, native_search_field, native_slider,
+    native_switch, native_text_field, native_visual_effect, px, size,
 };
 use support::{labeled_control, panel, run_plain_example, shell, stat_tile};
 
@@ -185,6 +186,94 @@ impl Render for NativeControlsExample {
                     .w(px(24.0))
                     .h(px(24.0)),
             ),
+        )
+        .child(
+            panel(
+                "Visual Effects",
+                "native_visual_effect renders an NSVisualEffectView directly inside the mozui window hierarchy.",
+            )
+            .child(labeled_control(
+                "Sidebar blur",
+                "NSVisualEffectView with Sidebar material and BehindWindow blending.",
+                native_visual_effect("native-controls-ve-sidebar")
+                    .material(VisualEffectMaterial::Sidebar)
+                    .w_full()
+                    .h(px(48.0)),
+            ))
+            .child(labeled_control(
+                "Popover blur",
+                "NSVisualEffectView with Popover material.",
+                native_visual_effect("native-controls-ve-popover")
+                    .material(VisualEffectMaterial::Popover)
+                    .w_full()
+                    .h(px(48.0)),
+            ))
+            .child(labeled_control(
+                "Glass effect",
+                "native_glass_effect uses NSGlassEffectView on macOS 26+ and falls back to NSVisualEffectView.",
+                native_glass_effect("native-controls-glass")
+                    .style(GlassEffectStyle::Regular)
+                    .corner_radius(12.0)
+                    .w_full()
+                    .h(px(48.0)),
+            )),
+        )
+        .child(
+            panel(
+                "SF Symbol Image Views",
+                "native_image_view wraps NSImageView and renders SF Symbols with configurable weight, scale, and tint.",
+            )
+            .child(labeled_control(
+                "Symbol row",
+                "Five symbols with varying weight, scale, and tint settings.",
+                div()
+                    .flex()
+                    .gap(px(16.0))
+                    .items_center()
+                    .child(
+                        native_image_view("native-controls-sym-folder", "folder.fill")
+                            .weight(SymbolWeight::Regular)
+                            .scale(SymbolScale::Medium)
+                            .point_size(20.0)
+                            .w(px(28.0))
+                            .h(px(28.0)),
+                    )
+                    .child(
+                        native_image_view("native-controls-sym-bolt", "bolt.fill")
+                            .weight(SymbolWeight::Bold)
+                            .scale(SymbolScale::Large)
+                            .point_size(24.0)
+                            .tint_color(1.0, 0.75, 0.2, 1.0)
+                            .w(px(32.0))
+                            .h(px(32.0)),
+                    )
+                    .child(
+                        native_image_view("native-controls-sym-wand", "wand.and.stars")
+                            .weight(SymbolWeight::Thin)
+                            .scale(SymbolScale::Medium)
+                            .point_size(22.0)
+                            .tint_color(0.5, 0.9, 1.0, 1.0)
+                            .w(px(30.0))
+                            .h(px(30.0)),
+                    )
+                    .child(
+                        native_image_view("native-controls-sym-heart", "heart.fill")
+                            .weight(SymbolWeight::Black)
+                            .scale(SymbolScale::Large)
+                            .point_size(28.0)
+                            .tint_color(1.0, 0.3, 0.4, 1.0)
+                            .w(px(36.0))
+                            .h(px(36.0)),
+                    )
+                    .child(
+                        native_image_view("native-controls-sym-cloud", "cloud.fill")
+                            .weight(SymbolWeight::Semibold)
+                            .scale(SymbolScale::Small)
+                            .point_size(18.0)
+                            .w(px(26.0))
+                            .h(px(26.0)),
+                    ),
+            )),
         )
     }
 }

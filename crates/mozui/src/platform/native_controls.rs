@@ -172,6 +172,172 @@ pub struct TextFieldConfig<'a> {
     pub on_submit: Option<Box<dyn Fn(String)>>,
 }
 
+/// Visual effect blur material. Maps to NSVisualEffectMaterial on macOS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VisualEffectMaterial {
+    /// Title bar appearance.
+    Titlebar,
+    /// Selection highlight appearance.
+    #[default]
+    Selection,
+    /// Menu appearance.
+    Menu,
+    /// Popover appearance.
+    Popover,
+    /// Sidebar appearance.
+    Sidebar,
+    /// Header view appearance.
+    HeaderView,
+    /// Sheet appearance.
+    Sheet,
+    /// Window background appearance.
+    WindowBackground,
+    /// HUD window appearance.
+    HudWindow,
+    /// Full-screen UI appearance.
+    FullScreenUI,
+    /// Tool tip appearance.
+    ToolTip,
+    /// Content background appearance.
+    ContentBackground,
+    /// Under-window background appearance.
+    UnderWindowBackground,
+    /// Under-page background appearance.
+    UnderPageBackground,
+}
+
+/// Visual effect blending mode. Maps to NSVisualEffectBlendingMode on macOS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VisualEffectBlending {
+    /// Blends with content behind the window.
+    #[default]
+    BehindWindow,
+    /// Blends with content within the window.
+    WithinWindow,
+}
+
+/// Visual effect active state. Maps to NSVisualEffectState on macOS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VisualEffectActiveState {
+    /// Mirrors the window's active/inactive state.
+    FollowsWindowActiveState,
+    /// Always renders as active.
+    #[default]
+    Active,
+    /// Always renders as inactive.
+    Inactive,
+}
+
+/// Per-frame visual effect configuration.
+pub struct VisualEffectConfig {
+    /// Blur material to apply.
+    pub material: VisualEffectMaterial,
+    /// Blending mode for the blur.
+    pub blending: VisualEffectBlending,
+    /// Active state for the blur.
+    pub active_state: VisualEffectActiveState,
+    /// Whether the view renders in an emphasized (selected) state.
+    pub is_emphasized: bool,
+}
+
+/// Glass effect style (macOS 26+). Falls back to NSVisualEffectView on older OS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GlassEffectStyle {
+    /// Standard glass appearance.
+    #[default]
+    Regular,
+    /// Clear / minimal glass appearance.
+    Clear,
+}
+
+/// Per-frame glass effect configuration.
+pub struct GlassEffectConfig {
+    /// Glass style variant.
+    pub style: GlassEffectStyle,
+    /// Optional corner radius override.
+    pub corner_radius: Option<f64>,
+    /// RGBA tint color components, each 0.0–1.0.
+    pub tint_color: Option<(f64, f64, f64, f64)>,
+}
+
+/// SF Symbol weight. Maps to NSFontWeight values on Apple platforms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SymbolWeight {
+    /// Ultra-light weight.
+    UltraLight,
+    /// Thin weight.
+    Thin,
+    /// Light weight.
+    Light,
+    /// Regular weight (default).
+    #[default]
+    Regular,
+    /// Medium weight.
+    Medium,
+    /// Semibold weight.
+    Semibold,
+    /// Bold weight.
+    Bold,
+    /// Heavy weight.
+    Heavy,
+    /// Black weight.
+    Black,
+}
+
+impl SymbolWeight {
+    /// Convert to the corresponding `NSFontWeight` float value.
+    pub fn to_ns_weight(self) -> f64 {
+        match self {
+            Self::UltraLight => -0.8,
+            Self::Thin => -0.6,
+            Self::Light => -0.4,
+            Self::Regular => 0.0,
+            Self::Medium => 0.23,
+            Self::Semibold => 0.3,
+            Self::Bold => 0.4,
+            Self::Heavy => 0.56,
+            Self::Black => 0.62,
+        }
+    }
+}
+
+/// SF Symbol scale. Maps to NSImageSymbolScale on Apple platforms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SymbolScale {
+    /// Small symbol scale.
+    Small,
+    /// Medium symbol scale (default).
+    #[default]
+    Medium,
+    /// Large symbol scale.
+    Large,
+}
+
+impl SymbolScale {
+    /// Convert to the corresponding `NSImageSymbolScale` integer value.
+    pub fn to_ns_scale(self) -> isize {
+        match self {
+            Self::Small => 1,
+            Self::Medium => 2,
+            Self::Large => 3,
+        }
+    }
+}
+
+/// Per-frame image / SF Symbol view configuration.
+pub struct ImageViewConfig<'a> {
+    /// SF Symbol name (e.g. "folder.fill").
+    pub symbol_name: &'a str,
+    /// Symbol rendering weight.
+    pub weight: SymbolWeight,
+    /// Symbol rendering scale.
+    pub scale: SymbolScale,
+    /// Point size; 0.0 uses system default.
+    pub point_size: f64,
+    /// Optional RGBA tint color.
+    pub tint_color: Option<(f64, f64, f64, f64)>,
+}
+
 /// Platform-native controls interface implemented by backend window systems.
 pub trait PlatformNativeControls {
     /// Update or create a native button.
@@ -226,6 +392,39 @@ pub trait PlatformNativeControls {
         _bounds: Bounds<Pixels>,
         _scale: f32,
         _config: TextFieldConfig<'_>,
+    ) {
+    }
+
+    /// Update or create a native visual effect (blur/vibrancy) view.
+    fn update_visual_effect(
+        &self,
+        _state: &mut NativeControlState,
+        _parent: *mut c_void,
+        _bounds: Bounds<Pixels>,
+        _scale: f32,
+        _config: VisualEffectConfig,
+    ) {
+    }
+
+    /// Update or create a native glass effect view (macOS 26+, NSVisualEffectView fallback).
+    fn update_glass_effect(
+        &self,
+        _state: &mut NativeControlState,
+        _parent: *mut c_void,
+        _bounds: Bounds<Pixels>,
+        _scale: f32,
+        _config: GlassEffectConfig,
+    ) {
+    }
+
+    /// Update or create a native SF Symbol image view.
+    fn update_image_view(
+        &self,
+        _state: &mut NativeControlState,
+        _parent: *mut c_void,
+        _bounds: Bounds<Pixels>,
+        _scale: f32,
+        _config: ImageViewConfig<'_>,
     ) {
     }
 }

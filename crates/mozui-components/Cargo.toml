@@ -51,6 +51,7 @@ tree-sitter-languages = [
 ]
 
 [dependencies]
+ironcalc_base = "0.7.1"
 anyhow.workspace = true
 mozui = { workspace = true }
 mozui-macros.workspace = true
