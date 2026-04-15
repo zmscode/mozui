@@ -3,9 +3,9 @@ use std::{ops::Range, rc::Rc, time::Duration};
 use crate::{
     ActiveTheme, ElementExt, Icon, IconName, StyleSized as _, StyledExt, VirtualListScrollHandle,
     actions::{
-        Cancel, ConfirmAndMoveDown, ExtendSelectionDown, ExtendSelectionLeft,
-        ExtendSelectionRight, ExtendSelectionUp, SelectDown, SelectFirst, SelectLast,
-        SelectNextColumn, SelectPageDown, SelectPageUp, SelectPrevColumn, SelectUp,
+        Cancel, ConfirmAndMoveDown, ExtendSelectionDown, ExtendSelectionLeft, ExtendSelectionRight,
+        ExtendSelectionUp, SelectDown, SelectFirst, SelectLast, SelectNextColumn, SelectPageDown,
+        SelectPageUp, SelectPrevColumn, SelectUp,
     },
     h_flex,
     menu::{ContextMenuExt, PopupMenu},

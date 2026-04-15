@@ -27,9 +27,9 @@ mod open_type;
 mod text_system;
 
 mod platform;
-mod window_surface;
 mod window;
 mod window_appearance;
+mod window_surface;
 
 use cocoa::{
     base::{id, nil},
@@ -48,8 +48,8 @@ pub(crate) use display_link::*;
 pub(crate) use keyboard::*;
 pub(crate) use native_controls::*;
 pub(crate) use platform::*;
-pub(crate) use window_surface::*;
 pub(crate) use window::*;
+pub(crate) use window_surface::*;
 
 #[cfg(feature = "font-kit")]
 pub(crate) use text_system::*;

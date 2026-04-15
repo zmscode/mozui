@@ -9,7 +9,7 @@ use mozui::{
     Pixels, Point, Render, ScrollHandle, ScrollWheelEvent, ShapedLine, SharedString, Styled as _,
     Subscription, UTF16Selection, Window, actions, div, point, prelude::FluentBuilder as _, px,
 };
-use mozui::{Half, TextAlign};
+use mozui::{Half, HighlightStyle, TextAlign};
 use ropey::{Rope, RopeSlice};
 use serde::Deserialize;
 use std::ops::Range;
@@ -347,6 +347,8 @@ pub struct InputState {
     /// The first element is the x-coordinate (Pixels), preferred to use this.
     /// The second element is the column (usize), fallback to use this.
     pub(super) preferred_column: Option<(Pixels, usize)>,
+    /// Custom syntax highlights (byte ranges + styles) applied by the consumer.
+    pub(crate) custom_highlights: Vec<(std::ops::Range<usize>, HighlightStyle)>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -417,6 +419,7 @@ impl InputState {
             text_align: TextAlign::Left,
             silent_replace_text: false,
             size: Size::default(),
+            custom_highlights: Vec::new(),
             _subscriptions,
             cursor_line_end_affinity: false,
         }
@@ -479,6 +482,16 @@ impl InputState {
     }
 
     fn reset_highlighter(&mut self, cx: &mut Context<Self>) {
+        cx.notify();
+    }
+
+    /// Set custom highlight ranges for syntax coloring (e.g. formula references).
+    pub fn set_highlights(
+        &mut self,
+        highlights: Vec<(std::ops::Range<usize>, HighlightStyle)>,
+        cx: &mut Context<Self>,
+    ) {
+        self.custom_highlights = highlights;
         cx.notify();
     }
 

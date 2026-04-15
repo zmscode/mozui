@@ -1,8 +1,7 @@
 fn main() {
     println!("cargo:rerun-if-changed=src/bridge.js");
 
-    let source =
-        std::fs::read_to_string("src/bridge.js").expect("bridge.js not found");
+    let source = std::fs::read_to_string("src/bridge.js").expect("bridge.js not found");
 
     // Simple minification: strip single-line comments and collapse whitespace.
     // We avoid a full JS minifier to keep build deps minimal and avoid parser bugs.

@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use mozui_webview::IpcError;
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub(crate) struct WriteClipboardArgs {
@@ -7,10 +7,17 @@ pub(crate) struct WriteClipboardArgs {
 }
 
 fn err(msg: String) -> IpcError {
-    IpcError { code: IpcError::INTERNAL, message: msg }
+    IpcError {
+        code: IpcError::INTERNAL,
+        message: msg,
+    }
 }
 
-pub(crate) fn read(_args: (), _wv: &mut mozui_webview::WebView, _cx: &mut mozui::App) -> Result<serde_json::Value, IpcError> {
+pub(crate) fn read(
+    _args: (),
+    _wv: &mut mozui_webview::WebView,
+    _cx: &mut mozui::App,
+) -> Result<serde_json::Value, IpcError> {
     #[cfg(target_os = "macos")]
     {
         let output = std::process::Command::new("pbpaste")
@@ -23,7 +30,11 @@ pub(crate) fn read(_args: (), _wv: &mut mozui_webview::WebView, _cx: &mut mozui:
     Err(err("clipboard not supported on this platform".into()))
 }
 
-pub(crate) fn write(args: WriteClipboardArgs, _wv: &mut mozui_webview::WebView, _cx: &mut mozui::App) -> Result<serde_json::Value, IpcError> {
+pub(crate) fn write(
+    args: WriteClipboardArgs,
+    _wv: &mut mozui_webview::WebView,
+    _cx: &mut mozui::App,
+) -> Result<serde_json::Value, IpcError> {
     #[cfg(target_os = "macos")]
     {
         use std::io::Write;
@@ -33,10 +44,13 @@ pub(crate) fn write(args: WriteClipboardArgs, _wv: &mut mozui_webview::WebView, 
             .spawn()
             .map_err(|e| err(format!("clipboard write failed: {e}")))?;
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(args.text.as_bytes())
+            stdin
+                .write_all(args.text.as_bytes())
                 .map_err(|e| err(format!("clipboard write failed: {e}")))?;
         }
-        child.wait().map_err(|e| err(format!("clipboard write failed: {e}")))?;
+        child
+            .wait()
+            .map_err(|e| err(format!("clipboard write failed: {e}")))?;
         Ok(serde_json::json!(true))
     }
     #[cfg(not(target_os = "macos"))]

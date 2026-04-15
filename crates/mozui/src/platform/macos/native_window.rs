@@ -933,7 +933,8 @@ unsafe fn create_sidebar_host_views(width: f64) -> (id, id, id, id) {
         let _: () = unsafe {
             msg_send![effect, setAutoresizingMask: NSViewWidthSizable | NSViewHeightSizable]
         };
-        let _: () = unsafe { msg_send![root, addSubview: effect positioned: -1i64 relativeTo: nil] };
+        let _: () =
+            unsafe { msg_send![root, addSubview: effect positioned: -1i64 relativeTo: nil] };
         let _: () = unsafe { msg_send![effect, release] };
     }
 
@@ -993,7 +994,10 @@ unsafe fn create_sidebar_host_views(width: f64) -> (id, id, id, id) {
     (root, header, body, c4)
 }
 
-unsafe fn create_background_extended_content_view(content_view: id, sidebar_on_trailing: bool) -> id {
+unsafe fn create_background_extended_content_view(
+    content_view: id,
+    sidebar_on_trailing: bool,
+) -> id {
     if content_view.is_null() || !supports_background_extension_view() {
         return content_view;
     }
@@ -1005,9 +1009,8 @@ unsafe fn create_background_extended_content_view(content_view: id, sidebar_on_t
     let frame: NSRect = unsafe { msg_send![content_view, frame] };
     let bg_ext: id = unsafe { msg_send![background_extension_class, alloc] };
     let bg_ext: id = unsafe { msg_send![bg_ext, initWithFrame: frame] };
-    let _: () = unsafe {
-        msg_send![bg_ext, setAutoresizingMask: NSViewWidthSizable | NSViewHeightSizable]
-    };
+    let _: () =
+        unsafe { msg_send![bg_ext, setAutoresizingMask: NSViewWidthSizable | NSViewHeightSizable] };
 
     let supports_auto_place: bool =
         unsafe { msg_send![bg_ext, respondsToSelector: sel!(setAutomaticallyPlacesContentView:)] };
@@ -1027,7 +1030,8 @@ unsafe fn create_background_extended_content_view(content_view: id, sidebar_on_t
         let _: () = unsafe { msg_send![bg_ext, addSubview: content_view] };
     }
 
-    let _: () = unsafe { msg_send![content_view, setTranslatesAutoresizingMaskIntoConstraints: 0i8] };
+    let _: () =
+        unsafe { msg_send![content_view, setTranslatesAutoresizingMaskIntoConstraints: 0i8] };
 
     let content_top: id = unsafe { msg_send![content_view, topAnchor] };
     let content_bottom: id = unsafe { msg_send![content_view, bottomAnchor] };
@@ -1113,9 +1117,8 @@ unsafe fn ensure_content_background_extension(ns_window: id, sidebar_on_trailing
             ]
         };
         if responds {
-            let _: () = unsafe {
-                msg_send![content_item, setAutomaticallyAdjustsSafeAreaInsets: 1i8]
-            };
+            let _: () =
+                unsafe { msg_send![content_item, setAutomaticallyAdjustsSafeAreaInsets: 1i8] };
         }
     }
 

@@ -189,10 +189,22 @@ function render() {
 		}
 
 		html +=
-			'<div class="' + cls + '">' +
-			'<div class="check" data-id="' + t.id + '">' + check + "</div>" +
-			'<div class="todo-text" data-id="' + t.id + '">' + textContent + "</div>" +
-			'<button class="delete-btn" data-id="' + t.id + '">&times;</button>' +
+			'<div class="' +
+			cls +
+			'">' +
+			'<div class="check" data-id="' +
+			t.id +
+			'">' +
+			check +
+			"</div>" +
+			'<div class="todo-text" data-id="' +
+			t.id +
+			'">' +
+			textContent +
+			"</div>" +
+			'<button class="delete-btn" data-id="' +
+			t.id +
+			'">&times;</button>' +
 			"</div>";
 	}
 

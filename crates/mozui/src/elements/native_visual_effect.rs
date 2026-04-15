@@ -87,7 +87,10 @@ impl Element for NativeVisualEffect {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut style = Style { flex_shrink: 1., ..Default::default() };
+        let mut style = Style {
+            flex_shrink: 1.,
+            ..Default::default()
+        };
         style.refine(&self.style);
         (window.request_layout(style, [], cx), ())
     }
@@ -124,7 +127,12 @@ impl Element for NativeVisualEffect {
                 parent,
                 bounds,
                 window.scale_factor(),
-                VisualEffectConfig { material, blending, active_state, is_emphasized },
+                VisualEffectConfig {
+                    material,
+                    blending,
+                    active_state,
+                    is_emphasized,
+                },
             );
             (Some(hitbox.clone()), Some(state))
         });

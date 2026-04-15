@@ -1,5 +1,7 @@
 use crate::Refineable as _;
-use crate::platform::native_controls::{ImageViewConfig, NativeControlState, SymbolScale, SymbolWeight};
+use crate::platform::native_controls::{
+    ImageViewConfig, NativeControlState, SymbolScale, SymbolWeight,
+};
 use crate::{
     App, Bounds, ContentMask, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
     InspectorElementId, IntoElement, LayoutId, Pixels, SharedString, Style, StyleRefinement,
@@ -85,7 +87,10 @@ impl Element for NativeImageView {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut style = Style { flex_shrink: 1., ..Default::default() };
+        let mut style = Style {
+            flex_shrink: 1.,
+            ..Default::default()
+        };
         style.refine(&self.layout_style);
         (window.request_layout(style, [], cx), ())
     }

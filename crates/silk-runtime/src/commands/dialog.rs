@@ -65,8 +65,10 @@ pub(crate) fn open(
         match result {
             None => Ok(serde_json::Value::Null),
             Some(paths) => {
-                let string_paths: Vec<String> =
-                    paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+                let string_paths: Vec<String> = paths
+                    .iter()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect();
                 if args.multiple {
                     Ok(serde_json::json!(string_paths))
                 } else {
@@ -136,9 +138,7 @@ pub(crate) fn message(
         // block the main run loop.
         let (tx, rx) = futures::channel::oneshot::channel::<()>();
         std::thread::spawn(move || {
-            let _ = Command::new("osascript")
-                .args(["-e", &script])
-                .output();
+            let _ = Command::new("osascript").args(["-e", &script]).output();
             let _ = tx.send(());
         });
 

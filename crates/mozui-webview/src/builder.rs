@@ -370,7 +370,9 @@ impl WebViewBuilder {
             #[cfg(feature = "ipc-tracing")]
             if let Ok(env) = serde_json::from_str::<serde_json::Value>(request.body()) {
                 let typ = env.get("type").and_then(|v| v.as_str()).unwrap_or("?");
-                let cmd = env.get("command").and_then(|v| v.as_str())
+                let cmd = env
+                    .get("command")
+                    .and_then(|v| v.as_str())
                     .or_else(|| env.get("name").and_then(|v| v.as_str()))
                     .unwrap_or("?");
                 eprintln!("[wv:ipc] type={typ} cmd/name={cmd} origin={origin:?}");

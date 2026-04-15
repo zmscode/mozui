@@ -68,11 +68,9 @@ impl WindowManager {
 
         let appears_transparent = matches!(style.as_str(), "hidden" | "hiddenInset");
 
-        let tl_position = traffic_light_position.map(|pos| {
-            Point {
-                x: px(pos.x as f32),
-                y: px(pos.y as f32),
-            }
+        let tl_position = traffic_light_position.map(|pos| Point {
+            x: px(pos.x as f32),
+            y: px(pos.y as f32),
         });
 
         let window_background = if appears_transparent {
@@ -84,7 +82,11 @@ impl WindowManager {
         let mut opts = mozui::WindowOptions {
             window_bounds: Some(mozui::WindowBounds::centered(window_size, cx)),
             titlebar: Some(mozui::TitlebarOptions {
-                title: if appears_transparent { None } else { Some(t.into()) },
+                title: if appears_transparent {
+                    None
+                } else {
+                    Some(t.into())
+                },
                 appears_transparent,
                 traffic_light_position: tl_position,
             }),

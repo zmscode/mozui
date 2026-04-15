@@ -126,7 +126,9 @@ impl SilkApp {
         // notify to trigger re-renders that process incoming IPC messages.
         cx.spawn(async move |_this, cx| {
             loop {
-                cx.background_executor().timer(std::time::Duration::from_millis(16)).await;
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(16))
+                    .await;
                 cx.update(|cx| cx.refresh_windows());
             }
         })
@@ -173,7 +175,8 @@ impl SilkApp {
         #[cfg(feature = "ipc-tracing")]
         log::debug!(
             "[silk] routing response: corr={correlation_id} src={} invoke={}",
-            forward.source_window, forward.original_invoke_id
+            forward.source_window,
+            forward.original_invoke_id
         );
 
         let renderer_wv = {
@@ -211,7 +214,6 @@ impl SilkApp {
             }
         });
     }
-
 }
 
 impl Render for SilkApp {
@@ -265,14 +267,18 @@ fn build_main_webview(
                     let raw = args.url.clone();
                     match (&wm.dev_url, &raw) {
                         (Some(dev), None) => Some(dev.clone()),
-                        (Some(dev), Some(u)) if !u.starts_with("http://") && !u.starts_with("https://") => {
+                        (Some(dev), Some(u))
+                            if !u.starts_with("http://") && !u.starts_with("https://") =>
+                        {
                             Some(dev.clone())
                         }
                         _ => raw,
                     }
                 };
 
-                let transparent_titlebar = args.titlebar_style.as_deref()
+                let transparent_titlebar = args
+                    .titlebar_style
+                    .as_deref()
                     .map(|s| matches!(s, "hidden" | "hiddenInset"))
                     .unwrap_or(false);
 
@@ -301,7 +307,13 @@ fn build_main_webview(
                     match cx.open_window(opts, move |window, cx| {
                         cx.new(move |cx| {
                             let webview = cx.new(|cx| {
-                                build_renderer_webview(url.as_deref(), &app_dir, transparent_titlebar, window, cx)
+                                build_renderer_webview(
+                                    url.as_deref(),
+                                    &app_dir,
+                                    transparent_titlebar,
+                                    window,
+                                    cx,
+                                )
                             });
 
                             w_inner.borrow_mut().register(label_inner, webview.clone());
@@ -337,13 +349,11 @@ fn build_main_webview(
                                             Some(id) => id.to_string(),
                                             None => return,
                                         };
-                                        let command = match payload
-                                            .get("command")
-                                            .and_then(|v| v.as_str())
-                                        {
-                                            Some(c) => c.to_string(),
-                                            None => return,
-                                        };
+                                        let command =
+                                            match payload.get("command").and_then(|v| v.as_str()) {
+                                                Some(c) => c.to_string(),
+                                                None => return,
+                                            };
                                         let args = payload
                                             .get("args")
                                             .cloned()
@@ -429,8 +439,8 @@ fn build_renderer_webview(
     cx: &mut App,
 ) -> WebView {
     let resolved = url.unwrap_or("mozui://localhost/index.html");
-    let is_dev_server = resolved.starts_with("http://localhost")
-        || resolved.starts_with("http://127.0.0.1");
+    let is_dev_server =
+        resolved.starts_with("http://localhost") || resolved.starts_with("http://127.0.0.1");
 
     let csp = if is_dev_server {
         // Dev server: allow localhost + WebSocket (HMR) + inline styles (Vite injects them)

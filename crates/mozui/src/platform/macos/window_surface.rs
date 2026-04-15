@@ -37,8 +37,14 @@ unsafe fn build_mozui_surface_view_class() {
             sel!(makeBackingLayer),
             make_backing_layer as extern "C" fn(&Object, Sel) -> id,
         );
-        decl.add_method(sel!(wantsLayer), wants_layer as extern "C" fn(&Object, Sel) -> i8);
-        decl.add_method(sel!(isFlipped), is_flipped as extern "C" fn(&Object, Sel) -> i8);
+        decl.add_method(
+            sel!(wantsLayer),
+            wants_layer as extern "C" fn(&Object, Sel) -> i8,
+        );
+        decl.add_method(
+            sel!(isFlipped),
+            is_flipped as extern "C" fn(&Object, Sel) -> i8,
+        );
         decl.add_method(
             sel!(acceptsFirstResponder),
             accepts_first_responder as extern "C" fn(&Object, Sel) -> i8,

@@ -78,7 +78,10 @@ impl Element for NativeGlassEffect {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut style = Style { flex_shrink: 1., ..Default::default() };
+        let mut style = Style {
+            flex_shrink: 1.,
+            ..Default::default()
+        };
         style.refine(&self.layout_style);
         (window.request_layout(style, [], cx), ())
     }
@@ -114,7 +117,11 @@ impl Element for NativeGlassEffect {
                 parent,
                 bounds,
                 window.scale_factor(),
-                GlassEffectConfig { style, corner_radius, tint_color },
+                GlassEffectConfig {
+                    style,
+                    corner_radius,
+                    tint_color,
+                },
             );
             (Some(hitbox.clone()), Some(state))
         });

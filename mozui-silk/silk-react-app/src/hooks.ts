@@ -102,10 +102,7 @@ export function useTodos() {
 			try {
 				const json = await Silk.fs.readText(path as string);
 				const imported = JSON.parse(json) as Todo[];
-				update((prev) => [
-					...prev,
-					...imported.map((t) => ({ id: uid(), text: t.text, done: t.done })),
-				]);
+				update((prev) => [...prev, ...imported.map((t) => ({ id: uid(), text: t.text, done: t.done }))]);
 			} catch (e) {
 				await Silk.dialog.message("Failed to import: invalid JSON file.", { type: "error" });
 			}

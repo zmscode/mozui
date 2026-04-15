@@ -8,8 +8,7 @@ use mozui::{
 };
 
 use crate::{
-    ActiveTheme as _,
-    InteractiveElementExt as _,
+    ActiveTheme as _, InteractiveElementExt as _,
     input::Input,
     menu::PopupMenu,
     table::{Column, TableDelegate, TableState},
@@ -17,8 +16,7 @@ use crate::{
 
 use super::{
     ClearContents, ClearFormatting, DeleteCol, DeleteRow, InsertColLeft, InsertColRight,
-    InsertRowAbove, InsertRowBelow, col_to_letter,
-    data::SpreadsheetData,
+    InsertRowAbove, InsertRowBelow, col_to_letter, data::SpreadsheetData,
 };
 
 /// Table delegate for a spreadsheet.
@@ -47,11 +45,18 @@ impl SpreadsheetTableDelegate {
 
 impl TableDelegate for SpreadsheetTableDelegate {
     fn columns_count(&self, cx: &App) -> usize {
-        self.data.read(cx).cols + 1 // +1 for row-number gutter
+        let d = self.data.read(cx);
+        let (_, max_col) = d.data_extent();
+        // Show at least `d.cols` columns, or data extent + 5 buffer, whichever is larger.
+        let effective = d.cols.max(max_col + 5);
+        effective + 1 // +1 for row-number gutter
     }
 
     fn rows_count(&self, cx: &App) -> usize {
-        self.data.read(cx).rows
+        let d = self.data.read(cx);
+        let (max_row, _) = d.data_extent();
+        // Show at least `d.rows` rows, or data extent + 50 buffer.
+        d.rows.max(max_row + 50)
     }
 
     fn column(&self, col_ix: usize, _cx: &App) -> Column {
@@ -130,20 +135,39 @@ impl TableDelegate for SpreadsheetTableDelegate {
         let display = data.display_value(row_ix, data_col);
         let fmt = data.format(row_ix, data_col);
         let input = data.input.clone();
+
+        // Check if this cell falls within any formula reference highlight.
+        let highlight_color = data.formula_highlights.iter().find_map(|h| {
+            if row_ix >= h.r0 && row_ix <= h.r1 && data_col >= h.c0 && data_col <= h.c1 {
+                Some(h.color)
+            } else {
+                None
+            }
+        });
         let _ = data;
 
         let fg = cx.theme().foreground;
         let is_error = display.starts_with('#')
             && matches!(
                 display.as_str(),
-                "#DIV/0!" | "#REF!" | "#NAME?" | "#VALUE!" | "#N/A" | "#NULL!" | "#ERROR!"
-                    | "#NUM!" | "#GETTING_DATA" | "#SPILL!" | "#CALC!"
+                "#DIV/0!"
+                    | "#REF!"
+                    | "#NAME?"
+                    | "#VALUE!"
+                    | "#N/A"
+                    | "#NULL!"
+                    | "#ERROR!"
+                    | "#NUM!"
+                    | "#GETTING_DATA"
+                    | "#SPILL!"
+                    | "#CALC!"
             );
 
         if is_editing {
             // Wrap the borderless Input so it inherits the correct text colour.
             div()
                 .size_full()
+                .relative()
                 .text_color(fg)
                 .child(
                     Input::new(&input)
@@ -151,6 +175,16 @@ impl TableDelegate for SpreadsheetTableDelegate {
                         .bordered(false)
                         .focus_bordered(false),
                 )
+                .when_some(highlight_color, |d, c| {
+                    d.child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .border_1()
+                            .border_color(c)
+                            .bg(c.opacity(0.08)),
+                    )
+                })
                 .into_any_element()
         } else {
             let data_entity = self.data.clone();
@@ -164,9 +198,17 @@ impl TableDelegate for SpreadsheetTableDelegate {
                 .flex()
                 .items_center()
                 .px_2()
-                .text_sm()
+                .map(|d| {
+                    if fmt.font_size > 0 && fmt.font_size != 11 {
+                        d.text_size(px(fmt.font_size as f32))
+                    } else {
+                        d.text_sm()
+                    }
+                })
                 .when(fmt.bold, |d| d.font_bold())
                 .when(fmt.italic, |d| d.italic())
+                .when(fmt.underline, |d| d.underline())
+                .when(fmt.wrap_text, |d| d.flex_wrap())
                 .map(|d| {
                     if is_error {
                         d.text_color(error_color).italic()
@@ -175,6 +217,17 @@ impl TableDelegate for SpreadsheetTableDelegate {
                     }
                 })
                 .when_some(fmt.bg_color, |d, c| d.bg(c))
+                .relative()
+                .when_some(highlight_color, |d, c| {
+                    d.child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .border_1()
+                            .border_color(c)
+                            .bg(c.opacity(0.08)),
+                    )
+                })
                 .map(|d| match fmt.align {
                     TextAlign::Right => d.justify_end(),
                     TextAlign::Center => d.justify_center(),

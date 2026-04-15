@@ -1,9 +1,9 @@
 use crate::{
     ActiveTheme, Sizable, Size,
     actions::{
-        Cancel, ConfirmAndMoveDown, ExtendSelectionDown, ExtendSelectionLeft,
-        ExtendSelectionRight, ExtendSelectionUp, SelectDown, SelectFirst, SelectLast,
-        SelectNextColumn, SelectPageDown, SelectPageUp, SelectPrevColumn, SelectUp,
+        Cancel, ConfirmAndMoveDown, ExtendSelectionDown, ExtendSelectionLeft, ExtendSelectionRight,
+        ExtendSelectionUp, SelectDown, SelectFirst, SelectLast, SelectNextColumn, SelectPageDown,
+        SelectPageUp, SelectPrevColumn, SelectUp,
     },
     table::{TableDelegate, TableState},
 };

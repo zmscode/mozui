@@ -810,10 +810,14 @@ impl TextElement {
         _visible_buffer_lines: &[usize],
         _visible_top: Pixels,
         _visible_byte_range: Range<usize>,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> Option<Vec<(Range<usize>, HighlightStyle)>> {
-        // Syntax highlighting was a CodeEditor feature and has been removed.
-        None
+        let highlights = &self.state.read(cx).custom_highlights;
+        if highlights.is_empty() {
+            None
+        } else {
+            Some(highlights.clone())
+        }
     }
 }
 

@@ -1,8 +1,10 @@
 pub mod data;
 pub mod delegate;
+pub mod spreadsheet;
 
-pub use data::{CellFormat, NumberFormat, SpreadsheetData, SpreadsheetEvent};
+pub use data::{CellFormat, FormulaHighlight, NumberFormat, SpreadsheetData, SpreadsheetEvent};
 pub use delegate::SpreadsheetTableDelegate;
+pub use spreadsheet::Spreadsheet;
 
 use mozui::App;
 
