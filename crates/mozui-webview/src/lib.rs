@@ -23,7 +23,7 @@ use wry::{
 
 use mozui::{
     App, Bounds, ContentMask, DismissEvent, Element, ElementId, Entity, EventEmitter, FocusHandle,
-    Focusable, GlobalElementId, Hitbox, InteractiveElement, IntoElement, LayoutId, MouseDownEvent,
+    Focusable, GlobalElementId, InteractiveElement, IntoElement, LayoutId, MouseDownEvent,
     ParentElement as _, Pixels, Render, Size, Style, Styled as _, Window, canvas, div,
 };
 
@@ -217,6 +217,17 @@ impl WebView {
                 }
                 CommandResult::Immediate(Err(error)) => {
                     self.send_error_response(&id, error);
+                }
+                CommandResult::Deferred(fut) => {
+                    let task_key = format!("{command}:{id}");
+                    let task = cx.spawn(async move |weak_entity, cx| {
+                        let result = fut.await;
+                        let _ = weak_entity.update(cx, |wv, _cx| match result {
+                            Ok(value) => wv.send_ok_response(&id, value),
+                            Err(error) => wv.send_error_response(&id, error),
+                        });
+                    });
+                    self.pending_async.insert(task_key, task);
                 }
             }
         } else {
@@ -471,7 +482,7 @@ impl IntoElement for WebViewElement {
 
 impl Element for WebViewElement {
     type RequestLayoutState = ();
-    type PrepaintState = Option<Hitbox>;
+    type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -508,7 +519,7 @@ impl Element for WebViewElement {
         cx: &mut App,
     ) -> Self::PrepaintState {
         if !self.parent.read(cx).visible() {
-            return None;
+            return;
         }
 
         let _ = self.view.set_bounds(Rect {
@@ -521,8 +532,6 @@ impl Element for WebViewElement {
                 bounds.origin.y.into(),
             )),
         });
-
-        Some(window.insert_hitbox(bounds, mozui::HitboxBehavior::Normal))
     }
 
     fn paint(
@@ -531,11 +540,14 @@ impl Element for WebViewElement {
         _: Option<&mozui::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
-        hitbox: &mut Self::PrepaintState,
+        _: &mut Self::PrepaintState,
         window: &mut Window,
         _: &mut App,
     ) {
-        let bounds = hitbox.clone().map(|h| h.bounds).unwrap_or(bounds);
+        // Let WebKit manage cursor within webview bounds — prevents mozui's
+        // per-frame cursor reset from fighting with CSS cursor styles.
+        window.set_cursor_passthrough(bounds);
+
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             let webview = self.view.clone();
             window.on_mouse_event(move |event: &MouseDownEvent, _, _, _| {

@@ -13,3 +13,40 @@ Silk.onReady(() => {
 		trafficLightPosition: { x: 8, y: 8 },
 	});
 });
+
+// import { app, BrowserWindow } from "electron";
+// import * as path from "node:path";
+
+// const createWindow = (): void => {
+// 	let mainWindow = new BrowserWindow({
+// 		width: 800,
+// 		height: 600,
+// 		webPreferences: {
+// 			preload: path.join(__dirname, "/preloads/preload.js"),
+// 		},
+// 	});
+
+// 	mainWindow.loadFile("./windows/mainwindow.html");
+
+// 	mainWindow.webContents.openDevTools();
+
+// 	mainWindow.on("closed", () => {
+// 		mainWindow = null;
+// 	});
+// };
+
+// app.whenReady().then((): void => {
+// 	createWindow();
+
+// 	app.on("activate", (): void => {
+// 		if (BrowserWindow.getAllWindows().length === 0) {
+// 			createWindow();
+// 		}
+// 	});
+// });
+
+// app.on("window-all-closed", (): void => {
+// 	if (process.platform !== "darwin") {
+// 		app.quit();
+// 	}
+// });

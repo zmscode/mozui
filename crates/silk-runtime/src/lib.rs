@@ -480,9 +480,9 @@ fn build_renderer_webview(
         .command("__silk:fs-remove", commands::fs::remove)
         .command("__silk:clipboard-read", commands::clipboard::read)
         .command("__silk:clipboard-write", commands::clipboard::write)
-        .command("__silk:dialog-open", commands::dialog::open)
-        .command("__silk:dialog-save", commands::dialog::save)
-        .command("__silk:dialog-message", commands::dialog::message)
+        .deferred_command("__silk:dialog-open", commands::dialog::open)
+        .deferred_command("__silk:dialog-save", commands::dialog::save)
+        .deferred_command("__silk:dialog-message", commands::dialog::message)
         .command("__silk:shell-open", commands::shell::open);
 
     if resolved.starts_with("http://")

@@ -8,6 +8,6 @@ Silk.onReady(() => {
     minWidth: 360,
     minHeight: 480,
     titlebarStyle: "hiddenInset",
-    trafficLightPosition: { x: 0, y: 0 }
+    trafficLightPosition: { x: 8, y: 8 }
   });
 });

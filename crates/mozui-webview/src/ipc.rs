@@ -67,9 +67,14 @@ impl From<serde_json::Error> for IpcError {
     }
 }
 
-/// Result of a synchronous command handler.
+/// Result of a command handler.
 pub enum CommandResult {
     Immediate(Result<serde_json::Value, IpcError>),
+    /// The handler kicked off an async operation (e.g. a native file dialog) and
+    /// returns a future that will resolve with the result.
+    Deferred(
+        std::pin::Pin<Box<dyn std::future::Future<Output = Result<serde_json::Value, IpcError>>>>,
+    ),
 }
 
 /// A boxed command handler function.
@@ -102,6 +107,28 @@ impl CommandRegistry {
                     Err(e) => return CommandResult::Immediate(Err(IpcError::invalid_args(e))),
                 };
                 CommandResult::Immediate(handler(args, webview, cx))
+            }),
+        );
+    }
+
+    /// Register a command handler that may return a deferred (async) result.
+    ///
+    /// Unlike `register`, the handler returns `CommandResult` directly, allowing
+    /// it to return either `Immediate` or `Deferred`.
+    pub fn register_deferred<A, F>(&mut self, name: impl Into<String>, handler: F)
+    where
+        A: for<'de> Deserialize<'de> + 'static,
+        F: Fn(A, &mut WebView, &mut App) -> CommandResult + 'static,
+    {
+        let name = name.into();
+        self.handlers.insert(
+            name,
+            Box::new(move |raw_args, webview, cx| {
+                let args: A = match serde_json::from_value(raw_args) {
+                    Ok(a) => a,
+                    Err(e) => return CommandResult::Immediate(Err(IpcError::invalid_args(e))),
+                };
+                handler(args, webview, cx)
             }),
         );
     }

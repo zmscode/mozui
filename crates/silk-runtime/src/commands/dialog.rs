@@ -1,5 +1,7 @@
+use mozui::PathPromptOptions;
+use mozui_webview::{CommandResult, IpcError};
 use serde::Deserialize;
-use mozui_webview::IpcError;
+use std::path::Path;
 
 #[derive(Deserialize)]
 pub(crate) struct OpenDialogArgs {
@@ -34,112 +36,85 @@ fn default_dialog_type() -> String {
 }
 
 fn err(msg: String) -> IpcError {
-    IpcError { code: IpcError::INTERNAL, message: msg }
+    IpcError {
+        code: IpcError::INTERNAL,
+        message: msg,
+    }
 }
 
-pub(crate) fn open(args: OpenDialogArgs, _wv: &mut mozui_webview::WebView, _cx: &mut mozui::App) -> Result<serde_json::Value, IpcError> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
+pub(crate) fn open(
+    args: OpenDialogArgs,
+    _wv: &mut mozui_webview::WebView,
+    cx: &mut mozui::App,
+) -> CommandResult {
+    let options = PathPromptOptions {
+        files: true,
+        directories: false,
+        multiple: args.multiple,
+        prompt: args.title.map(Into::into),
+    };
 
-        let mut script = String::from("choose file");
-        if let Some(title) = &args.title {
-            script.push_str(&format!(" with prompt \"{}\"", title.replace('"', "\\\"")));
-        }
-        if args.multiple {
-            script.push_str(" with multiple selections allowed");
-        }
-        if let Some(filters) = &args.filters {
-            let exts: Vec<String> = filters
-                .iter()
-                .flat_map(|f| f.extensions.iter().map(|e| format!("\"{e}\"")))
-                .collect();
-            if !exts.is_empty() {
-                script.push_str(&format!(" of type {{{}}}", exts.join(", ")));
+    let rx = cx.prompt_for_paths(options);
+
+    CommandResult::Deferred(Box::pin(async move {
+        let result = rx
+            .await
+            .map_err(|_| err("dialog cancelled".into()))?
+            .map_err(|e| err(format!("dialog failed: {e}")))?;
+
+        match result {
+            None => Ok(serde_json::Value::Null),
+            Some(paths) => {
+                let string_paths: Vec<String> =
+                    paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+                if args.multiple {
+                    Ok(serde_json::json!(string_paths))
+                } else {
+                    Ok(serde_json::json!(string_paths.first()))
+                }
             }
         }
-
-        let output = Command::new("osascript")
-            .args(["-e", &script])
-            .output()
-            .map_err(|e| err(format!("dialog failed: {e}")))?;
-
-        if !output.status.success() {
-            return Ok(serde_json::Value::Null);
-        }
-
-        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if raw.is_empty() {
-            return Ok(serde_json::Value::Null);
-        }
-
-        let paths: Vec<String> = raw
-            .split(", ")
-            .map(|alias| {
-                Command::new("osascript")
-                    .args(["-e", &format!("POSIX path of \"{alias}\"")])
-                    .output()
-                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                    .unwrap_or_else(|_| alias.to_string())
-            })
-            .collect();
-
-        if args.multiple {
-            Ok(serde_json::json!(paths))
-        } else {
-            Ok(serde_json::json!(paths.first()))
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = args;
-        Err(err("dialog not supported on this platform".into()))
-    }
+    }))
 }
 
-pub(crate) fn save(args: SaveDialogArgs, _wv: &mut mozui_webview::WebView, _cx: &mut mozui::App) -> Result<serde_json::Value, IpcError> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
+pub(crate) fn save(
+    args: SaveDialogArgs,
+    _wv: &mut mozui_webview::WebView,
+    cx: &mut mozui::App,
+) -> CommandResult {
+    let directory = args
+        .default_path
+        .as_deref()
+        .and_then(|p| Path::new(p).parent())
+        .unwrap_or(Path::new("."))
+        .to_owned();
 
-        let mut script = String::from("choose file name");
-        if let Some(title) = &args.title {
-            script.push_str(&format!(" with prompt \"{}\"", title.replace('"', "\\\"")));
-        }
-        if let Some(path) = &args.default_path {
-            script.push_str(&format!(" default name \"{}\"", path.replace('"', "\\\"")));
-        }
+    let suggested_name = args
+        .default_path
+        .as_deref()
+        .and_then(|p| Path::new(p).file_name())
+        .map(|n| n.to_string_lossy().into_owned());
 
-        let output = Command::new("osascript")
-            .args(["-e", &script])
-            .output()
+    let rx = cx.prompt_for_new_path(&directory, suggested_name.as_deref());
+
+    CommandResult::Deferred(Box::pin(async move {
+        let result = rx
+            .await
+            .map_err(|_| err("dialog cancelled".into()))?
             .map_err(|e| err(format!("dialog failed: {e}")))?;
 
-        if !output.status.success() {
-            return Ok(serde_json::Value::Null);
+        match result {
+            None => Ok(serde_json::Value::Null),
+            Some(path) => Ok(serde_json::json!(path.to_string_lossy())),
         }
-
-        let alias = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if alias.is_empty() {
-            return Ok(serde_json::Value::Null);
-        }
-
-        let posix = Command::new("osascript")
-            .args(["-e", &format!("POSIX path of \"{alias}\"")])
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or(alias);
-
-        Ok(serde_json::json!(posix))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = args;
-        Err(err("dialog not supported on this platform".into()))
-    }
+    }))
 }
 
-pub(crate) fn message(args: MessageDialogArgs, _wv: &mut mozui_webview::WebView, _cx: &mut mozui::App) -> Result<serde_json::Value, IpcError> {
+pub(crate) fn message(
+    args: MessageDialogArgs,
+    _wv: &mut mozui_webview::WebView,
+    _cx: &mut mozui::App,
+) -> CommandResult {
     #[cfg(target_os = "macos")]
     {
         use std::process::Command;
@@ -157,16 +132,24 @@ pub(crate) fn message(args: MessageDialogArgs, _wv: &mut mozui_webview::WebView,
             icon,
         );
 
-        Command::new("osascript")
-            .args(["-e", &script])
-            .output()
-            .map_err(|e| err(format!("dialog failed: {e}")))?;
+        // Message dialog: spawn osascript on a background thread so it doesn't
+        // block the main run loop.
+        let (tx, rx) = futures::channel::oneshot::channel::<()>();
+        std::thread::spawn(move || {
+            let _ = Command::new("osascript")
+                .args(["-e", &script])
+                .output();
+            let _ = tx.send(());
+        });
 
-        Ok(serde_json::json!(true))
+        CommandResult::Deferred(Box::pin(async move {
+            let _ = rx.await;
+            Ok(serde_json::json!(true))
+        }))
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = args;
-        Err(err("dialog not supported on this platform".into()))
+        CommandResult::Immediate(Err(err("dialog not supported on this platform".into())))
     }
 }

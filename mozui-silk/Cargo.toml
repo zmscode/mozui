@@ -4,5 +4,8 @@ version = "0.1.0"
 edition.workspace = true
 publish = false
 
+[features]
+ipc-tracing = ["silk-runtime/ipc-tracing"]
+
 [dependencies]
 silk-runtime = { path = "../crates/silk-runtime" }

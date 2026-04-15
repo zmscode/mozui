@@ -13,6 +13,7 @@ doctest = false
 
 [dependencies]
 mozui.workspace = true
+futures.workspace = true
 mozui-webview = { path = "../mozui-webview" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

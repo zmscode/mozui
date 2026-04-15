@@ -87,7 +87,13 @@ impl OriginAllowlist {
     pub fn permits(&self, origin: Option<&str>) -> bool {
         match self {
             OriginAllowlist::MozuiOnly => {
-                matches!(origin, Some(o) if o.starts_with(MOZUI_ORIGIN))
+                // WKWebView does not send an Origin header for custom-scheme
+                // (mozui://) pages, so `None` is accepted alongside the
+                // expected mozui origin.
+                match origin {
+                    None => true,
+                    Some(o) => o.starts_with(MOZUI_ORIGIN),
+                }
             }
             OriginAllowlist::Custom(list) => {
                 matches!(origin, Some(o) if list.iter().any(|allowed| allowed == o))

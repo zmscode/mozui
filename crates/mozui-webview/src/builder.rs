@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::WebView;
 use crate::assets::AssetServer;
 use crate::ipc::{
-    AsyncCommandConfig, AsyncCommandRegistry, CommandRegistry, IpcEnvelope, IpcError,
+    AsyncCommandConfig, AsyncCommandRegistry, CommandRegistry, CommandResult, IpcEnvelope, IpcError,
 };
 use crate::security::{Capabilities, MOZUI_ORIGIN, MOZUI_SCHEME};
 
@@ -226,6 +226,20 @@ impl WebViewBuilder {
         self
     }
 
+    /// Register a command handler that may return a deferred (async) result.
+    ///
+    /// The handler has access to `&mut WebView` and `&mut App` (like sync commands)
+    /// but can return `CommandResult::Deferred` with a future for async operations
+    /// like native file dialogs.
+    pub fn deferred_command<A, F>(mut self, name: impl Into<String>, handler: F) -> Self
+    where
+        A: for<'de> Deserialize<'de> + 'static,
+        F: Fn(A, &mut WebView, &mut mozui::App) -> CommandResult + 'static,
+    {
+        self.command_registry.register_deferred(name, handler);
+        self
+    }
+
     /// Register a typed async IPC command handler.
     ///
     /// The handler receives deserialized args and returns a future.
@@ -431,9 +445,10 @@ impl WebViewBuilder {
             false
         });
 
-        // Build the wry webview using the mozui window's handle
+        // Build the wry webview as a child of mozui's native view so it doesn't
+        // replace the content view (which owns the Metal renderer and event handlers).
         let wry_webview = wry_builder
-            .build(window)
+            .build_as_child(window)
             .expect("failed to build wry WebView");
 
         let _ = wry_webview.set_bounds(wry::Rect::default());

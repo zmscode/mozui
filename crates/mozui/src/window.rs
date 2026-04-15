@@ -771,6 +771,7 @@ pub(crate) struct Frame {
     pub(crate) input_handlers: Vec<Option<PlatformInputHandler>>,
     pub(crate) tooltip_requests: Vec<Option<TooltipRequest>>,
     pub(crate) cursor_styles: Vec<CursorStyleRequest>,
+    pub(crate) cursor_passthrough_bounds: Vec<Bounds<Pixels>>,
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) debug_bounds: FxHashMap<String, Bounds<Pixels>>,
     #[cfg(any(feature = "inspector", debug_assertions))]
@@ -817,6 +818,7 @@ impl Frame {
             input_handlers: Vec::new(),
             tooltip_requests: Vec::new(),
             cursor_styles: Vec::new(),
+            cursor_passthrough_bounds: Vec::new(),
 
             #[cfg(any(test, feature = "test-support"))]
             debug_bounds: FxHashMap::default(),
@@ -839,6 +841,7 @@ impl Frame {
         self.input_handlers.clear();
         self.tooltip_requests.clear();
         self.cursor_styles.clear();
+        self.cursor_passthrough_bounds.clear();
         self.hitboxes.clear();
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
@@ -3013,6 +3016,14 @@ impl Window {
         })
     }
 
+    /// Register bounds where mozui should not manage the cursor, allowing a
+    /// child view (e.g. a WKWebView) to set its own cursor style instead.
+    /// Passthrough bounds are cleared each frame, so this must be called every
+    /// paint cycle.
+    pub fn set_cursor_passthrough(&mut self, bounds: Bounds<Pixels>) {
+        self.next_frame.cursor_passthrough_bounds.push(bounds);
+    }
+
     /// Sets a tooltip to be rendered for the upcoming frame. This method should only be called
     /// during the paint phase of element drawing.
     pub fn set_tooltip(&mut self, tooltip: AnyTooltip) -> TooltipId {
@@ -4313,6 +4324,18 @@ impl Window {
     fn reset_cursor_style(&self, cx: &mut App) {
         // Set the cursor only if we're the active window.
         if self.is_window_hovered() {
+            let pos = self.mouse_position();
+            // If cursor is inside a passthrough region (e.g. a webview), let
+            // the child view manage the cursor instead of forcing our own.
+            if self
+                .rendered_frame
+                .cursor_passthrough_bounds
+                .iter()
+                .any(|b| b.contains(&pos))
+            {
+                return;
+            }
+
             let style = self
                 .rendered_frame
                 .cursor_style(self)

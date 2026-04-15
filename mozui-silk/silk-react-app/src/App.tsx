@@ -30,12 +30,12 @@ function TodoItem({ todo, onToggle, onDelete, onEdit }: { todo: Todo; onToggle: 
 
 	return (
 		<div
-			className={`group flex items-center gap-3 rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-3.5 py-3 mb-1.5 transition-colors hover:bg-[var(--surface-hover)] ${todo.done ? "opacity-55" : ""}`}
+			className={`group flex items-center gap-3 rounded-md] border border-(--border) bg-(--surface) px-3.5 py-3 mb-1.5 transition-colors hover:bg-(--surface-hover) ${todo.done ? "opacity-55" : ""}`}
 		>
 			<button
 				onClick={onToggle}
-				className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border-2 transition-colors cursor-pointer ${
-					todo.done ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--border)] hover:border-[var(--accent)]"
+				className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-mdrder-2 transition-colors cursor-pointer ${
+					todo.done ? "border(--accent) bg-(--accent)" : "border-(--border) hover:border(--accent)"
 				}`}
 			>
 				{todo.done && <CheckIcon />}
@@ -52,16 +52,16 @@ function TodoItem({ todo, onToggle, onDelete, onEdit }: { todo: Todo; onToggle: 
 							if (e.key === "Enter") commitEdit();
 							if (e.key === "Escape") setEditing(false);
 						}}
-						className="w-full bg-transparent text-sm text-[var(--text)] outline-none py-0.5"
+						className="w-full bg-transparent text-sm text-(--text) outline-none py-0.5"
 					/>
 				) : (
-					<span className={`text-sm leading-relaxed break-words ${todo.done ? "line-through text-[var(--text-done)]" : ""}`}>{todo.text}</span>
+					<span className={`text-sm leading-relaxed wrap-break-word ${todo.done ? "line-through text-(--text-done)" : ""}`}>{todo.text}</span>
 				)}
 			</div>
 
 			<button
 				onClick={onDelete}
-				className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-base text-[var(--text-dim)] opacity-0 transition-all cursor-pointer group-hover:opacity-100 hover:bg-[var(--danger-dim)] hover:text-[var(--danger)]"
+				className="flex h-7 w-7 shrink-0 items-center justify-center rounded-mdxt-base text-(--text-dim) opacity-0 transition-all cursor-pointer group-hover:opacity-100 hover:bg-(--danger-dim) hover:text-(--danger)"
 			>
 				&times;
 			</button>
@@ -86,7 +86,7 @@ export default function App() {
 	async function handleAdd() {
 		const text = input.trim();
 		if (!text) return;
-		await addTodo(text);
+		addTodo(text);
 		setInput("");
 	}
 
@@ -101,27 +101,27 @@ export default function App() {
 			{/* Header */}
 			<div className="shrink-0 px-6 pt-7">
 				<h1 className="text-[26px] font-bold tracking-tight text-white">Silk Todo</h1>
-				<p className="mt-1 text-[13px] text-[var(--text-dim)]">React + Tailwind &mdash; powered by Silk runtime</p>
-				<div className="mt-3.5 flex items-center gap-4 font-mono text-xs text-[var(--text-dim)]">
+				<p className="mt-1 text-[13px] text-(--text-dim)">React + Tailwind &mdash; powered by Silk runtime</p>
+				<div className="mt-3.5 flex items-center gap-4 font-mono text-xs text-(--text-dim)">
 					<span>
-						<span className="font-semibold text-[var(--accent)]">{todos.length}</span> total
+						<span className="font-semibold text-(--accent)">{todos.length}</span> total
 					</span>
 					<span>
-						<span className="font-semibold text-[var(--accent)]">{remaining}</span> remaining
+						<span className="font-semibold text(--accent)">{remaining}</span> remaining
 					</span>
 					<span>
-						<span className="font-semibold text-[var(--accent)]">{doneCount}</span> done
+						<span className="font-semibold text(--accent)">{doneCount}</span> done
 					</span>
 					<span className="ml-auto flex gap-2 font-sans">
 						<button
 							onClick={importTodos}
-							className="cursor-pointer rounded-[5px] border border-[var(--border)] bg-transparent px-2 py-0.5 text-[11px] text-[var(--text-dim)] transition-all hover:border-[var(--accent)] hover:text-[var(--accent)]"
+							className="cursor-pointer rounded-md] bg-(--accent) px-4.5 text-sm font-semibold text-white transition-opacity hover:opacity-85 active:opacity-70"
 						>
 							Import
 						</button>
 						<button
 							onClick={exportTodos}
-							className="cursor-pointer rounded-[5px] border border-[var(--border)] bg-transparent px-2 py-0.5 text-[11px] text-[var(--text-dim)] transition-all hover:border-[var(--accent)] hover:text-[var(--accent)]"
+							className="cursor-pointer rounded-md] bg-(--accent) px-4.5 text-sm font-semibold text-white transition-opacity hover:opacity-85 active:opacity-70"
 						>
 							Export
 						</button>
@@ -136,11 +136,11 @@ export default function App() {
 					onChange={(e) => setInput(e.target.value)}
 					onKeyDown={(e) => e.key === "Enter" && handleAdd()}
 					placeholder="What needs to be done?"
-					className="flex-1 rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm text-[var(--text)] outline-none transition-colors placeholder:text-[var(--text-dim)] focus:border-[var(--border-focus)]"
+					className="flex-1 rounded-md] border border-(--border) bg-(--surface) px-3.5 py-2.5 text-sm text-(--text) outline-none transition-colors placeholder:text-(--text-dim) focus:border-(--border-focus)"
 				/>
 				<button
 					onClick={handleAdd}
-					className="cursor-pointer rounded-[10px] bg-[var(--accent)] px-4.5 text-sm font-semibold text-white transition-opacity hover:opacity-85 active:opacity-70"
+					className="cursor-pointer rounded-md] bg-(--accent) px-4.5 text-sm font-semibold text-white transition-opacity hover:opacity-85 active:opacity-70"
 				>
 					Add
 				</button>
@@ -152,10 +152,10 @@ export default function App() {
 					<button
 						key={key}
 						onClick={() => setFilter(key)}
-						className={`cursor-pointer rounded-[6px] border px-3 py-1 text-xs font-medium transition-all ${
+						className={`cursor-pointer rounded-md border px-3 py-1 text-xs font-medium transition-all ${
 							filter === key
-								? "border-[rgba(153,102,255,0.25)] bg-[var(--accent-dim)] text-[var(--accent)]"
-								: "border-transparent text-[var(--text-dim)] hover:bg-[var(--surface)] hover:text-[var(--text)]"
+								? "border-[rgba(153,102,255,0.25)] bg-(--accent-dim) text(--accent)"
+								: "border-transparent text-(--text-dim) hover:bg-(--surface) hover:text-(--text)"
 						}`}
 					>
 						{label}
@@ -166,7 +166,7 @@ export default function App() {
 			{/* List */}
 			<div className="flex-1 overflow-y-auto px-6 pb-6">
 				{visible.length === 0 ? (
-					<div className="pt-12 text-center text-sm text-[var(--text-dim)]">
+					<div className="pt-12 text-center text-sm text-(--text-dim)">
 						<div className="mb-2 text-3xl opacity-40"></div>
 						{todos.length === 0 ? "No todos yet" : filter === "done" ? "Nothing completed" : "All done!"}
 					</div>
@@ -184,7 +184,7 @@ export default function App() {
 						{doneCount > 0 && (
 							<button
 								onClick={clearCompleted}
-								className="mx-auto mt-2 block cursor-pointer rounded-[6px] border border-[var(--border)] bg-transparent px-3.5 py-1.5 text-xs text-[var(--text-dim)] transition-all hover:border-[var(--danger)] hover:bg-[var(--danger-dim)] hover:text-[var(--danger)]"
+								className="mx-auto mt-2 block cursor-pointer rounded-md border border-(--border) bg-transparent px-3.5 py-1.5 text-xs text-(--text-dim) transition-all hover:border-(--danger) hover:bg-(--danger-dim) hover:text-(--danger)"
 							>
 								Clear {doneCount} completed
 							</button>
